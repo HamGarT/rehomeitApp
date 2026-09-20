@@ -1,4 +1,4 @@
-package com.example.rehomeitapp
+package com.g3.rehomeit
 
 import io.flutter.embedding.android.FlutterActivity
 
