@@ -15,10 +15,5 @@ abstract final class ItemCategories {
 }
 
 abstract final class ItemConditions {
-  static const all = <String>[
-    'Nuevo',
-    'Como nuevo',
-    'Buen estado',
-    'Con señales de uso',
-  ];
+  static const all = <String>['Nuevo', 'Como nuevo', 'Usado'];
 }

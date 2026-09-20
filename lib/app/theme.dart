@@ -23,6 +23,16 @@ const _colorScheme = ColorScheme(
 
 const _radius = 14.0;
 
+// Escala compacta para formularios. Los niveles ya en 12 pt no bajan: es el piso de lectura.
+const _textTheme = TextTheme(
+  titleLarge: TextStyle(fontSize: 21),
+  titleMedium: TextStyle(fontSize: 15),
+  titleSmall: TextStyle(fontSize: 13),
+  bodyLarge: TextStyle(fontSize: 15),
+  bodyMedium: TextStyle(fontSize: 13),
+  labelLarge: TextStyle(fontSize: 13),
+);
+
 OutlineInputBorder _inputBorder(Color color, double width) {
   return OutlineInputBorder(
     borderRadius: BorderRadius.circular(_radius),
@@ -33,6 +43,7 @@ OutlineInputBorder _inputBorder(Color color, double width) {
 ThemeData buildAppTheme() {
   return ThemeData(
     colorScheme: _colorScheme,
+    textTheme: _textTheme,
     scaffoldBackgroundColor: AppColors.background,
     appBarTheme: const AppBarThemeData(
       backgroundColor: AppColors.background,
@@ -74,7 +85,7 @@ ThemeData buildAppTheme() {
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(_radius),
         ),
-        textStyle: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+        textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
       ),
     ),
     outlinedButtonTheme: OutlinedButtonThemeData(
@@ -94,6 +105,14 @@ ThemeData buildAppTheme() {
       labelStyle: const TextStyle(color: AppColors.textPrimary),
       secondaryLabelStyle: const TextStyle(color: Colors.white),
       showCheckmark: false,
+    ),
+    bottomSheetTheme: const BottomSheetThemeData(
+      backgroundColor: AppColors.surface,
+      surfaceTintColor: Colors.transparent,
+      showDragHandle: false,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
     ),
     dialogTheme: DialogThemeData(
       backgroundColor: AppColors.surface,
