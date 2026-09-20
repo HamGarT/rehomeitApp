@@ -1,19 +1,25 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-class HomeShell extends StatefulWidget {
+import '../features/publishing/presentation/photos_step.dart';
+import '../features/publishing/presentation/publish_draft_notifier.dart';
+
+class HomeShell extends ConsumerStatefulWidget {
   const HomeShell({super.key});
 
   @override
-  State<HomeShell> createState() => _HomeShellState();
+  ConsumerState<HomeShell> createState() => _HomeShellState();
 }
 
-class _HomeShellState extends State<HomeShell> {
+class _HomeShellState extends ConsumerState<HomeShell> {
+  static const _publishIndex = 2;
+
   int _selectedIndex = 0;
 
   static const _sections = <({String title, String pending})>[
     (title: 'Explorar', pending: 'HU08'),
     (title: 'Campañas', pending: 'HU15, HU16, HU17'),
-    (title: 'Publicar', pending: 'HU03, HU04, HU05, HU06, HU07'),
+    (title: 'Publicar', pending: ''),
     (title: 'Mensajes', pending: 'HU09'),
     (title: 'Mi perfil', pending: 'HU18, HU20'),
   ];
@@ -29,9 +35,7 @@ class _HomeShellState extends State<HomeShell> {
       ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _selectedIndex,
-        onDestinationSelected: (index) {
-          setState(() => _selectedIndex = index);
-        },
+        onDestinationSelected: _onDestinationSelected,
         destinations: const [
           NavigationDestination(
             icon: Icon(Icons.home_outlined),
@@ -61,5 +65,16 @@ class _HomeShellState extends State<HomeShell> {
         ],
       ),
     );
+  }
+
+  void _onDestinationSelected(int index) {
+    if (index == _publishIndex) {
+      ref.read(publishDraftProvider.notifier).reset();
+      Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => const PhotosStep()),
+      );
+      return;
+    }
+    setState(() => _selectedIndex = index);
   }
 }

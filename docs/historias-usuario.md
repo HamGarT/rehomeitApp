@@ -77,7 +77,7 @@ Como persona que publica un bien, quiero que la aplicación complete automática
 2. El servicio devuelve una sugerencia para los cuatro campos de la ficha principal: título, categoría, estado del bien y descripción.
 3. Los campos se presentan ya completados con la sugerencia recibida, y cada uno indica visualmente que su contenido fue generado automáticamente.
 4. Todos los campos sugeridos son editables; el usuario puede aceptarlos, modificarlos o borrarlos.
-5. Mientras se realiza el análisis, la aplicación muestra un indicador de progreso sin bloquear la posibilidad de escribir en los campos.
+5. Mientras se realiza el análisis, la aplicación muestra una pantalla de espera que informa que las fotografías se están analizando.
 6. La sugerencia se devuelve en un tiempo máximo de 5 segundos.
 7. Si el análisis falla, se agota el tiempo de espera o no hay conexión, la aplicación informa la situación y presenta los campos vacíos para su ingreso manual, sin interrumpir la publicación.
 8. Si el servicio no reconoce el contenido de las fotografías, la aplicación lo informa y presenta los campos vacíos para su ingreso manual.
