@@ -18,6 +18,9 @@ class PhotosStep extends ConsumerStatefulWidget {
 }
 
 class _PhotosStepState extends ConsumerState<PhotosStep> {
+  static const _maxWidth = 1600.0;
+  static const _quality = 85;
+
   int _selectedIndex = 0;
 
   @override
@@ -75,24 +78,20 @@ class _PhotosStepState extends ConsumerState<PhotosStep> {
                                     setState(() => _selectedIndex = index),
                                 onRemove: () => _remove(index),
                               )
-                            : const _EmptySlot(),
+                            : _EmptySlot(onTap: _chooseSource),
                       ),
                     ),
                 ],
               ),
               const SizedBox(height: 18),
               OutlinedButton.icon(
-                onPressed: draft.canAddPhoto
-                    ? () => _pick(ImageSource.camera)
-                    : null,
+                onPressed: draft.canAddPhoto ? _takePhoto : null,
                 icon: const Icon(Icons.photo_camera_outlined, size: 20),
                 label: const Text('Tomar fotografía'),
               ),
               const SizedBox(height: 10),
               OutlinedButton.icon(
-                onPressed: draft.canAddPhoto
-                    ? () => _pick(ImageSource.gallery)
-                    : null,
+                onPressed: draft.canAddPhoto ? _pickFromGallery : null,
                 icon: const Icon(Icons.photo_library_outlined, size: 20),
                 label: const Text('Elegir de la galería'),
               ),
@@ -122,17 +121,80 @@ class _PhotosStepState extends ConsumerState<PhotosStep> {
     });
   }
 
-  Future<void> _pick(ImageSource source) async {
+  int get _freeSlots =>
+      PublishDraft.maxPhotos - ref.read(publishDraftProvider).photos.length;
+
+  Future<void> _chooseSource() async {
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      builder: (_) => const _SourceSheet(),
+    );
+    if (source == null) return;
+
+    if (source == ImageSource.camera) {
+      await _takePhoto();
+    } else {
+      await _pickFromGallery();
+    }
+  }
+
+  Future<void> _takePhoto() async {
     final picked = await ImagePicker().pickImage(
-      source: source,
-      maxWidth: 1600,
-      imageQuality: 85,
+      source: ImageSource.camera,
+      maxWidth: _maxWidth,
+      imageQuality: _quality,
     );
     if (picked == null) return;
+    _addPhotos([picked]);
+  }
 
-    ref.read(publishDraftProvider.notifier).addPhoto(File(picked.path));
+  Future<void> _pickFromGallery() async {
+    final free = _freeSlots;
+    if (free <= 0) return;
+
+    final picker = ImagePicker();
+
+    // pickMultiImage exige un límite mayor que uno.
+    if (free == 1) {
+      final picked = await picker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: _maxWidth,
+        imageQuality: _quality,
+      );
+      if (picked == null) return;
+      _addPhotos([picked]);
+      return;
+    }
+
+    final picked = await picker.pickMultiImage(
+      limit: free,
+      maxWidth: _maxWidth,
+      imageQuality: _quality,
+    );
+    if (picked.isEmpty) return;
+    _addPhotos(picked);
+  }
+
+  void _addPhotos(List<XFile> files) {
+    final free = _freeSlots;
+    final notifier = ref.read(publishDraftProvider.notifier);
+    for (final file in files.take(free)) {
+      notifier.addPhoto(File(file.path));
+    }
+
     final photos = ref.read(publishDraftProvider).photos;
     setState(() => _selectedIndex = photos.length - 1);
+
+    if (files.length > free && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Solo caben ${PublishDraft.maxPhotos} fotografías. '
+            'Se agregaron las primeras.',
+          ),
+        ),
+      );
+    }
   }
 }
 
@@ -144,6 +206,7 @@ class _Preview extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
+      width: double.infinity,
       decoration: BoxDecoration(
         color: AppColors.surface,
         borderRadius: BorderRadius.circular(20),
@@ -151,27 +214,32 @@ class _Preview extends StatelessWidget {
       ),
       clipBehavior: Clip.antiAlias,
       child: photo == null
-          ? Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Icon(
-                  Icons.add_a_photo_outlined,
-                  size: 44,
-                  color: AppColors.textSecondary,
-                ),
-                const SizedBox(height: 14),
-                Text(
-                  'Agrega hasta 4 fotografías del bien',
-                  style: Theme.of(context).textTheme.bodyMedium,
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  'Mientras mejor se vea, mejor se describe solo',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+          ? Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 32),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(
+                    Icons.add_a_photo_outlined,
+                    size: 44,
                     color: AppColors.textSecondary,
                   ),
-                ),
-              ],
+                  const SizedBox(height: 14),
+                  Text(
+                    'Agrega hasta 4 fotografías del bien',
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Mientras mejor se vea, mejor se describe solo',
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: AppColors.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
             )
           : Image.file(photo!, fit: BoxFit.cover, cacheWidth: 1000),
     );
@@ -231,17 +299,71 @@ class _Thumbnail extends StatelessWidget {
 }
 
 class _EmptySlot extends StatelessWidget {
-  const _EmptySlot();
+  const _EmptySlot({required this.onTap});
+
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: AppColors.surface,
+    return Material(
+      color: AppColors.surface,
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        onTap: onTap,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppColors.border),
+        child: Ink(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: AppColors.border),
+          ),
+          child: const Center(
+            child: Icon(Icons.add, color: AppColors.textSecondary, size: 20),
+          ),
+        ),
       ),
-      child: const Icon(Icons.add, color: AppColors.textSecondary, size: 20),
+    );
+  }
+}
+
+class _SourceSheet extends StatelessWidget {
+  const _SourceSheet();
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const SizedBox(height: 12),
+          Container(
+            width: 40,
+            height: 4,
+            decoration: BoxDecoration(
+              color: AppColors.border,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          const SizedBox(height: 16),
+          ListTile(
+            leading: const Icon(
+              Icons.photo_camera_outlined,
+              color: AppColors.primary,
+            ),
+            title: const Text('Tomar fotografía'),
+            onTap: () => Navigator.of(context).pop(ImageSource.camera),
+          ),
+          ListTile(
+            leading: const Icon(
+              Icons.photo_library_outlined,
+              color: AppColors.primary,
+            ),
+            title: const Text('Elegir de la galería'),
+            subtitle: const Text('Puedes seleccionar varias a la vez'),
+            onTap: () => Navigator.of(context).pop(ImageSource.gallery),
+          ),
+          const SizedBox(height: 12),
+        ],
+      ),
     );
   }
 }
