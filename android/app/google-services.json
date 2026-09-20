@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "682436232960",
+    "project_id": "capstone-app-654fe",
+    "storage_bucket": "capstone-app-654fe.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:682436232960:android:b9171486b29b402dac95e5",
+        "android_client_info": {
+          "package_name": "com.g3.rehomeit"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "682436232960-7af05tleo3r7lhrumfpk071s8lnfdhrq.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBV4RifUshGtpKrp1rBRS-lanyahf24Ap4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "682436232960-7af05tleo3r7lhrumfpk071s8lnfdhrq.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
