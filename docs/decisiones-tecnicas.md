@@ -72,7 +72,14 @@ Decisiones que condicionan la implementación y que no se deducen leyendo las hi
 
 **Decisión.** Ante terceros, todo usuario se identifica con su nombre de pila y la inicial de su primer apellido. El nombre completo solo se muestra en el perfil propio.
 
-**Consecuencias.** Un mismo criterio de identificación en el detalle de la publicación, el recorrido, las conversaciones y el perfil público. El nombre completo se conserva en la base de datos, por lo que las reglas de seguridad deben restringir la lectura de ese campo al propio usuario.
+**Consecuencias.** Un mismo criterio de identificación en el detalle de la publicación, el recorrido, las conversaciones y el perfil público. Las reglas de seguridad de Firestore autorizan o deniegan documentos completos y no permiten ocultar campos concretos, de modo que no basta con guardar el nombre completo y no mostrarlo: viajaría igual al cliente. Los datos del usuario se reparten por eso en dos documentos:
+
+| Colección | Contiene | Quién puede leerla |
+|-----------|----------|--------------------|
+| `usuarios/{uid}` | Nombre completo, correo y rol | Solo el propio usuario |
+| `perfiles/{uid}` | Nombre abreviado, distrito, fecha de ingreso y contadores | Cualquier usuario |
+
+El rol permanece en el documento privado y las reglas pueden consultarlo igual, porque se evalúan del lado del servidor sin estar sujetas a los permisos de lectura del cliente. Al crearse la cuenta, ambos documentos se escriben en una sola operación para que no quede una cuenta sin perfil público.
 
 ---
 
