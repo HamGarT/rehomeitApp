@@ -14,6 +14,14 @@
       },
       "oauth_client": [
         {
+          "client_id": "682436232960-qm0nkrn30pr3u7759ijbnuvrv2lldkmn.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.g3.rehomeit",
+            "certificate_hash": "209422af2c51689ae3ee49f2b6ea59e835333ddb"
+          }
+        },
+        {
           "client_id": "682436232960-7af05tleo3r7lhrumfpk071s8lnfdhrq.apps.googleusercontent.com",
           "client_type": 3
         }
@@ -29,6 +37,13 @@
             {
               "client_id": "682436232960-7af05tleo3r7lhrumfpk071s8lnfdhrq.apps.googleusercontent.com",
               "client_type": 3
+            },
+            {
+              "client_id": "682436232960-j50df9vr88dln3j3hivgsu4am3b3fuba.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.g3.rehomeit"
+              }
             }
           ]
         }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../features/profile/presentation/profile_page.dart';
 import '../features/publishing/presentation/photos_step.dart';
 import '../features/publishing/presentation/publish_draft_notifier.dart';
 
@@ -13,6 +14,7 @@ class HomeShell extends ConsumerStatefulWidget {
 
 class _HomeShellState extends ConsumerState<HomeShell> {
   static const _publishIndex = 2;
+  static const _perfilIndex = 4;
 
   int _selectedIndex = 0;
 
@@ -30,9 +32,9 @@ class _HomeShellState extends ConsumerState<HomeShell> {
 
     return Scaffold(
       appBar: AppBar(title: Text(section.title)),
-      body: Center(
-        child: Text('Pendiente de implementar: ${section.pending}'),
-      ),
+      body: _selectedIndex == _perfilIndex
+          ? const ProfilePage()
+          : Center(child: Text('Pendiente de implementar: ${section.pending}')),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _selectedIndex,
         onDestinationSelected: _onDestinationSelected,
@@ -70,9 +72,8 @@ class _HomeShellState extends ConsumerState<HomeShell> {
   void _onDestinationSelected(int index) {
     if (index == _publishIndex) {
       ref.read(publishDraftProvider.notifier).reset();
-      Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => const PhotosStep()),
-      );
+      Navigator.of(context)
+          .push(MaterialPageRoute(builder: (_) => const PhotosStep()));
       return;
     }
     setState(() => _selectedIndex = index);
