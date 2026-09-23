@@ -1,0 +1,559 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function validInitialUser() {
+      return request.resource.data.keys().hasAll([
+          'nombreCompleto',
+          'correo',
+          'rol'
+        ])
+        && request.resource.data.keys().hasOnly([
+          'nombreCompleto',
+          'correo',
+          'rol'
+        ])
+        && request.resource.data.nombreCompleto is string
+        && request.resource.data.nombreCompleto.size() > 0
+        && request.resource.data.correo is string
+        && request.resource.data.rol == 'usuario';
+    }
+
+    function validInitialUserAfter(userId) {
+      let user = getAfter(
+        /databases/$(database)/documents/usuarios/$(userId)
+      ).data;
+      return !exists(
+          /databases/$(database)/documents/usuarios/$(userId)
+        )
+        && user.keys().hasAll(['nombreCompleto', 'correo', 'rol'])
+        && user.keys().hasOnly(['nombreCompleto', 'correo', 'rol'])
+        && user.nombreCompleto is string
+        && user.nombreCompleto.size() > 0
+        && user.correo is string
+        && user.rol == 'usuario';
+    }
+
+    function validInitialProfile() {
+      return request.resource.data.keys().hasAll([
+          'nombreCorto',
+          'distrito',
+          'fechaIngreso',
+          'contadores'
+        ])
+        && request.resource.data.keys().hasOnly([
+          'nombreCorto',
+          'distrito',
+          'fechaIngreso',
+          'contadores'
+        ])
+        && request.resource.data.nombreCorto is string
+        && request.resource.data.nombreCorto.size() > 0
+        && request.resource.data.distrito is string
+        && request.resource.data.fechaIngreso == request.time
+        && request.resource.data.contadores is map
+        && request.resource.data.contadores.keys().hasAll([
+          'donaciones',
+          'intercambios',
+          'voluntariados'
+        ])
+        && request.resource.data.contadores.keys().hasOnly([
+          'donaciones',
+          'intercambios',
+          'voluntariados'
+        ])
+        && request.resource.data.contadores.donaciones == 0
+        && request.resource.data.contadores.intercambios == 0
+        && request.resource.data.contadores.voluntariados == 0;
+    }
+
+    function validPublicationImages() {
+      let images = request.resource.data.images;
+      let count = images.size();
+      return images is list
+        && count >= 1
+        && count <= 4
+        && images[0] is string
+        && (count < 2 || images[1] is string)
+        && (count < 3 || images[2] is string)
+        && (count < 4 || images[3] is string);
+    }
+
+    function validInitialPublication() {
+      return request.resource.data.keys().hasAll([
+          'authorId',
+          'title',
+          'category',
+          'condition',
+          'description',
+          'details',
+          'district',
+          'mode',
+          'deliveryType',
+          'status',
+          'images',
+          'publishedAt',
+          'statusDates'
+        ])
+        && request.resource.data.keys().hasOnly([
+          'authorId',
+          'title',
+          'category',
+          'condition',
+          'description',
+          'details',
+          'district',
+          'mode',
+          'deliveryType',
+          'status',
+          'images',
+          'publishedAt',
+          'statusDates'
+        ])
+        && request.resource.data.authorId == request.auth.uid
+        && request.resource.data.title is string
+        && request.resource.data.title.size() > 0
+        && request.resource.data.category is string
+        && request.resource.data.category.size() > 0
+        && request.resource.data.condition is string
+        && request.resource.data.condition.size() > 0
+        && request.resource.data.description is string
+        && request.resource.data.description.size() > 0
+        && request.resource.data.details is list
+        && request.resource.data.details.size() <= 6
+        && request.resource.data.district is string
+        && request.resource.data.district.size() > 0
+        && request.resource.data.mode in ['donacion', 'intercambio']
+        && request.resource.data.status == 'publicada'
+        && request.resource.data.publishedAt == request.time
+        && request.resource.data.statusDates is map
+        && request.resource.data.statusDates.keys().hasAll(['publicada'])
+        && request.resource.data.statusDates.keys().hasOnly(['publicada'])
+        && request.resource.data.statusDates.publicada == request.time
+        && validPublicationImages()
+        && (
+          (request.resource.data.mode == 'donacion'
+            && request.resource.data.deliveryType in ['donante', 'voluntario'])
+          || (request.resource.data.mode == 'intercambio'
+            && request.resource.data.deliveryType == null)
+        );
+    }
+
+    function proposalAfter(proposalId) {
+      return getAfter(
+        /databases/$(database)/documents/propuestasIntercambio/$(proposalId)
+      ).data;
+    }
+
+    function proposalBefore(proposalId) {
+      return get(
+        /databases/$(database)/documents/propuestasIntercambio/$(proposalId)
+      ).data;
+    }
+
+    function proposalExisted(proposalId) {
+      return exists(
+        /databases/$(database)/documents/propuestasIntercambio/$(proposalId)
+      );
+    }
+
+    function publicationsHaveStatus(proposal, proposalId, status) {
+      let requested = getAfter(
+        /databases/$(database)/documents/publicaciones/$(proposal.requestedPublicationId)
+      ).data;
+      let offered = getAfter(
+        /databases/$(database)/documents/publicaciones/$(proposal.offeredPublicationId)
+      ).data;
+      return requested.status == status
+        && offered.status == status
+        && requested.exchangeProposalId == proposalId
+        && offered.exchangeProposalId == proposalId
+        && requested.statusDates[status] == request.time
+        && offered.statusDates[status] == request.time;
+    }
+
+    function validExchangePublicationTransition(publicationId) {
+      let proposal = proposalAfter(request.resource.data.exchangeProposalId);
+      let isParticipant = request.auth.uid in proposal.participantIds;
+      let belongsToProposal = publicationId == proposal.requestedPublicationId
+        || publicationId == proposal.offeredPublicationId;
+      let validOwner = (
+        publicationId == proposal.requestedPublicationId
+        && resource.data.authorId == proposal.requestedOwnerId
+      ) || (
+        publicationId == proposal.offeredPublicationId
+        && resource.data.authorId == proposal.offeredOwnerId
+      );
+      let validCounterpart = (
+        publicationId == proposal.requestedPublicationId
+        && request.resource.data.counterpartPublicationId
+          == proposal.offeredPublicationId
+        && request.resource.data.counterpartUserId == proposal.offeredOwnerId
+      ) || (
+        publicationId == proposal.offeredPublicationId
+        && request.resource.data.counterpartPublicationId
+          == proposal.requestedPublicationId
+        && request.resource.data.counterpartUserId == proposal.requestedOwnerId
+      );
+      let accepted = proposal.status == 'aceptada';
+      let confirmationCount =
+        (proposal.requestedOwnerConfirmedAt is timestamp ? 1 : 0)
+        + (proposal.offeredOwnerConfirmedAt is timestamp ? 1 : 0);
+      let accepting = resource.data.status == 'publicada'
+        && resource.data.mode == 'intercambio'
+        && request.resource.data.status == 'comprometida'
+        && request.resource.data.committedAt == request.time
+        && request.resource.data.statusDates.comprometida == request.time
+        && request.resource.data.statusDates.diff(resource.data.statusDates)
+          .affectedKeys().hasOnly(['comprometida'])
+        && validCounterpart
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'status',
+          'exchangeProposalId',
+          'counterpartPublicationId',
+          'counterpartUserId',
+          'committedAt',
+          'statusDates'
+        ]);
+      let firstConfirmation = resource.data.status == 'comprometida'
+        && request.resource.data.status == 'entregada'
+        && request.resource.data.statusDates.entregada == request.time
+        && request.resource.data.statusDates.diff(resource.data.statusDates)
+          .affectedKeys().hasOnly(['entregada'])
+        && confirmationCount == 1
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['status', 'statusDates']);
+      let finalConfirmation = resource.data.status == 'entregada'
+        && request.resource.data.status == 'confirmada'
+        && request.resource.data.statusDates.confirmada == request.time
+        && request.resource.data.statusDates.diff(resource.data.statusDates)
+          .affectedKeys().hasOnly(['confirmada'])
+        && confirmationCount == 2
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['status', 'statusDates']);
+      return isParticipant
+        && belongsToProposal
+        && validOwner
+        && accepted
+        && (accepting || firstConfirmation || finalConfirmation);
+    }
+
+    function validInitialProposal() {
+      return request.resource.data.keys().hasAll([
+          'requestedPublicationId',
+          'requestedPublicationTitle',
+          'requestedOwnerId',
+          'offeredPublicationId',
+          'offeredPublicationTitle',
+          'offeredOwnerId',
+          'participantIds',
+          'requestedImageUrl',
+          'offeredImageUrl',
+          'status',
+          'proposedAt',
+          'respondedAt',
+          'requestedOwnerConfirmedAt',
+          'offeredOwnerConfirmedAt'
+        ])
+        && request.resource.data.keys().hasOnly([
+          'requestedPublicationId',
+          'requestedPublicationTitle',
+          'requestedOwnerId',
+          'offeredPublicationId',
+          'offeredPublicationTitle',
+          'offeredOwnerId',
+          'participantIds',
+          'requestedImageUrl',
+          'offeredImageUrl',
+          'status',
+          'proposedAt',
+          'respondedAt',
+          'requestedOwnerConfirmedAt',
+          'offeredOwnerConfirmedAt'
+        ])
+        && request.resource.data.requestedPublicationId is string
+        && request.resource.data.offeredPublicationId is string
+        && request.resource.data.requestedPublicationId
+          != request.resource.data.offeredPublicationId
+        && request.resource.data.requestedPublicationTitle is string
+        && request.resource.data.offeredPublicationTitle is string
+        && request.resource.data.requestedOwnerId is string
+        && request.resource.data.offeredOwnerId == request.auth.uid
+        && request.resource.data.requestedOwnerId != request.auth.uid
+        && request.resource.data.participantIds is list
+        && request.resource.data.participantIds == [
+          request.resource.data.requestedOwnerId,
+          request.resource.data.offeredOwnerId
+        ]
+        && (request.resource.data.requestedImageUrl == null
+          || request.resource.data.requestedImageUrl is string)
+        && (request.resource.data.offeredImageUrl == null
+          || request.resource.data.offeredImageUrl is string)
+        && request.resource.data.status == 'pendiente'
+        && request.resource.data.proposedAt == request.time
+        && request.resource.data.respondedAt == null
+        && request.resource.data.requestedOwnerConfirmedAt == null
+        && request.resource.data.offeredOwnerConfirmedAt == null;
+    }
+
+    function validNotificationSchema() {
+      return request.resource.data.keys().hasAll([
+          'recipientId',
+          'type',
+          'message',
+          'proposalId',
+          'publicationId',
+          'createdAt',
+          'read'
+        ])
+        && request.resource.data.keys().hasOnly([
+          'recipientId',
+          'type',
+          'message',
+          'proposalId',
+          'publicationId',
+          'createdAt',
+          'read'
+        ])
+        && request.resource.data.recipientId is string
+        && request.resource.data.recipientId != request.auth.uid
+        && request.resource.data.type in [
+          'propuesta_intercambio',
+          'propuesta_rechazada',
+          'propuesta_aceptada',
+          'confirmacion_intercambio_pendiente',
+          'intercambio_confirmado'
+        ]
+        && request.resource.data.message is string
+        && request.resource.data.message.size() > 0
+        && request.resource.data.message.size() <= 500
+        && request.resource.data.proposalId is string
+        && request.resource.data.publicationId is string
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.read == false;
+    }
+
+    function validProposalCreatedNotification() {
+      let proposalId = request.resource.data.proposalId;
+      let after = proposalAfter(proposalId);
+      let actor = request.auth.uid;
+      let recipient = request.resource.data.recipientId;
+      return !proposalExisted(proposalId)
+        && after.status == 'pendiente'
+        && actor == after.offeredOwnerId
+        && recipient == after.requestedOwnerId
+        && request.resource.data.type == 'propuesta_intercambio';
+    }
+
+    function validProposalResponseNotification() {
+      let proposalId = request.resource.data.proposalId;
+      let before = proposalBefore(proposalId);
+      let after = proposalAfter(proposalId);
+      let actor = request.auth.uid;
+      let recipient = request.resource.data.recipientId;
+      let rejected = before.status == 'pendiente'
+        && after.status == 'rechazada'
+        && actor == before.requestedOwnerId
+        && recipient == before.offeredOwnerId
+        && request.resource.data.type == 'propuesta_rechazada';
+      let accepted = before.status == 'pendiente'
+        && after.status == 'aceptada'
+        && after.requestedOwnerConfirmedAt == null
+        && after.offeredOwnerConfirmedAt == null
+        && actor == before.requestedOwnerId
+        && recipient == before.offeredOwnerId
+        && request.resource.data.type == 'propuesta_aceptada';
+      return proposalExisted(proposalId) && (rejected || accepted);
+    }
+
+    function validConfirmationNotification() {
+      let proposalId = request.resource.data.proposalId;
+      let before = proposalBefore(proposalId);
+      let after = proposalAfter(proposalId);
+      let actor = request.auth.uid;
+      let recipient = request.resource.data.recipientId;
+      let requestedOwnerConfirmed = before.status == 'aceptada'
+        && actor == after.requestedOwnerId
+        && recipient == after.offeredOwnerId
+        && before.requestedOwnerConfirmedAt == null
+        && after.requestedOwnerConfirmedAt == request.time
+        && after.offeredOwnerConfirmedAt
+          == before.offeredOwnerConfirmedAt;
+      let offeredOwnerConfirmed = before.status == 'aceptada'
+        && actor == after.offeredOwnerId
+        && recipient == after.requestedOwnerId
+        && before.offeredOwnerConfirmedAt == null
+        && after.offeredOwnerConfirmedAt == request.time
+        && after.requestedOwnerConfirmedAt
+          == before.requestedOwnerConfirmedAt;
+      let confirmationCount =
+        (after.requestedOwnerConfirmedAt is timestamp ? 1 : 0)
+        + (after.offeredOwnerConfirmedAt is timestamp ? 1 : 0);
+      return proposalExisted(proposalId)
+        && after.status == 'aceptada'
+        && (requestedOwnerConfirmed || offeredOwnerConfirmed)
+        && (
+          (confirmationCount == 1
+            && request.resource.data.type
+              == 'confirmacion_intercambio_pendiente')
+          || (confirmationCount == 2
+            && request.resource.data.type == 'intercambio_confirmado')
+        );
+    }
+
+    function validNotificationForProposal() {
+      let after = proposalAfter(request.resource.data.proposalId);
+      return request.auth.uid in after.participantIds
+        && request.resource.data.recipientId in after.participantIds
+        && request.resource.data.publicationId
+          == after.requestedPublicationId
+        && (
+          validProposalCreatedNotification()
+          || validProposalResponseNotification()
+          || validConfirmationNotification()
+        );
+    }
+
+    match /usuarios/{userId} {
+      allow read: if signedIn();
+      allow create: if signedIn()
+        && request.auth.uid == userId
+        && validInitialUser();
+      // AuthRepository no modifica documentos existentes. Mantener cerrado
+      // evita tanto cambios de rol como campos de privilegio nuevos.
+      allow update, delete: if false;
+    }
+
+    match /perfiles/{userId} {
+      allow read: if signedIn();
+      allow create: if signedIn()
+        && request.auth.uid == userId
+        && validInitialProfile();
+      // Conserva la reparación atómica de AuthRepository cuando falta el
+      // documento de usuario pero ya existe el perfil.
+      allow update: if signedIn()
+        && request.auth.uid == userId
+        && validInitialUserAfter(userId)
+        && validInitialProfile();
+      allow delete: if false;
+    }
+
+    match /publicaciones/{publicationId} {
+      allow read: if signedIn();
+      allow create: if signedIn() && validInitialPublication();
+      allow update: if signedIn() && (
+        (
+          resource.data.authorId == request.auth.uid
+          && resource.data.status == 'publicada'
+          && request.resource.data.status == 'anulada'
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['status'])
+        )
+        || (
+          'exchangeProposalId' in request.resource.data
+          && validExchangePublicationTransition(publicationId)
+        )
+      );
+      allow delete: if false;
+    }
+
+    match /propuestasIntercambio/{proposalId} {
+      allow read: if signedIn()
+        && request.auth.uid in resource.data.participantIds;
+      allow create: if signedIn()
+        && validInitialProposal()
+        && get(
+          /databases/$(database)/documents/publicaciones/$(request.resource.data.offeredPublicationId)
+        ).data.authorId == request.auth.uid
+        && get(
+          /databases/$(database)/documents/publicaciones/$(request.resource.data.offeredPublicationId)
+        ).data.mode == 'intercambio'
+        && get(
+          /databases/$(database)/documents/publicaciones/$(request.resource.data.offeredPublicationId)
+        ).data.status == 'publicada'
+        && get(
+          /databases/$(database)/documents/publicaciones/$(request.resource.data.requestedPublicationId)
+        ).data.authorId == request.resource.data.requestedOwnerId
+        && get(
+          /databases/$(database)/documents/publicaciones/$(request.resource.data.requestedPublicationId)
+        ).data.mode == 'intercambio'
+        && get(
+          /databases/$(database)/documents/publicaciones/$(request.resource.data.requestedPublicationId)
+        ).data.status == 'publicada';
+      allow update: if signedIn() && (
+        (
+          resource.data.status == 'pendiente'
+          && request.auth.uid == resource.data.requestedOwnerId
+          && request.resource.data.status == 'rechazada'
+          && request.resource.data.respondedAt == request.time
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['status', 'respondedAt'])
+        )
+        || (
+          resource.data.status == 'pendiente'
+          && request.auth.uid == resource.data.requestedOwnerId
+          && request.resource.data.status == 'aceptada'
+          && request.resource.data.respondedAt == request.time
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['status', 'respondedAt'])
+          && publicationsHaveStatus(
+            request.resource.data,
+            proposalId,
+            'comprometida'
+          )
+        )
+        || (
+          resource.data.status == 'aceptada'
+          && request.resource.data.status == 'aceptada'
+          && request.auth.uid in resource.data.participantIds
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'requestedOwnerConfirmedAt',
+            'offeredOwnerConfirmedAt'
+          ])
+          && (
+            (request.auth.uid == resource.data.requestedOwnerId
+              && resource.data.requestedOwnerConfirmedAt == null
+              && request.resource.data.requestedOwnerConfirmedAt == request.time
+              && request.resource.data.offeredOwnerConfirmedAt
+                == resource.data.offeredOwnerConfirmedAt)
+            || (request.auth.uid == resource.data.offeredOwnerId
+              && resource.data.offeredOwnerConfirmedAt == null
+              && request.resource.data.offeredOwnerConfirmedAt == request.time
+              && request.resource.data.requestedOwnerConfirmedAt
+                == resource.data.requestedOwnerConfirmedAt)
+          )
+          && publicationsHaveStatus(
+            request.resource.data,
+            proposalId,
+            resource.data.requestedOwnerConfirmedAt == null
+                && resource.data.offeredOwnerConfirmedAt == null
+              ? 'entregada'
+              : 'confirmada'
+          )
+        )
+      );
+      allow delete: if false;
+    }
+
+    match /notificaciones/{notificationId} {
+      allow read: if signedIn()
+        && resource.data.recipientId == request.auth.uid;
+      allow create: if signedIn()
+        && validNotificationSchema()
+        && validNotificationForProposal();
+      allow update: if signedIn()
+        && resource.data.recipientId == request.auth.uid
+        && resource.data.read == false
+        && !('readAt' in resource.data)
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['read', 'readAt'])
+        && request.resource.data.read == true
+        && request.resource.data.readAt == request.time;
+      allow delete: if false;
+    }
+  }
+}

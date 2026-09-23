@@ -1,0 +1,45 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    function validPublicationId(publicationId) {
+      return publicationId.matches('[A-Za-z0-9]{20}');
+    }
+
+    function validImage(fileName) {
+      return (
+          fileName.matches('foto_[0-3]\\.(jpg|jpeg)')
+          && request.resource.contentType == 'image/jpeg'
+        ) || (
+          fileName.matches('foto_[0-3]\\.png')
+          && request.resource.contentType == 'image/png'
+        ) || (
+          fileName.matches('foto_[0-3]\\.webp')
+          && request.resource.contentType == 'image/webp'
+        ) || (
+          fileName.matches('foto_[0-3]\\.heic')
+          && request.resource.contentType == 'image/heic'
+        ) || (
+          fileName.matches('foto_[0-3]\\.heif')
+          && request.resource.contentType == 'image/heif'
+        );
+    }
+
+    match /publicaciones/{authorId}/{publicationId}/{fileName} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null
+        && request.auth.uid == authorId
+        && resource == null
+        && validPublicationId(publicationId)
+        && validImage(fileName)
+        && request.resource.size < 10 * 1024 * 1024;
+      allow update: if false;
+      // Permite la limpieza tras un fallo, limitada al namespace y a los
+      // nombres válidos del propio usuario.
+      allow delete: if request.auth != null
+        && request.auth.uid == authorId
+        && validPublicationId(publicationId)
+        && fileName.matches('foto_[0-3]\\.(jpg|jpeg|png|webp|heic|heif)');
+    }
+  }
+}

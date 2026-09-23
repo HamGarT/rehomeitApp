@@ -17,10 +17,7 @@ import 'package:flutter/foundation.dart'
 class DefaultFirebaseOptions {
   static FirebaseOptions get currentPlatform {
     if (kIsWeb) {
-      throw UnsupportedError(
-        'DefaultFirebaseOptions have not been configured for web - '
-        'you can reconfigure this by running the FlutterFire CLI again.',
-      );
+      return web;
     }
     switch (defaultTargetPlatform) {
       case TargetPlatform.android:
@@ -56,14 +53,23 @@ class DefaultFirebaseOptions {
     projectId: 'capstone-app-654fe',
     storageBucket: 'capstone-app-654fe.firebasestorage.app',
   );
-
   static const FirebaseOptions ios = FirebaseOptions(
     apiKey: 'AIzaSyDjGje_3rFfqzR3lhXBWx9uTTXJ8AGoYlw',
     appId: '1:682436232960:ios:c3ca78a4b191f60dac95e5',
     messagingSenderId: '682436232960',
     projectId: 'capstone-app-654fe',
     storageBucket: 'capstone-app-654fe.firebasestorage.app',
+    androidClientId: '682436232960-qm0nkrn30pr3u7759ijbnuvrv2lldkmn.apps.googleusercontent.com',
     iosClientId: '682436232960-j50df9vr88dln3j3hivgsu4am3b3fuba.apps.googleusercontent.com',
     iosBundleId: 'com.g3.rehomeit',
+  );
+  static const FirebaseOptions web = FirebaseOptions(
+    apiKey: 'AIzaSyA0pQ13t5XMXYwmbHraMeET_Irx4Uo4WTU',
+    appId: '1:682436232960:web:decc669d32f64e89ac95e5',
+    messagingSenderId: '682436232960',
+    projectId: 'capstone-app-654fe',
+    authDomain: 'capstone-app-654fe.firebaseapp.com',
+    storageBucket: 'capstone-app-654fe.firebasestorage.app',
+    measurementId: 'G-ZBHRG6ZRJT',
   );
 }

@@ -1,31 +1,12 @@
 import 'dart:io';
 
-enum PublishMode { donation, exchange }
+import '../../../shared/domain/publication.dart';
+export '../../../shared/domain/publication.dart' show ItemDetail;
 
-enum DeliveryMethod { owner, volunteer }
+typedef PublishMode = PublicationMode;
+typedef DeliveryMethod = DeliveryType;
 
 enum AiField { title, category, condition, description }
-
-class ItemDetail {
-  const ItemDetail({
-    required this.name,
-    required this.value,
-    this.generatedByAi = false,
-  });
-
-  final String name;
-  final String value;
-  final bool generatedByAi;
-
-  ItemDetail copyWith({String? name, String? value}) {
-    return ItemDetail(
-      name: name ?? this.name,
-      value: value ?? this.value,
-      // Editar un detalle sugerido lo convierte en propio del usuario.
-      generatedByAi: generatedByAi && name == null && value == null,
-    );
-  }
-}
 
 class PublishDraft {
   const PublishDraft({

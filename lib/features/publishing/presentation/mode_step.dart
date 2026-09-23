@@ -3,7 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../shared/widgets/missing_fields_dialog.dart';
 import '../../../shared/widgets/step_app_bar.dart';
+import '../../auth/presentation/auth_controller.dart';
 import '../domain/publish_draft.dart';
+import 'publish_controller.dart';
 import 'publish_draft_notifier.dart';
 
 class ModeStep extends ConsumerWidget {
@@ -13,6 +15,7 @@ class ModeStep extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final draft = ref.watch(publishDraftProvider);
     final notifier = ref.read(publishDraftProvider.notifier);
+    final isPublishing = ref.watch(publishControllerProvider).isLoading;
 
     return Scaffold(
       appBar: const StepAppBar(title: 'Modalidad', step: 3),
@@ -51,7 +54,8 @@ class ModeStep extends ConsumerWidget {
                 title: 'La entrego yo',
                 subtitle: 'A una persona que ya conozco',
                 selected: draft.deliveryMethod == DeliveryMethod.owner,
-                onTap: () => notifier.selectDeliveryMethod(DeliveryMethod.owner),
+                onTap: () =>
+                    notifier.selectDeliveryMethod(DeliveryMethod.owner),
               ),
               const SizedBox(height: 12),
               SelectableCard(
@@ -67,14 +71,20 @@ class ModeStep extends ConsumerWidget {
             if (draft.mode == PublishMode.exchange) ...[
               const SizedBox(height: 16),
               const InfoNote(
-                text:
-                    'Los términos del intercambio se coordinan con la otra persona por la mensajería de la app.',
+                text: 'Los términos del intercambio se coordinan con la otra persona por la mensajería de la app.',
               ),
             ],
             const SizedBox(height: 24),
             FilledButton(
-              onPressed: () => _publish(context, ref, draft),
-              child: const Text('Publicar'),
+              onPressed: isPublishing
+                  ? null
+                  : () => _publish(context, ref, draft),
+              child: isPublishing
+                  ? const SizedBox.square(
+                      dimension: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Text('Publicar'),
             ),
           ],
         ),
@@ -84,18 +94,38 @@ class ModeStep extends ConsumerWidget {
 
   String _deliveryNote(DeliveryMethod? method) {
     return switch (method) {
-      null =>
-        'Toda entrega queda registrada con una fotografía y las iniciales de quien recibe el bien.',
-      DeliveryMethod.owner =>
-        'Tú registrarás la entrega con una fotografía y las iniciales de quien reciba el bien. Con eso el ciclo queda cerrado.',
-      DeliveryMethod.volunteer =>
-        'El voluntario registrará la entrega con una fotografía y las iniciales de quien reciba el bien. Después tú confirmas el cierre desde tu perfil.',
+      null => 'Toda entrega queda registrada con una fotografía y las iniciales de quien recibe el bien.',
+      DeliveryMethod.owner => 'Tú registrarás la entrega con una fotografía y las iniciales de quien reciba el bien. Con eso el ciclo queda cerrado.',
+      DeliveryMethod.volunteer => 'El voluntario registrará la entrega con una fotografía y las iniciales de quien reciba el bien. Después tú confirmas el cierre desde tu perfil.',
     };
   }
 
-  void _publish(BuildContext context, WidgetRef ref, PublishDraft draft) {
+  Future<void> _publish(
+    BuildContext context,
+    WidgetRef ref,
+    PublishDraft draft,
+  ) async {
     if (!draft.modeCompleted) {
-      showMissingFieldsDialog(context, fields: draft.missingModeFields);
+      await showMissingFieldsDialog(context, fields: draft.missingModeFields);
+      return;
+    }
+
+    final user = ref.read(authStateProvider).value;
+    if (user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Inicia sesión para publicar un bien.')),
+      );
+      return;
+    }
+
+    final error = await ref
+        .read(publishControllerProvider.notifier)
+        .publish(draft: draft, authorId: user.uid);
+    if (!context.mounted) return;
+    if (error != null) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(error)));
       return;
     }
 
@@ -136,10 +166,7 @@ class _DraftSummary extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                draft.title,
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
+              Text(draft.title, style: Theme.of(context).textTheme.titleMedium),
               const SizedBox(height: 4),
               Text(
                 '${draft.category} · ${draft.district}',

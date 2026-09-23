@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../features/explore/presentation/explore_page.dart';
+import '../features/exchange/presentation/exchange_activity_page.dart';
+import '../features/auth/presentation/auth_controller.dart';
+import '../features/notifications/data/notifications_repository.dart';
 import '../features/profile/presentation/profile_page.dart';
 import '../features/publishing/presentation/photos_step.dart';
 import '../features/publishing/presentation/publish_draft_notifier.dart';
@@ -15,11 +19,13 @@ class HomeShell extends ConsumerStatefulWidget {
 class _HomeShellState extends ConsumerState<HomeShell> {
   static const _publishIndex = 2;
   static const _perfilIndex = 4;
+  static const _exploreIndex = 0;
 
   int _selectedIndex = 0;
+  final Set<String> _displayedNotifications = {};
 
   static const _sections = <({String title, String pending})>[
-    (title: 'Explorar', pending: 'HU08'),
+    (title: 'Explorar', pending: ''),
     (title: 'Campañas', pending: 'HU15, HU16, HU17'),
     (title: 'Publicar', pending: ''),
     (title: 'Mensajes', pending: 'HU09'),
@@ -29,12 +35,43 @@ class _HomeShellState extends ConsumerState<HomeShell> {
   @override
   Widget build(BuildContext context) {
     final section = _sections[_selectedIndex];
+    final userId = ref.watch(authStateProvider).value?.uid;
+    if (userId != null) {
+      ref.listen(unreadNotificationsProvider(userId), (previous, next) {
+        final notifications = next.value ?? const [];
+        for (final notification in notifications) {
+          if (!_displayedNotifications.add(notification.id)) continue;
+          ScaffoldMessenger.of(context)
+              .showSnackBar(SnackBar(content: Text(notification.message)));
+          ref.read(notificationsRepositoryProvider).markAsRead(notification.id);
+        }
+      });
+    }
 
     return Scaffold(
-      appBar: AppBar(title: Text(section.title)),
-      body: _selectedIndex == _perfilIndex
-          ? const ProfilePage()
-          : Center(child: Text('Pendiente de implementar: ${section.pending}')),
+      appBar: AppBar(
+        title: Text(section.title),
+        actions: _selectedIndex == _exploreIndex
+            ? [
+                IconButton(
+                  tooltip: 'Mis intercambios',
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => const ExchangeActivityPage(),
+                    ),
+                  ),
+                  icon: const Icon(Icons.swap_horiz),
+                ),
+              ]
+            : null,
+      ),
+      body: switch (_selectedIndex) {
+        _exploreIndex => const ExplorePage(),
+        _perfilIndex => const ProfilePage(),
+        _ => Center(
+          child: Text('Pendiente de implementar: ${section.pending}'),
+        ),
+      },
       bottomNavigationBar: NavigationBar(
         selectedIndex: _selectedIndex,
         onDestinationSelected: _onDestinationSelected,
