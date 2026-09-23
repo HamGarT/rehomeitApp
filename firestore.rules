@@ -419,7 +419,8 @@ service cloud.firestore {
     }
 
     match /usuarios/{userId} {
-      allow read: if signedIn();
+      // Nombre completo y correo son privados (D07); el público va en perfiles.
+      allow read: if signedIn() && request.auth.uid == userId;
       allow create: if signedIn()
         && request.auth.uid == userId
         && validInitialUser();

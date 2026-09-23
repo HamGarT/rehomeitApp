@@ -278,6 +278,18 @@ test('deniega crear un usuario administrador y cambiar el rol', async () => {
   await assertFails(updateDoc(userRef, { rol: 'administrador' }));
 });
 
+test('deniega leer el documento privado de otro usuario', async () => {
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), 'usuarios', 'private-user'), {
+      nombreCompleto: 'Persona Privada',
+      correo: 'privada@example.test',
+      rol: 'usuario',
+    });
+  });
+  await assertSucceeds(getDoc(doc(firestoreFor('private-user'), 'usuarios', 'private-user')));
+  await assertFails(getDoc(doc(firestoreFor('other-user'), 'usuarios', 'private-user')));
+});
+
 test('deniega falsificar contadores o fecha de ingreso del perfil', async () => {
   const db = firestoreFor('profile-owner');
   const profileRef = doc(db, 'perfiles', 'profile-owner');
