@@ -2,7 +2,7 @@
 
 Decisiones que condicionan la implementación y que no se deducen leyendo las historias de usuario. Cada una registra el problema que resuelve y lo que implica asumirla.
 
-Última actualización: 19 de setiembre de 2026.
+Última actualización: 23 de setiembre de 2026.
 
 ---
 
@@ -48,7 +48,7 @@ Decisiones que condicionan la implementación y que no se deducen leyendo las hi
 
 ## D05 – HU04 y HU05 se resuelven con una única llamada al servicio de IA
 
-**Problema.** Ambas historias analizan exactamente las mismas fotografías: HU04 pide título, categoría, estado y descripción; HU05 pide hasta cuatro detalles con su nombre y su valor. Resolverlas por separado implica enviar las imágenes dos veces, pagar el doble de tokens de entrada y sumar dos latencias, contra un presupuesto total de 5 segundos (HU04-06).
+**Problema.** Ambas historias analizan exactamente las mismas fotografías: HU04 pide título, categoría, estado y descripción; HU05 pide hasta cuatro detalles con su nombre y su valor. Resolverlas por separado implica enviar las imágenes dos veces, pagar el doble de tokens de entrada y sumar dos latencias, contra un presupuesto total de 10 segundos (HU04-06).
 
 **Decisión.** Una sola llamada a Gemini devuelve la ficha principal y los detalles en una respuesta estructurada. Las imágenes se reducen de tamaño antes de enviarse.
 
@@ -136,6 +136,20 @@ El rol permanece en el documento privado y las reglas pueden consultarlo igual, 
 
 ---
 
-## Pendientes
+## D13 – Dos superficies de color: marca y contenido
 
-- **App Check.** HU04-11 exige que las credenciales del servicio de IA no residan en la aplicación, lo que Firebase AI Logic resuelve por sí mismo. Falta activar App Check para impedir que el servicio se invoque desde fuera de la aplicación y se consuma la cuota. Solo puede configurarse una vez creado el proyecto en Firebase y registrada la aplicación.
+**Problema.** Los paneles de inicio y el acceso usaban el amarillo `#F3CA20`, tipografías propias y la mascota, mientras el resto de la aplicación seguía la paleta verde original con la fuente por defecto. Eran dos identidades. Extender el amarillo pleno a toda la aplicación compite con las fotografías de los bienes, deslumbra sobre tarjetas blancas y cansa en sesiones largas.
+
+**Decisión.** La paleta se unifica alrededor de los paneles, con dos superficies. La de marca, amarillo pleno, se reserva a momentos con carga emocional: onboarding, acceso, carga, análisis de fotografías, estados vacíos y el éxito al publicar; ahí aparece el cuy. La de contenido, crema `#FFF6D9`, sostiene explorar, detalle, formulario y perfil. El marrón del cuy es el color primario, el amarillo el acento y el verde queda para donación y éxito. HostGrotesk es la fuente de toda la aplicación y FreckleFace solo de los titulares de marca. Una única transición entre pantallas, fundido con leve ascenso, y un único diálogo (`AppDialog`), chip (`AppChip`) y hoja de selección (`showChoiceSheet`) en `shared/widgets`.
+
+**Consecuencias.** Los colores entran por los tokens de `AppColors`, de modo que un ajuste de paleta no toca pantallas. Ningún texto va sobre amarillo salvo en marrón oscuro. La mascota no decora: si aparece en más lugares, pierde el efecto. Los assets del cuy se recortaron de las ilustraciones del onboarding y viven en `assets/images/mascot_*.webp`.
+
+---
+
+## D12 – El acceso a la IA se protege con App Check
+
+**Problema.** HU04-11 exige que las credenciales del servicio de IA no residan en la aplicación, lo que Firebase AI Logic resuelve por sí mismo. Pero cualquiera que extraiga la configuración del paquete podría invocar el servicio desde fuera de la aplicación y consumir la cuota, que se cobra al proyecto.
+
+**Decisión.** App Check queda en modo obligatorio para AI Logic. En release la aplicación se acredita con Play Integrity, que valida la firma registrada en la consola. En compilaciones de depuración se usa el proveedor de depuración: cada instalación genera un token que un integrante autoriza una sola vez en la consola. La elección la hace `kDebugMode` al arrancar, sin configuración adicional por máquina.
+
+**Consecuencias.** Firestore y Authentication permanecen en modo supervisión, así una falla de App Check nunca deja a un usuario sin sesión ni sin datos; solo la IA queda cerrada. Cada integrante debe registrar su token de depuración antes de probar la sugerencia automática, y al publicar en Play Store hay que registrar la huella SHA-256 de la firma de release.

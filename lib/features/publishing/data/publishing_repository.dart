@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/utils/image_mime_type.dart';
 import '../../../shared/domain/publication.dart';
 import '../domain/publish_draft.dart';
 
@@ -49,7 +50,7 @@ class PublishingRepository {
         await reference.putFile(
           draft.photos[index],
           SettableMetadata(
-            contentType: _imageContentType(draft.photos[index].path),
+            contentType: imageMimeType(draft.photos[index].path),
           ),
         );
         imageUrls.add(await reference.getDownloadURL());
@@ -103,6 +104,24 @@ class PublishingRepository {
     }
   }
 
+  /// Retira una publicación propia (HU03-18). La regla de Firestore solo
+  /// admite el paso publicada -> anulada y únicamente sobre `status`, por lo
+  /// que no se registra fecha del hito: una publicación anulada sale de la
+  /// consulta pública y no tiene recorrido.
+  Future<void> withdraw(String publicationId) async {
+    try {
+      await _firestore.collection('publicaciones').doc(publicationId).update({
+        'status': PublicationStatus.cancelled.wireValue,
+      });
+    } on FirebaseException catch (error) {
+      throw PublishingFailure(
+        error.code == 'permission-denied'
+            ? 'La publicación ya no se puede retirar porque tiene un compromiso asociado.'
+            : _friendlyFirebaseError(error),
+      );
+    }
+  }
+
   Reference _imageReference({
     required String authorId,
     required String publicationId,
@@ -123,16 +142,6 @@ class PublishingRepository {
         // Limpieza de mejor esfuerzo; nunca oculta el error original.
       }
     }
-  }
-
-  String _imageContentType(String path) {
-    return switch (_imageExtension(path)) {
-      'png' => 'image/png',
-      'webp' => 'image/webp',
-      'heic' => 'image/heic',
-      'heif' => 'image/heif',
-      _ => 'image/jpeg',
-    };
   }
 
   String _imageExtension(String path) {

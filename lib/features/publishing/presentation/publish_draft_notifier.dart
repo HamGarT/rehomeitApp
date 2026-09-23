@@ -2,6 +2,8 @@ import 'dart:io';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../data/item_analysis_service.dart';
+import '../domain/item_suggestion.dart';
 import '../domain/publish_draft.dart';
 
 final publishDraftProvider =
@@ -78,20 +80,34 @@ class PublishDraftNotifier extends Notifier<PublishDraft> {
     state = state.copyWith(details: details);
   }
 
-  void applyAiSuggestion({
-    required String title,
-    required String category,
-    required String condition,
-    required String description,
-    required List<ItemDetail> details,
-  }) {
+  /// Analiza las fotografías del borrador y aplica la sugerencia. Devuelve
+  /// `null` si se aplicó, o el mensaje a mostrar si no hubo sugerencia; en
+  /// ese caso el borrador queda intacto para el ingreso manual (HU04-7).
+  Future<String?> analyzePhotos() async {
+    try {
+      final suggestion = await ref
+          .read(itemAnalysisServiceProvider)
+          .analyze(state.photos);
+      applyAiSuggestion(suggestion);
+      return null;
+    } on ItemAnalysisException catch (error) {
+      return error.message;
+    }
+  }
+
+  void applyAiSuggestion(ItemSuggestion suggestion) {
     state = state.copyWith(
-      title: title,
-      category: category,
-      condition: condition,
-      description: description,
-      details: details.take(PublishDraft.maxDetails).toList(),
-      aiFields: AiField.values.toSet(),
+      title: suggestion.title,
+      category: suggestion.category,
+      condition: suggestion.condition,
+      description: suggestion.description,
+      details: suggestion.details.take(PublishDraft.maxDetails).toList(),
+      aiFields: {
+        if (suggestion.title.isNotEmpty) AiField.title,
+        if (suggestion.category != null) AiField.category,
+        if (suggestion.condition != null) AiField.condition,
+        if (suggestion.description.isNotEmpty) AiField.description,
+      },
     );
   }
 
