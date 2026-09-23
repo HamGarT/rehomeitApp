@@ -1,10 +1,16 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/cajamarca_districts.dart';
 import '../../../shared/domain/publication.dart';
+import '../../../shared/widgets/app_chip.dart';
+import '../../../shared/widgets/choice_sheet.dart';
+import '../../../shared/widgets/mascot.dart';
 import '../../../shared/widgets/publication_image.dart';
+import '../domain/explore_filters.dart';
 import 'explore_controller.dart';
 import 'publication_detail_page.dart';
 import 'widgets/publication_mode_badge.dart';
@@ -23,6 +29,20 @@ class _ExplorePageState extends ConsumerState<ExplorePage> {
   void dispose() {
     _searchController.dispose();
     super.dispose();
+  }
+
+  bool _hasActiveFilters(ExploreFilters filters) {
+    return filters.mode != null ||
+        filters.district != null ||
+        filters.search.trim().isNotEmpty;
+  }
+
+  void _clearFilters() {
+    final controller = ref.read(exploreFiltersProvider.notifier);
+    _searchController.clear();
+    controller.updateSearch('');
+    controller.selectMode(null);
+    controller.selectDistrict(null);
   }
 
   @override
@@ -46,67 +66,55 @@ class _ExplorePageState extends ConsumerState<ExplorePage> {
         slivers: [
           SliverToBoxAdapter(
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+              padding: const EdgeInsets.only(top: 12, bottom: 8),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  TextField(
-                    controller: _searchController,
-                    onChanged: controller.updateSearch,
-                    textInputAction: TextInputAction.search,
-                    decoration: const InputDecoration(
-                      hintText: 'Buscar por título',
-                      prefixIcon: Icon(Icons.search),
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                  SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: Row(
-                      children: [
-                        _ModeChip(
-                          label: 'Todo',
-                          selected: filters.mode == null,
-                          onSelected: () => controller.selectMode(null),
-                        ),
-                        const SizedBox(width: 8),
-                        _ModeChip(
-                          label: 'Donación',
-                          selected: filters.mode == PublicationMode.donation,
-                          onSelected: () =>
-                              controller.selectMode(PublicationMode.donation),
-                        ),
-                        const SizedBox(width: 8),
-                        _ModeChip(
-                          label: 'Intercambio',
-                          selected: filters.mode == PublicationMode.exchange,
-                          onSelected: () =>
-                              controller.selectMode(PublicationMode.exchange),
-                        ),
-                      ],
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: TextField(
+                      controller: _searchController,
+                      onChanged: controller.updateSearch,
+                      textInputAction: TextInputAction.search,
+                      decoration: const InputDecoration(
+                        hintText: '¿Qué necesitas? Ropa, muebles, libros...',
+                        prefixIcon: Icon(Icons.search),
+                      ),
                     ),
                   ),
                   const SizedBox(height: 12),
-                  DropdownButtonFormField<String>(
-                    key: ValueKey(filters.district),
-                    initialValue: filters.district,
-                    decoration: const InputDecoration(
-                      labelText: 'Distrito',
-                      prefixIcon: Icon(Icons.location_on_outlined),
-                    ),
-                    items: [
-                      const DropdownMenuItem(
-                        value: '',
-                        child: Text('Todos los distritos'),
-                      ),
-                      for (final district in CajamarcaDistricts.all)
-                        DropdownMenuItem(
-                          value: district,
-                          child: Text(district),
+                  // La fila ocupa todo el ancho y lleva el margen por dentro:
+                  // en reposo los chips alinean con el buscador y al
+                  // desplazarse salen por el borde de la pantalla, no por el
+                  // del buscador.
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Row(
+                      spacing: 8,
+                      children: [
+                        AppChip(
+                          label: 'Todo',
+                          selected: filters.mode == null,
+                          onTap: () => controller.selectMode(null),
                         ),
-                    ],
-                    onChanged: (value) => controller.selectDistrict(
-                      value == null || value.isEmpty ? null : value,
+                        AppChip(
+                          label: 'Donación',
+                          selected: filters.mode == PublicationMode.donation,
+                          onTap: () =>
+                              controller.selectMode(PublicationMode.donation),
+                        ),
+                        AppChip(
+                          label: 'Intercambio',
+                          selected: filters.mode == PublicationMode.exchange,
+                          onTap: () =>
+                              controller.selectMode(PublicationMode.exchange),
+                        ),
+                        _DistrictChip(
+                          district: filters.district,
+                          onSelect: controller.selectDistrict,
+                        ),
+                      ],
                     ),
                   ),
                 ],
@@ -132,9 +140,12 @@ class _ExplorePageState extends ConsumerState<ExplorePage> {
               if (result.isFromCache)
                 const SliverToBoxAdapter(child: _OfflineNotice()),
               if (result.publications.isEmpty)
-                const SliverFillRemaining(
+                SliverFillRemaining(
                   hasScrollBody: false,
-                  child: _EmptyResults(),
+                  child: _EmptyResults(
+                    filtered: _hasActiveFilters(filters),
+                    onClearFilters: _clearFilters,
+                  ),
                 )
               else
                 SliverPadding(
@@ -172,23 +183,53 @@ class _ExplorePageState extends ConsumerState<ExplorePage> {
   }
 }
 
-class _ModeChip extends StatelessWidget {
-  const _ModeChip({
-    required this.label,
-    required this.selected,
-    required this.onSelected,
-  });
+/// Filtro de distrito en la misma fila que los de modalidad. Tocar el chip
+/// abre la hoja; con un distrito elegido, la X lo limpia sin abrirla.
+class _DistrictChip extends StatelessWidget {
+  const _DistrictChip({required this.district, required this.onSelect});
 
-  final String label;
-  final bool selected;
-  final VoidCallback onSelected;
+  static const _all = '';
+
+  final String? district;
+  final void Function(String?) onSelect;
+
+  Future<void> _open(BuildContext context) async {
+    final chosen = await showChoiceSheet<String>(
+      context,
+      title: 'Distrito',
+      selected: district ?? _all,
+      options: [
+        const ChoiceOption(value: _all, label: 'Todos los distritos'),
+        for (final name in CajamarcaDistricts.all)
+          ChoiceOption(value: name, label: name),
+      ],
+    );
+    if (chosen == null) return;
+    onSelect(chosen == _all ? null : chosen);
+  }
 
   @override
   Widget build(BuildContext context) {
-    return ChoiceChip(
-      label: Text(label),
+    final selected = district != null;
+    return AppChip(
+      label: district ?? 'Distrito',
+      icon: Icons.location_on_outlined,
       selected: selected,
-      onSelected: (_) => onSelected(),
+      onTap: () => _open(context),
+      trailing: selected
+          ? GestureDetector(
+              onTap: () => onSelect(null),
+              child: const Icon(
+                Icons.close,
+                size: 16,
+                color: AppColors.textPrimary,
+              ),
+            )
+          : const Icon(
+              Icons.expand_more,
+              size: 18,
+              color: AppColors.textSecondary,
+            ),
     );
   }
 }
@@ -270,54 +311,115 @@ class _PublicationCard extends StatelessWidget {
   }
 }
 
-class _OfflineNotice extends StatelessWidget {
+/// Al arrancar, Firestore emite primero el snapshot de caché y enseguida el
+/// del servidor. El aviso espera a que el estado de caché se sostenga; si el
+/// servidor responde antes, el widget se descarta sin haberse mostrado.
+class _OfflineNotice extends StatefulWidget {
   const _OfflineNotice();
+
+  static const _grace = Duration(seconds: 2);
+
+  @override
+  State<_OfflineNotice> createState() => _OfflineNoticeState();
+}
+
+class _OfflineNoticeState extends State<_OfflineNotice> {
+  Timer? _timer;
+  bool _visible = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer(_OfflineNotice._grace, () {
+      if (mounted) setState(() => _visible = true);
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: AppColors.accent.withValues(alpha: 0.18),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: const Row(
-        children: [
-          Icon(Icons.cloud_off_outlined, color: AppColors.warning),
-          SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              'Mostrando datos guardados. El listado puede no estar actualizado.',
+    return AnimatedSize(
+      duration: const Duration(milliseconds: 250),
+      curve: Curves.easeOut,
+      child: !_visible
+          ? const SizedBox(width: double.infinity)
+          : Container(
+              margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.accentSoft,
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.cloud_off_outlined, color: AppColors.warning),
+                  SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Mostrando datos guardados. El listado puede no estar actualizado.',
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
-        ],
-      ),
     );
   }
 }
 
+/// Distingue "no hay nada todavía" de "nada coincide con los filtros": el
+/// primero invita a publicar, el segundo ofrece limpiar los filtros.
 class _EmptyResults extends StatelessWidget {
-  const _EmptyResults();
+  const _EmptyResults({required this.filtered, required this.onClearFilters});
+
+  final bool filtered;
+  final VoidCallback onClearFilters;
 
   @override
   Widget build(BuildContext context) {
-    return const Center(
+    final texts = Theme.of(context).textTheme;
+
+    return Center(
       child: Padding(
-        padding: EdgeInsets.all(32),
+        padding: const EdgeInsets.fromLTRB(32, 16, 32, 48),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              Icons.search_off_outlined,
-              size: 52,
-              color: AppColors.textSecondary,
-            ),
-            SizedBox(height: 14),
+            const Mascot(pose: MascotPose.wave, height: 150),
+            const SizedBox(height: 18),
             Text(
-              'No encontramos publicaciones con esos filtros.',
+              filtered ? 'Nada por aquí' : 'Todavía no hay publicaciones',
               textAlign: TextAlign.center,
+              style: texts.titleLarge?.copyWith(
+                fontFamily: 'FreckleFace',
+                fontSize: 28,
+                fontWeight: FontWeight.w400,
+              ),
             ),
+            const SizedBox(height: 8),
+            Text(
+              filtered
+                  ? 'Ninguna publicación coincide con lo que buscas. Prueba con otros filtros.'
+                  : 'Sé quien empiece: publica algo que ya no uses y dale un nuevo hogar.',
+              textAlign: TextAlign.center,
+              style: texts.bodyLarge?.copyWith(
+                color: AppColors.textSecondary,
+                height: 1.4,
+              ),
+            ),
+            if (filtered) ...[
+              const SizedBox(height: 20),
+              OutlinedButton.icon(
+                onPressed: onClearFilters,
+                style: OutlinedButton.styleFrom(minimumSize: const Size(0, 44)),
+                icon: const Icon(Icons.filter_alt_off_outlined, size: 18),
+                label: const Text('Quitar filtros'),
+              ),
+            ],
           ],
         ),
       ),
@@ -338,18 +440,18 @@ class _ExploreError extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(
-              Icons.cloud_off_outlined,
-              size: 48,
-              color: AppColors.error,
-            ),
-            const SizedBox(height: 12),
+            const Mascot(pose: MascotPose.box, height: 130),
+            const SizedBox(height: 16),
             const Text(
               'No pudimos cargar las publicaciones. Revisa tu conexión.',
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 16),
-            OutlinedButton(onPressed: onRetry, child: const Text('Reintentar')),
+            OutlinedButton(
+              onPressed: onRetry,
+              style: OutlinedButton.styleFrom(minimumSize: const Size(0, 44)),
+              child: const Text('Reintentar'),
+            ),
           ],
         ),
       ),

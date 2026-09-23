@@ -108,9 +108,8 @@ class _PhotosStepState extends ConsumerState<PhotosStep> {
   }
 
   void _continue() {
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const AnalyzingStep()),
-    );
+    Navigator.of(context)
+        .push(MaterialPageRoute(builder: (_) => const AnalyzingStep()));
   }
 
   void _remove(int index) {
@@ -234,9 +233,8 @@ class _Preview extends StatelessWidget {
                   Text(
                     'Mientras mejor se vea, mejor se describe solo',
                     textAlign: TextAlign.center,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: AppColors.textSecondary,
-                    ),
+                    style: Theme.of(context).textTheme.bodySmall
+                        ?.copyWith(color: AppColors.textSecondary),
                   ),
                 ],
               ),

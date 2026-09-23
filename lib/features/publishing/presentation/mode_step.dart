@@ -7,6 +7,7 @@ import '../../auth/presentation/auth_controller.dart';
 import '../domain/publish_draft.dart';
 import 'publish_controller.dart';
 import 'publish_draft_notifier.dart';
+import 'publish_success_page.dart';
 
 class ModeStep extends ConsumerWidget {
   const ModeStep({super.key});
@@ -129,11 +130,11 @@ class ModeStep extends ConsumerWidget {
       return;
     }
 
-    final messenger = ScaffoldMessenger.of(context);
     ref.read(publishDraftProvider.notifier).reset();
-    Navigator.of(context).popUntil((route) => route.isFirst);
-    messenger.showSnackBar(
-      const SnackBar(content: Text('Publicación registrada')),
+    // Se descartan los tres pasos y queda solo la celebración sobre Inicio.
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const PublishSuccessPage()),
+      (route) => route.isFirst,
     );
   }
 }

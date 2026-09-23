@@ -4,6 +4,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/cajamarca_districts.dart';
 import '../../../core/constants/item_categories.dart';
+import '../../../shared/widgets/app_chip.dart';
+import '../../../shared/widgets/app_dialog.dart';
+import '../../../shared/widgets/choice_sheet.dart';
 import '../../../shared/widgets/missing_fields_dialog.dart';
 import '../../../shared/widgets/step_app_bar.dart';
 import '../domain/publish_draft.dart';
@@ -82,9 +85,10 @@ class _FormStepState extends ConsumerState<FormStep> {
                   text: 'Categoría',
                   fromAi: draft.aiFields.contains(AiField.category),
                 ),
-                _Dropdown(
+                _ChoiceField(
                   value: draft.category,
                   hint: 'Selecciona una categoría',
+                  sheetTitle: 'Categoría',
                   options: ItemCategories.all,
                   onChanged: notifier.selectCategory,
                   icon: Icons.category_outlined,
@@ -99,18 +103,11 @@ class _FormStepState extends ConsumerState<FormStep> {
                   children: [
                     for (final condition in ItemConditions.all)
                       Expanded(
-                        child: ChoiceChip(
-                          label: SizedBox(
-                            width: double.infinity,
-                            child: Text(
-                              condition,
-                              textAlign: TextAlign.center,
-                              maxLines: 1,
-                            ),
-                          ),
-                          visualDensity: const VisualDensity(vertical: 1),
+                        child: AppChip(
+                          label: condition,
+                          expand: true,
                           selected: draft.condition == condition,
-                          onSelected: (_) => notifier.selectCondition(condition),
+                          onTap: () => notifier.selectCondition(condition),
                         ),
                       ),
                   ],
@@ -131,9 +128,10 @@ class _FormStepState extends ConsumerState<FormStep> {
                 ),
                 const SizedBox(height: 20),
                 const _FieldLabel(text: 'Distrito de publicación'),
-                _Dropdown(
+                _ChoiceField(
                   value: draft.district,
                   hint: 'Selecciona el distrito',
+                  sheetTitle: 'Distrito de publicación',
                   options: CajamarcaDistricts.all,
                   onChanged: notifier.selectDistrict,
                   icon: Icons.location_on_outlined,
@@ -149,9 +147,8 @@ class _FormStepState extends ConsumerState<FormStep> {
             const SizedBox(height: 6),
             Text(
               'Agrega lo que ayude a reconocerlo: talla, marca, material, medidas. Son opcionales.',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: AppColors.textSecondary,
-              ),
+              style: Theme.of(context).textTheme.bodySmall
+                  ?.copyWith(color: AppColors.textSecondary),
             ),
             const SizedBox(height: 12),
             if (draft.details.isNotEmpty) ...[
@@ -205,9 +202,8 @@ class _FormStepState extends ConsumerState<FormStep> {
       showMissingFieldsDialog(context, fields: draft.missingFormFields);
       return;
     }
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => const ModeStep()),
-    );
+    Navigator.of(context)
+        .push(MaterialPageRoute(builder: (_) => const ModeStep()));
   }
 
   Future<void> _editDetail(int? index, ItemDetail? current) async {
@@ -227,11 +223,7 @@ class _FormStepState extends ConsumerState<FormStep> {
 }
 
 class _SectionTitle extends StatelessWidget {
-  const _SectionTitle({
-    required this.icon,
-    required this.title,
-    this.trailing,
-  });
+  const _SectionTitle({required this.icon, required this.title, this.trailing});
 
   final IconData icon;
   final String title;
@@ -246,17 +238,15 @@ class _SectionTitle extends StatelessWidget {
         Expanded(
           child: Text(
             title,
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w600,
-            ),
+            style: Theme.of(context).textTheme.titleMedium
+                ?.copyWith(fontWeight: FontWeight.w600),
           ),
         ),
         if (trailing != null)
           Text(
             trailing!,
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: AppColors.textSecondary,
-            ),
+            style: Theme.of(context).textTheme.bodySmall
+                ?.copyWith(color: AppColors.textSecondary),
           ),
       ],
     );
@@ -277,9 +267,8 @@ class _FieldLabel extends StatelessWidget {
         children: [
           Text(
             text,
-            style: Theme.of(context).textTheme.labelLarge?.copyWith(
-              color: AppColors.textSecondary,
-            ),
+            style: Theme.of(context).textTheme.labelLarge
+                ?.copyWith(color: AppColors.textSecondary),
           ),
           if (fromAi) ...[const SizedBox(width: 8), const AiBadge()],
         ],
@@ -302,7 +291,11 @@ class AiBadge extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.auto_awesome, size: 11, color: AppColors.textPrimary),
+          const Icon(
+            Icons.auto_awesome,
+            size: 11,
+            color: AppColors.textPrimary,
+          ),
           const SizedBox(width: 4),
           Text(
             'IA',
@@ -345,10 +338,11 @@ class _AiBanner extends StatelessWidget {
   }
 }
 
-class _Dropdown extends StatelessWidget {
-  const _Dropdown({
+class _ChoiceField extends StatelessWidget {
+  const _ChoiceField({
     required this.value,
     required this.hint,
+    required this.sheetTitle,
     required this.options,
     required this.onChanged,
     this.icon,
@@ -356,29 +350,31 @@ class _Dropdown extends StatelessWidget {
 
   final String? value;
   final String hint;
+  final String sheetTitle;
   final List<String> options;
   final void Function(String) onChanged;
   final IconData? icon;
 
+  Future<void> _open(BuildContext context) async {
+    final chosen = await showChoiceSheet<String>(
+      context,
+      title: sheetTitle,
+      selected: value,
+      options: [
+        for (final option in options)
+          ChoiceOption(value: option, label: option),
+      ],
+    );
+    if (chosen != null) onChanged(chosen);
+  }
+
   @override
   Widget build(BuildContext context) {
-    return DropdownButtonFormField<String>(
-      initialValue: value,
-      hint: Text(hint),
-      isExpanded: true,
-      borderRadius: BorderRadius.circular(14),
-      decoration: InputDecoration(
-        prefixIcon: icon == null
-            ? null
-            : Icon(icon, size: 20, color: AppColors.textSecondary),
-      ),
-      items: [
-        for (final option in options)
-          DropdownMenuItem(value: option, child: Text(option)),
-      ],
-      onChanged: (selected) {
-        if (selected != null) onChanged(selected);
-      },
+    return SelectorField(
+      value: value,
+      hint: hint,
+      icon: icon,
+      onTap: () => _open(context),
     );
   }
 }
@@ -511,73 +507,38 @@ class _DetailDialogState extends State<_DetailDialog> {
       color: AppColors.textSecondary,
     );
 
-    return Dialog(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 24, 20, 20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(
-              child: Text(
-                widget.detail == null ? 'Nuevo detalle' : 'Editar detalle',
-                style: texts.titleMedium?.copyWith(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-            const SizedBox(height: 4),
-            Center(
-              child: Text(
-                'Una característica del bien y su valor',
-                style: texts.bodySmall?.copyWith(
-                  color: AppColors.textSecondary,
-                ),
-              ),
-            ),
-            const SizedBox(height: 22),
-            Text('Nombre del campo', style: labelStyle),
-            const SizedBox(height: 6),
-            TextField(
-              controller: _nameController,
-              textCapitalization: TextCapitalization.sentences,
-              style: texts.bodyMedium,
-              decoration: _fieldDecoration.copyWith(hintText: 'Talla'),
-            ),
-            const SizedBox(height: 14),
-            Text('Valor', style: labelStyle),
-            const SizedBox(height: 6),
-            TextField(
-              controller: _valueController,
-              textCapitalization: TextCapitalization.sentences,
-              style: texts.bodyMedium,
-              decoration: _fieldDecoration.copyWith(hintText: 'M'),
-            ),
-            const SizedBox(height: 24),
-            Row(
-              spacing: 12,
-              children: [
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    child: const Text('Cancelar'),
-                  ),
-                ),
-                Expanded(
-                  child: FilledButton(
-                    onPressed: _save,
-                    style: FilledButton.styleFrom(
-                      minimumSize: const Size.fromHeight(48),
-                    ),
-                    child: const Text('Guardar'),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
+    return AppDialog(
+      title: widget.detail == null ? 'Nuevo detalle' : 'Editar detalle',
+      subtitle: 'Una característica del bien y su valor',
+      content: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Nombre del campo', style: labelStyle),
+          const SizedBox(height: 6),
+          TextField(
+            controller: _nameController,
+            textCapitalization: TextCapitalization.sentences,
+            style: texts.bodyMedium,
+            decoration: _fieldDecoration.copyWith(hintText: 'Talla'),
+          ),
+          const SizedBox(height: 14),
+          Text('Valor', style: labelStyle),
+          const SizedBox(height: 6),
+          TextField(
+            controller: _valueController,
+            textCapitalization: TextCapitalization.sentences,
+            style: texts.bodyMedium,
+            decoration: _fieldDecoration.copyWith(hintText: 'M'),
+          ),
+        ],
       ),
+      actions: [
+        OutlinedButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton(onPressed: _save, child: const Text('Guardar')),
+      ],
     );
   }
 

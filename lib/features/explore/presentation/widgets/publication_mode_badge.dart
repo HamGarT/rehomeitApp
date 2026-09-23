@@ -14,7 +14,7 @@ class PublicationModeBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
       decoration: BoxDecoration(
-        color: isDonation ? AppColors.primary : AppColors.accent,
+        color: isDonation ? AppColors.success : AppColors.accent,
         borderRadius: BorderRadius.circular(20),
       ),
       child: Text(

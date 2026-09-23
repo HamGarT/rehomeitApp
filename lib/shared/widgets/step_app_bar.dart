@@ -85,15 +85,11 @@ class SelectableCard extends StatelessWidget {
                 children: [
                   Text(
                     title,
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
+                    style: Theme.of(context).textTheme.titleMedium
+                        ?.copyWith(fontWeight: FontWeight.w600),
                   ),
                   const SizedBox(height: 4),
-                  Text(
-                    subtitle,
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
+                  Text(subtitle, style: Theme.of(context).textTheme.bodySmall),
                 ],
               ),
             ),
@@ -105,7 +101,11 @@ class SelectableCard extends StatelessWidget {
 }
 
 class InfoNote extends StatelessWidget {
-  const InfoNote({super.key, required this.text, this.icon = Icons.info_outline});
+  const InfoNote({
+    super.key,
+    required this.text,
+    this.icon = Icons.info_outline,
+  });
 
   final String text;
   final IconData icon;

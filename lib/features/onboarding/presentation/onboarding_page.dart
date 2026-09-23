@@ -16,9 +16,9 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
   static const _slideCount = 3;
 
   static const _backgroundColors = [
-    Color(0xFFF3CA20),
-    Color(0xFFF3CA20),
-    Color(0xFFF3CA20),
+    AppColors.accent,
+    AppColors.accent,
+    AppColors.accent,
   ];
 
   static const _titles = [
@@ -73,8 +73,10 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
                   maintainState: true,
                   child: TextButton(
                     onPressed: _complete,
-                    style: TextButton.styleFrom(foregroundColor: Colors.white),
-                    child: const Text('Skip'),
+                    style: TextButton.styleFrom(
+                      foregroundColor: AppColors.textPrimary,
+                    ),
+                    child: const Text('Omitir'),
                   ),
                 ),
               ),
@@ -106,7 +108,7 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
                     backgroundColor: Colors.white,
                     foregroundColor: AppColors.primary,
                   ),
-                  child: Text(isLast ? "Empecemos!!" : 'Siguiente'),
+                  child: Text(isLast ? 'Empecemos' : 'Siguiente'),
                 ),
               ),
             ),
@@ -143,12 +145,12 @@ class _OnboardingSlide extends StatelessWidget {
             fontSize: 50,
             fontWeight: FontWeight.w400,
             height: 1.2,
-            color: Colors.black,
+            color: AppColors.textPrimary,
             fontFamily: 'FreckleFace',
           );
           final descriptionStyle = texts.bodyLarge?.copyWith(
             fontSize: 19,
-            color: Colors.black,
+            color: AppColors.textPrimary,
             fontFamily: 'HostGrotesk',
             height: 1.45,
           );
@@ -228,7 +230,9 @@ class _Dots extends StatelessWidget {
             width: i == active ? 22 : 8,
             height: 8,
             decoration: BoxDecoration(
-              color: i == active ? Colors.white : Colors.white54,
+              color: i == active
+                  ? AppColors.textPrimary
+                  : AppColors.textPrimary.withValues(alpha: 0.3),
               borderRadius: BorderRadius.circular(4),
             ),
           ),

@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/constants/app_colors.dart';
+import '../../../shared/widgets/mascot.dart';
 import 'form_step.dart';
 import 'publish_draft_notifier.dart';
 
@@ -33,10 +34,8 @@ class _AnalyzingStepState extends ConsumerState<AnalyzingStep>
       vsync: this,
       duration: const Duration(milliseconds: 1600),
     )..repeat();
-    _scan = AnimationController(
-      vsync: this,
-      duration: AnalyzingStep._perPhoto,
-    )..repeat();
+    _scan = AnimationController(vsync: this, duration: AnalyzingStep._perPhoto)
+      ..repeat();
     _rotation = Timer.periodic(AnalyzingStep._perPhoto, _showNextPhoto);
     _goToForm();
   }
@@ -56,11 +55,21 @@ class _AnalyzingStepState extends ConsumerState<AnalyzingStep>
   }
 
   Future<void> _goToForm() async {
+    // El análisis y el recorrido de fotografías corren a la vez; se avanza
+    // cuando ambos terminan, así la pantalla nunca parpadea con una respuesta
+    // rápida ni se corta con una lenta.
+    final analysis = ref.read(publishDraftProvider.notifier).analyzePhotos();
     await Future<void>.delayed(_analysisDuration());
+    final failureMessage = await analysis;
     if (!mounted) return;
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute(builder: (_) => const FormStep()),
-    );
+
+    if (failureMessage != null) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(failureMessage)));
+    }
+    Navigator.of(context)
+        .pushReplacement(MaterialPageRoute(builder: (_) => const FormStep()));
   }
 
   // La espera alcanza para mostrar cada fotografía una vez.
@@ -78,35 +87,47 @@ class _AnalyzingStepState extends ConsumerState<AnalyzingStep>
     final texts = Theme.of(context).textTheme;
     final current = _index < photos.length ? photos[_index] : null;
 
+    // Superficie de marca: el cuy con la caja "recibe" el bien mientras la
+    // IA lo reconoce. El anillo con las fotos se mantiene porque muestra qué
+    // se está analizando.
     return Scaffold(
+      backgroundColor: AppColors.accent,
       body: SafeArea(
         child: Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
+              const Mascot(pose: MascotPose.box, height: 150),
+              const SizedBox(height: 18),
               _PhotoStage(
                 pulse: _pulse,
                 scan: _scan,
                 photo: current,
                 photoKey: _index,
               ),
-              const SizedBox(height: 40),
+              const SizedBox(height: 28),
               Text(
                 'Analizando las fotografías',
-                style: texts.titleLarge?.copyWith(fontWeight: FontWeight.w600),
+                textAlign: TextAlign.center,
+                style: texts.titleLarge?.copyWith(
+                  fontFamily: 'FreckleFace',
+                  fontSize: 30,
+                  fontWeight: FontWeight.w400,
+                  color: AppColors.textPrimary,
+                ),
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: 8),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 48),
                 child: Text(
                   'Estamos reconociendo el bien para completar su ficha.',
                   textAlign: TextAlign.center,
-                  style: texts.bodyMedium?.copyWith(
-                    color: AppColors.textSecondary,
+                  style: texts.bodyLarge?.copyWith(
+                    color: AppColors.textPrimary.withValues(alpha: 0.75),
                   ),
                 ),
               ),
-              const SizedBox(height: 28),
+              const SizedBox(height: 24),
               _PhotoIndicator(count: photos.length, active: _index),
             ],
           ),
@@ -148,12 +169,13 @@ class _PhotoStage extends StatelessWidget {
           return Stack(
             alignment: Alignment.center,
             children: [
+              // Sobre el amarillo, la onda se ve mejor en blanco que en marrón.
               Container(
                 width: 162 + wave * 44,
                 height: 162 + wave * 44,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: AppColors.primary.withValues(alpha: 0.06 + wave * 0.06),
+                  color: AppColors.surface.withValues(alpha: 0.25 + wave * 0.2),
                 ),
               ),
               SizedBox(
@@ -218,10 +240,7 @@ class _ScanLine extends StatelessWidget {
       builder: (context, child) {
         // Arranca y termina fuera del círculo para que no se vea aparecer.
         final travel = Curves.easeInOut.transform(controller.value) * 2.6 - 1.3;
-        return Align(
-          alignment: Alignment(0, travel),
-          child: child,
-        );
+        return Align(alignment: Alignment(0, travel), child: child);
       },
       child: FractionallySizedBox(
         heightFactor: 0.3,

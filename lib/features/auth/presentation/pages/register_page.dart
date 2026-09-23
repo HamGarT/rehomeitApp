@@ -20,6 +20,8 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
 
+  AuthAction? _pending;
+
   bool get _submitting => ref.watch(authControllerProvider).isLoading;
 
   @override
@@ -35,6 +37,7 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
     if (!(_formKey.currentState?.validate() ?? false)) return;
     FocusScope.of(context).unfocus();
 
+    setState(() => _pending = AuthAction.email);
     final error = await ref
         .read(authControllerProvider.notifier)
         .signUp(
@@ -43,6 +46,7 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
           password: _passwordController.text,
         );
     if (!mounted) return;
+    setState(() => _pending = null);
     if (error != null && error.isNotEmpty) {
       _showError(error);
       return;
@@ -50,19 +54,18 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(
-        const SnackBar(
-          content: Text('¡Tu cuenta se ha creado. Bienvenido!'),
-          behavior: SnackBarBehavior.floating,
-        ),
+        const SnackBar(content: Text('Tu cuenta está lista. ¡Bienvenido!')),
       );
     Navigator.of(context).popUntil((route) => route.isFirst);
   }
 
   Future<void> _continueWithGoogle() async {
+    setState(() => _pending = AuthAction.google);
     final error = await ref
         .read(authControllerProvider.notifier)
         .signInWithGoogle();
     if (!mounted) return;
+    setState(() => _pending = null);
     if (error != null && error.isNotEmpty) {
       _showError(error);
       return;
@@ -145,41 +148,17 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
                         onFieldSubmitted: (_) => _submit(),
                       ),
                       const SizedBox(height: 26),
-                      FilledButton(
+                      AuthPrimaryButton(
+                        label: 'Crear cuenta',
+                        loading: _pending == AuthAction.email,
                         onPressed: _submitting ? null : _submit,
-                        style: FilledButton.styleFrom(
-                          backgroundColor: Colors.white,
-                          foregroundColor: AppColors.primary,
-                          disabledBackgroundColor: Colors.white.withValues(
-                            alpha: 0.75,
-                          ),
-                          disabledForegroundColor: AppColors.primary.withValues(
-                            alpha: 0.6,
-                          ),
-                        ),
-                        child: _submitting
-                            ? const SizedBox.square(
-                                dimension: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: AppColors.primary,
-                                ),
-                              )
-                            : const Text(
-                                'Crear cuenta',
-                                style: TextStyle(
-                                  fontFamily: 'HostGrotesk',
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
                       ),
                       const SizedBox(height: 22),
                       const OrDivider(),
                       const SizedBox(height: 22),
                       GoogleSignInButton(
                         onPressed: _submitting ? null : _continueWithGoogle,
-                        loading: _submitting,
+                        loading: _pending == AuthAction.google,
                       ),
                       const SizedBox(height: 26),
                       TextButton(
@@ -193,14 +172,14 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
                                 text: '¿Ya tienes una cuenta? ',
                                 style: TextStyle(
                                   fontFamily: 'HostGrotesk',
-                                  color: Colors.black,
+                                  color: AppColors.textPrimary,
                                 ),
                               ),
                               TextSpan(
                                 text: 'Inicia sesión',
                                 style: TextStyle(
                                   fontFamily: 'HostGrotesk',
-                                  color: Colors.black,
+                                  color: AppColors.textPrimary,
                                   fontWeight: FontWeight.w700,
                                   decoration: TextDecoration.underline,
                                 ),

@@ -46,10 +46,10 @@ class AuthController extends Notifier<AsyncValue<AppUser?>> {
   Future<String?> signInWithGoogle() =>
       _run(() => _repository.signInWithGoogle());
 
-  Future<void> signOut() async {
-    state = const AsyncLoading();
-    await _repository.signOut();
-  }
+  /// No toca [state]: la pantalla de acceso lo lee para sus botones y
+  /// aparece antes de que termine el cierre. El perfil lleva su propio
+  /// indicador de progreso.
+  Future<void> signOut() => _repository.signOut();
 
   /// Ejecuta una acción y devuelve `null` si tuvo éxito (o fue cancelada) o un
   /// mensaje amigable listo para mostrar si falló.

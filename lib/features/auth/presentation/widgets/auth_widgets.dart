@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 
 import '../../../../core/constants/app_colors.dart';
+import '../../../../shared/widgets/mascot.dart';
 
 /// Color de fondo compartido con el onboarding.
-const authBackgroundColor = Color(0xFFF3CA20);
+const authBackgroundColor = AppColors.accent;
 
 class AuthMascot extends StatelessWidget {
   const AuthMascot({super.key, this.size = 136});
@@ -15,21 +16,22 @@ class AuthMascot extends StatelessWidget {
     return Container(
       width: size,
       height: size,
-      padding: EdgeInsets.all(size * 0.07),
+      padding: EdgeInsets.fromLTRB(size * 0.1, size * 0.08, size * 0.1, 0),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.surface,
         borderRadius: BorderRadius.circular(32),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.14),
+            color: AppColors.primary.withValues(alpha: 0.18),
             blurRadius: 20,
             offset: const Offset(0, 10),
           ),
         ],
       ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(22),
-        child: Image.asset('assets/images/onboarding1.webp', fit: BoxFit.cover),
+      // El cuy asoma desde el borde inferior de la tarjeta, como en un marco.
+      child: Align(
+        alignment: Alignment.bottomCenter,
+        child: Mascot(pose: MascotPose.wave, height: size * 0.92),
       ),
     );
   }
@@ -55,7 +57,7 @@ class AuthHeader extends StatelessWidget {
             fontSize: 34,
             fontWeight: FontWeight.w400,
             height: 1.15,
-            color: Colors.black,
+            color: AppColors.textPrimary,
           ),
         ),
         const SizedBox(height: 10),
@@ -66,7 +68,7 @@ class AuthHeader extends StatelessWidget {
             fontFamily: 'HostGrotesk',
             fontSize: 16,
             height: 1.4,
-            color: Colors.black,
+            color: AppColors.textPrimary,
           ),
         ),
       ],
@@ -79,10 +81,11 @@ class OrDivider extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Row(
+    final line = Divider(color: AppColors.textPrimary.withValues(alpha: 0.22));
+    return Row(
       children: [
-        Expanded(child: Divider(color: Colors.black26)),
-        Padding(
+        Expanded(child: line),
+        const Padding(
           padding: EdgeInsets.symmetric(horizontal: 14),
           child: Text(
             'o',
@@ -90,11 +93,11 @@ class OrDivider extends StatelessWidget {
               fontFamily: 'HostGrotesk',
               fontSize: 14,
               fontWeight: FontWeight.w600,
-              color: Colors.black87,
+              color: AppColors.textPrimary,
             ),
           ),
         ),
-        Expanded(child: Divider(color: Colors.black26)),
+        Expanded(child: line),
       ],
     );
   }
@@ -140,7 +143,7 @@ class AuthTextField extends StatelessWidget {
       style: const TextStyle(
         fontFamily: 'HostGrotesk',
         fontSize: 15,
-        color: Colors.black,
+        color: AppColors.textPrimary,
       ),
       decoration: InputDecoration(
         labelText: label,
@@ -193,7 +196,7 @@ class _AuthPasswordFieldState extends State<AuthPasswordField> {
       style: const TextStyle(
         fontFamily: 'HostGrotesk',
         fontSize: 15,
-        color: Colors.black,
+        color: AppColors.textPrimary,
       ),
       decoration: InputDecoration(
         labelText: widget.label,
@@ -216,6 +219,52 @@ class _AuthPasswordFieldState extends State<AuthPasswordField> {
   }
 }
 
+/// Acción de acceso en curso. Cada pantalla la recuerda para que solo el
+/// botón pulsado muestre el progreso mientras el otro se deshabilita.
+enum AuthAction { email, google }
+
+class AuthPrimaryButton extends StatelessWidget {
+  const AuthPrimaryButton({
+    super.key,
+    required this.label,
+    required this.onPressed,
+    this.loading = false,
+  });
+
+  final String label;
+  final VoidCallback? onPressed;
+  final bool loading;
+
+  @override
+  Widget build(BuildContext context) {
+    return FilledButton(
+      onPressed: onPressed,
+      style: FilledButton.styleFrom(
+        backgroundColor: AppColors.surface,
+        foregroundColor: AppColors.primary,
+        disabledBackgroundColor: AppColors.surface.withValues(alpha: 0.75),
+        disabledForegroundColor: AppColors.primary.withValues(alpha: 0.6),
+      ),
+      child: loading
+          ? const SizedBox.square(
+              dimension: 20,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: AppColors.primary,
+              ),
+            )
+          : Text(
+              label,
+              style: const TextStyle(
+                fontFamily: 'HostGrotesk',
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+    );
+  }
+}
+
 class GoogleSignInButton extends StatelessWidget {
   const GoogleSignInButton({
     super.key,
@@ -231,11 +280,11 @@ class GoogleSignInButton extends StatelessWidget {
     return OutlinedButton(
       onPressed: loading ? null : onPressed,
       style: OutlinedButton.styleFrom(
-        backgroundColor: Colors.white,
-        foregroundColor: Colors.black,
-        side: BorderSide(color: Colors.black.withValues(alpha: 0.16)),
+        backgroundColor: AppColors.surface,
+        foregroundColor: AppColors.textPrimary,
+        side: BorderSide(color: AppColors.textPrimary.withValues(alpha: 0.16)),
         minimumSize: const Size.fromHeight(52),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
       ),
       child: loading
           ? const SizedBox.square(

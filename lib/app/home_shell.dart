@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../features/explore/presentation/explore_page.dart';
-import '../features/exchange/presentation/exchange_activity_page.dart';
 import '../features/auth/presentation/auth_controller.dart';
+import '../features/explore/presentation/explore_page.dart';
 import '../features/notifications/data/notifications_repository.dart';
 import '../features/profile/presentation/profile_page.dart';
 import '../features/publishing/presentation/photos_step.dart';
@@ -43,28 +42,18 @@ class _HomeShellState extends ConsumerState<HomeShell> {
           if (!_displayedNotifications.add(notification.id)) continue;
           ScaffoldMessenger.of(context)
               .showSnackBar(SnackBar(content: Text(notification.message)));
-          ref.read(notificationsRepositoryProvider).markAsRead(notification.id);
+          // Si el marcado falla (sin conexión), la notificación vuelve a
+          // mostrarse en el próximo arranque; no amerita interrumpir al usuario.
+          ref
+              .read(notificationsRepositoryProvider)
+              .markAsRead(notification.id)
+              .catchError((Object _) {});
         }
       });
     }
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text(section.title),
-        actions: _selectedIndex == _exploreIndex
-            ? [
-                IconButton(
-                  tooltip: 'Mis intercambios',
-                  onPressed: () => Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => const ExchangeActivityPage(),
-                    ),
-                  ),
-                  icon: const Icon(Icons.swap_horiz),
-                ),
-              ]
-            : null,
-      ),
+      appBar: AppBar(title: Text(section.title)),
       body: switch (_selectedIndex) {
         _exploreIndex => const ExplorePage(),
         _perfilIndex => const ProfilePage(),

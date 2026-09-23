@@ -19,6 +19,8 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
 
+  AuthAction? _pending;
+
   bool get _submitting => ref.watch(authControllerProvider).isLoading;
 
   @override
@@ -32,6 +34,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
     if (!(_formKey.currentState?.validate() ?? false)) return;
     FocusScope.of(context).unfocus();
 
+    setState(() => _pending = AuthAction.email);
     final error = await ref
         .read(authControllerProvider.notifier)
         .signInWithEmail(
@@ -39,6 +42,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
           password: _passwordController.text,
         );
     if (!mounted) return;
+    setState(() => _pending = null);
     if (error != null && error.isNotEmpty) {
       _showError(error);
       return;
@@ -47,10 +51,12 @@ class _LoginPageState extends ConsumerState<LoginPage> {
   }
 
   Future<void> _continueWithGoogle() async {
+    setState(() => _pending = AuthAction.google);
     final error = await ref
         .read(authControllerProvider.notifier)
         .signInWithGoogle();
     if (!mounted) return;
+    setState(() => _pending = null);
     if (error != null && error.isNotEmpty) {
       _showError(error);
       return;
@@ -70,32 +76,10 @@ class _LoginPageState extends ConsumerState<LoginPage> {
       );
   }
 
+  // Usa la transición del tema, la misma que el resto de la app.
   void _goToRegister() {
-    Navigator.of(context).push(
-      PageRouteBuilder(
-        transitionDuration: const Duration(milliseconds: 350),
-        reverseTransitionDuration: const Duration(milliseconds: 250),
-        pageBuilder: (context, animation, secondaryAnimation) =>
-            const RegisterPage(),
-        transitionsBuilder: (context, animation, secondaryAnimation, child) {
-          final curved = CurvedAnimation(
-            parent: animation,
-            curve: Curves.easeOutCubic,
-            reverseCurve: Curves.easeInCubic,
-          );
-          return FadeTransition(
-            opacity: curved,
-            child: SlideTransition(
-              position: Tween<Offset>(
-                begin: const Offset(0.04, 0),
-                end: Offset.zero,
-              ).animate(curved),
-              child: child,
-            ),
-          );
-        },
-      ),
-    );
+    Navigator.of(context)
+        .push(MaterialPageRoute(builder: (_) => const RegisterPage()));
   }
 
   @override
@@ -139,41 +123,17 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                         onFieldSubmitted: (_) => _submit(),
                       ),
                       const SizedBox(height: 26),
-                      FilledButton(
+                      AuthPrimaryButton(
+                        label: 'Iniciar sesión',
+                        loading: _pending == AuthAction.email,
                         onPressed: _submitting ? null : _submit,
-                        style: FilledButton.styleFrom(
-                          backgroundColor: Colors.white,
-                          foregroundColor: AppColors.primary,
-                          disabledBackgroundColor: Colors.white.withValues(
-                            alpha: 0.75,
-                          ),
-                          disabledForegroundColor: AppColors.primary.withValues(
-                            alpha: 0.6,
-                          ),
-                        ),
-                        child: _submitting
-                            ? const SizedBox.square(
-                                dimension: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: AppColors.primary,
-                                ),
-                              )
-                            : const Text(
-                                'Iniciar sesión',
-                                style: TextStyle(
-                                  fontFamily: 'HostGrotesk',
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
                       ),
                       const SizedBox(height: 22),
                       const OrDivider(),
                       const SizedBox(height: 22),
                       GoogleSignInButton(
                         onPressed: _submitting ? null : _continueWithGoogle,
-                        loading: _submitting,
+                        loading: _pending == AuthAction.google,
                       ),
                       const SizedBox(height: 26),
                       TextButton(
@@ -185,14 +145,14 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                                 text: '¿No tienes una cuenta? ',
                                 style: TextStyle(
                                   fontFamily: 'HostGrotesk',
-                                  color: Colors.black,
+                                  color: AppColors.textPrimary,
                                 ),
                               ),
                               TextSpan(
                                 text: 'Regístrate',
                                 style: TextStyle(
                                   fontFamily: 'HostGrotesk',
-                                  color: Colors.black,
+                                  color: AppColors.textPrimary,
                                   fontWeight: FontWeight.w700,
                                   decoration: TextDecoration.underline,
                                 ),

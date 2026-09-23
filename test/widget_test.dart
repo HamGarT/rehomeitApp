@@ -34,7 +34,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.fling(find.byType(PageView), const Offset(-600, 0), 1000);
     await tester.pumpAndSettle();
-    await tester.tap(find.text("Let's get started"));
+    await tester.tap(find.text('Empecemos'));
     await tester.pumpAndSettle();
     expect(find.text('¡Hola de nuevo!'), findsOneWidget);
   });
@@ -52,7 +52,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.fling(find.byType(PageView), const Offset(-600, 0), 1000);
     await tester.pumpAndSettle();
-    await tester.tap(find.text("Let's get started"));
+    await tester.tap(find.text('Empecemos'));
     await tester.pumpAndSettle();
     expect(find.text('Explorar'), findsOneWidget);
     expect(find.text('¡Hola de nuevo!'), findsNothing);

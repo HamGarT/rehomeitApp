@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/constants/app_colors.dart';
+import '../../../shared/widgets/app_dialog.dart';
+import '../../../shared/widgets/mascot.dart';
 import '../../auth/data/auth_exception.dart';
 import '../../auth/presentation/auth_controller.dart';
 
@@ -21,24 +23,15 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
   }
 
   Future<void> _confirmSignOut() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Cerrar sesión'),
-        content: const Text('¿Seguro que quieres cerrar tu sesión?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancelar'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Cerrar sesión'),
-          ),
-        ],
-      ),
+    final confirmed = await showAppConfirmDialog(
+      context,
+      mascot: MascotPose.wave,
+      title: '¿Te vas por ahora?',
+      subtitle: 'Tu sesión se cerrará en este dispositivo. Tus publicaciones siguen en su lugar.',
+      cancelLabel: 'Me quedo',
+      confirmLabel: 'Cerrar sesión',
     );
-    if (confirmed != true || !mounted) return;
+    if (!confirmed || !mounted) return;
 
     setState(() => _signingOut = true);
     try {

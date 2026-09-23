@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/constants/app_colors.dart';
 import '../features/auth/presentation/auth_controller.dart';
 import '../features/auth/presentation/pages/login_page.dart';
 import '../features/auth/presentation/widgets/auth_widgets.dart';
@@ -61,7 +62,7 @@ class _SessionLoadingScreen extends StatelessWidget {
               style: TextStyle(
                 fontFamily: 'FreckleFace',
                 fontSize: 40,
-                color: Colors.black,
+                color: AppColors.textPrimary,
               ),
             ),
             SizedBox(height: 18),
@@ -69,7 +70,7 @@ class _SessionLoadingScreen extends StatelessWidget {
               dimension: 26,
               child: CircularProgressIndicator(
                 strokeWidth: 3,
-                color: Colors.black,
+                color: AppColors.primary,
               ),
             ),
           ],
