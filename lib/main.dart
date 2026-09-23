@@ -3,8 +3,10 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app/app.dart';
+import 'core/storage/local_preferences.dart';
 import 'firebase_options.dart';
 
 Future<void> main() async {
@@ -21,5 +23,11 @@ Future<void> main() async {
         ? const AppleDebugProvider()
         : const AppleDeviceCheckProvider(),
   );
-  runApp(const ProviderScope(child: RehomeitApp()));
+  final preferences = await SharedPreferences.getInstance();
+  runApp(
+    ProviderScope(
+      overrides: [sharedPreferencesProvider.overrideWithValue(preferences)],
+      child: const RehomeitApp(),
+    ),
+  );
 }

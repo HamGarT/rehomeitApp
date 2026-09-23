@@ -1,14 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:rehomeitapp/app/app.dart';
+import 'package:rehomeitapp/core/storage/local_preferences.dart';
 import 'package:rehomeitapp/features/auth/domain/app_user.dart';
 import 'package:rehomeitapp/features/auth/presentation/auth_controller.dart';
+
+late SharedPreferences _preferences;
 
 ProviderScope _buildApp({AppUser? user}) {
   return ProviderScope(
     overrides: [
+      sharedPreferencesProvider.overrideWithValue(_preferences),
       authStateProvider.overrideWith((ref) => Stream<AppUser?>.value(user)),
     ],
     child: const RehomeitApp(),
@@ -16,6 +21,11 @@ ProviderScope _buildApp({AppUser? user}) {
 }
 
 void main() {
+  setUp(() async {
+    SharedPreferences.setMockInitialValues({});
+    _preferences = await SharedPreferences.getInstance();
+  });
+
   testWidgets('shows onboarding on launch', (WidgetTester tester) async {
     await tester.pumpWidget(_buildApp());
     await tester.pumpAndSettle();
