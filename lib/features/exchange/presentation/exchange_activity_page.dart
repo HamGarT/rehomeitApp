@@ -79,8 +79,11 @@ class _ProposalCard extends ConsumerWidget {
                       ? effectiveStatus.label
                       : proposal.status.label,
                   positive:
-                      proposal.status == ExchangeProposalStatus.accepted ||
-                      effectiveStatus == PublicationStatus.confirmed,
+                      proposal.status == ExchangeProposalStatus.accepted &&
+                      effectiveStatus !=
+                          PublicationStatus.pendingConfirmation &&
+                      effectiveStatus !=
+                          PublicationStatus.closedWithoutConfirmation,
                 ),
               ],
             ),

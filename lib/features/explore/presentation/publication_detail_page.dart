@@ -3,11 +3,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/constants/app_colors.dart';
 import '../../../shared/domain/publication.dart';
+import '../../../shared/widgets/app_dialog.dart';
 import '../../../shared/widgets/publication_image.dart';
 import '../../auth/presentation/auth_controller.dart';
 import '../../exchange/presentation/exchange_activity_page.dart';
 import '../../exchange/presentation/exchange_controller.dart';
 import '../../exchange/presentation/propose_exchange_sheet.dart';
+import '../../publishing/presentation/publish_controller.dart';
 import 'explore_controller.dart';
 import 'widgets/publication_mode_badge.dart';
 
@@ -207,10 +209,8 @@ class _PublicationTimeline extends StatelessWidget {
               ),
               child: Row(
                 children: [
-                  Icon(
-                    index == entries.length - 1
-                        ? Icons.check_circle
-                        : Icons.check_circle_outline,
+                  const Icon(
+                    Icons.check_circle,
                     size: 18,
                     color: AppColors.primary,
                   ),
@@ -269,14 +269,14 @@ class _FactRow extends StatelessWidget {
   }
 }
 
-class _PublicationActions extends StatelessWidget {
+class _PublicationActions extends ConsumerWidget {
   const _PublicationActions({required this.publication, required this.isOwner});
 
   final Publication publication;
   final bool isOwner;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     if (!publication.isAvailable) {
       return const _ActionNotice(
         icon: Icons.lock_clock_outlined,
@@ -284,18 +284,36 @@ class _PublicationActions extends StatelessWidget {
       );
     }
     if (isOwner) {
-      if (publication.mode == PublicationMode.exchange) {
-        return FilledButton.icon(
-          onPressed: () => Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => const ExchangeActivityPage()),
+      final withdrawing = ref.watch(publishControllerProvider).isLoading;
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (publication.mode == PublicationMode.exchange)
+            FilledButton.icon(
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const ExchangeActivityPage()),
+              ),
+              icon: const Icon(Icons.swap_horiz),
+              label: const Text('Ver propuestas de intercambio'),
+            )
+          else
+            const _ActionNotice(
+              icon: Icons.person_outline,
+              text: 'Esta es tu publicación.',
+            ),
+          const SizedBox(height: 10),
+          OutlinedButton.icon(
+            onPressed: withdrawing ? null : () => _withdraw(context, ref),
+            style: OutlinedButton.styleFrom(foregroundColor: AppColors.error),
+            icon: withdrawing
+                ? const SizedBox.square(
+                    dimension: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.remove_circle_outline),
+            label: const Text('Retirar publicación'),
           ),
-          icon: const Icon(Icons.swap_horiz),
-          label: const Text('Ver propuestas de intercambio'),
-        );
-      }
-      return const _ActionNotice(
-        icon: Icons.person_outline,
-        text: 'Esta es tu publicación.',
+        ],
       );
     }
     if (publication.mode == PublicationMode.donation) {
@@ -322,6 +340,35 @@ class _PublicationActions extends StatelessWidget {
       },
       icon: const Icon(Icons.swap_horiz),
       label: const Text('Proponer intercambio'),
+    );
+  }
+
+  Future<void> _withdraw(BuildContext context, WidgetRef ref) async {
+    final confirmed = await showAppConfirmDialog(
+      context,
+      icon: Icons.remove_circle_outline,
+      destructive: true,
+      title: '¿Retirar la publicación?',
+      subtitle:
+          'El bien dejará de aparecer en el listado y no se puede deshacer.',
+      confirmLabel: 'Retirar',
+    );
+    if (!confirmed || !context.mounted) return;
+
+    final error = await ref
+        .read(publishControllerProvider.notifier)
+        .withdraw(publication.id);
+    if (!context.mounted) return;
+    if (error != null) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(error)));
+      return;
+    }
+    final messenger = ScaffoldMessenger.of(context);
+    Navigator.of(context).pop();
+    messenger.showSnackBar(
+      const SnackBar(content: Text('Publicación retirada')),
     );
   }
 }
@@ -356,5 +403,6 @@ class _ActionNotice extends StatelessWidget {
 String _formatDate(DateTime date) {
   final local = date.toLocal();
   String two(int value) => value.toString().padLeft(2, '0');
-  return '${two(local.day)}/${two(local.month)}/${local.year}';
+  return '${two(local.day)}/${two(local.month)}/${local.year} '
+      '${two(local.hour)}:${two(local.minute)}';
 }

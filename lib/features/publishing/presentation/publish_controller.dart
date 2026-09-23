@@ -32,4 +32,20 @@ class PublishController extends Notifier<AsyncValue<void>> {
       return 'No se pudo registrar la publicación. Tus datos se conservaron.';
     }
   }
+
+  Future<String?> withdraw(String publicationId) async {
+    if (state.isLoading) return null;
+    state = const AsyncLoading();
+    try {
+      await ref.read(publishingRepositoryProvider).withdraw(publicationId);
+      state = const AsyncData(null);
+      return null;
+    } on PublishingFailure catch (error, stackTrace) {
+      state = AsyncError(error, stackTrace);
+      return error.message;
+    } catch (error, stackTrace) {
+      state = AsyncError(error, stackTrace);
+      return 'No se pudo retirar la publicación. Inténtalo nuevamente.';
+    }
+  }
 }
