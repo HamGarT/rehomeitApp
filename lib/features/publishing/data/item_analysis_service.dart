@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:firebase_ai/firebase_ai.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/constants/item_categories.dart';
@@ -36,17 +37,23 @@ class ItemAnalysisService {
   // setiembre de 2026; el servicio indicó este reemplazo.
   static const _modelName = 'gemini-3.6-flash';
 
-  /// HU04-6 fijaba 5 segundos; se amplió a 10 el 23 de setiembre de 2026
-  /// porque la pantalla de análisis ya cubre la espera y el corte a 5 s
-  /// descartaba respuestas válidas con cuatro fotografías.
-  static const timeout = Duration(seconds: 10);
+  /// HU04-6 fijaba 5 segundos. Se amplió a 30 el 23 de setiembre de 2026:
+  /// la latencia que reporta Firebase (4 a 15 s) no incluye la subida de las
+  /// fotografías ni la conexión en frío de la primera llamada del día, y el
+  /// corte anterior descartaba respuestas que el servicio sí completaba.
+  static const timeout = Duration(seconds: 30);
+
+  /// La copia que va al modelo es más liviana que la foto publicada (1600 px):
+  /// el lado corto se reduce a este tamaño y se recomprime. Menos bytes por
+  /// subir y menos tokens por procesar sin afectar la calidad visible en la app.
+  static const _analysisShortSide = 1024;
+  static const _analysisQuality = 70;
 
   final GenerativeModel _model;
 
   Future<ItemSuggestion> analyze(List<File> photos) async {
     final parts = <Part>[
-      for (final photo in photos)
-        InlineDataPart(imageMimeType(photo.path), await photo.readAsBytes()),
+      for (final photo in photos) await _photoPart(photo),
       const TextPart(_prompt),
     ];
 
@@ -82,6 +89,26 @@ class ItemAnalysisService {
       throw const ItemAnalysisException.unrecognized();
     }
     return suggestion;
+  }
+
+  // Si la compresión falla (formato no soportado o plataforma sin plugin) se
+  // envía la foto original: perder el análisis sería peor que subir más bytes.
+  Future<InlineDataPart> _photoPart(File photo) async {
+    try {
+      final compressed = await FlutterImageCompress.compressWithFile(
+        photo.path,
+        minWidth: _analysisShortSide,
+        minHeight: _analysisShortSide,
+        quality: _analysisQuality,
+        format: CompressFormat.jpeg,
+      );
+      if (compressed != null) {
+        return InlineDataPart('image/jpeg', compressed);
+      }
+    } catch (error) {
+      _log(error);
+    }
+    return InlineDataPart(imageMimeType(photo.path), await photo.readAsBytes());
   }
 
   // Solo en depuración: el usuario ve un aviso genérico, pero el equipo
