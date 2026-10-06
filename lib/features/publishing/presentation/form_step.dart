@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/constants/app_colors.dart';
+import '../../../app/theme.dart';
 import '../../../core/constants/cajamarca_districts.dart';
 import '../../../core/constants/item_categories.dart';
 import '../../../shared/widgets/app_chip.dart';
@@ -148,7 +149,7 @@ class _FormStepState extends ConsumerState<FormStep> {
             Text(
               'Agrega lo que ayude a reconocerlo: talla, marca, material, medidas. Son opcionales.',
               style: Theme.of(context).textTheme.bodySmall
-                  ?.copyWith(color: AppColors.textSecondary),
+                  ?.copyWith(color: context.appColors.textSecondary),
             ),
             const SizedBox(height: 12),
             if (draft.details.isNotEmpty) ...[
@@ -233,7 +234,7 @@ class _SectionTitle extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        Icon(icon, size: 20, color: AppColors.primary),
+        Icon(icon, size: 20, color: context.appColors.primary),
         const SizedBox(width: 8),
         Expanded(
           child: Text(
@@ -246,7 +247,7 @@ class _SectionTitle extends StatelessWidget {
           Text(
             trailing!,
             style: Theme.of(context).textTheme.bodySmall
-                ?.copyWith(color: AppColors.textSecondary),
+                ?.copyWith(color: context.appColors.textSecondary),
           ),
       ],
     );
@@ -268,7 +269,7 @@ class _FieldLabel extends StatelessWidget {
           Text(
             text,
             style: Theme.of(context).textTheme.labelLarge
-                ?.copyWith(color: AppColors.textSecondary),
+                ?.copyWith(color: context.appColors.textSecondary),
           ),
           if (fromAi) ...[const SizedBox(width: 8), const AiBadge()],
         ],
@@ -291,16 +292,16 @@ class AiBadge extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(
+          Icon(
             Icons.auto_awesome,
             size: 11,
-            color: AppColors.textPrimary,
+            color: context.appColors.textPrimary,
           ),
           const SizedBox(width: 4),
           Text(
             'IA',
             style: Theme.of(context).textTheme.labelSmall?.copyWith(
-              color: AppColors.textPrimary,
+              color: context.appColors.textPrimary,
               fontWeight: FontWeight.w700,
             ),
           ),
@@ -399,7 +400,7 @@ class _DetailCard extends StatelessWidget {
     return Stack(
       children: [
         Material(
-          color: AppColors.surface,
+          color: context.appColors.surface,
           borderRadius: _shape,
           child: InkWell(
             onTap: onEdit,
@@ -408,7 +409,7 @@ class _DetailCard extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(14, 10, 34, 12),
               decoration: BoxDecoration(
                 borderRadius: _shape,
-                border: Border.all(color: AppColors.border),
+                border: Border.all(color: context.appColors.border),
               ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -422,7 +423,7 @@ class _DetailCard extends StatelessWidget {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: texts.bodySmall?.copyWith(
-                            color: AppColors.textSecondary,
+                            color: context.appColors.textSecondary,
                           ),
                         ),
                       ),
@@ -455,7 +456,7 @@ class _DetailCard extends StatelessWidget {
               child: Container(
                 padding: const EdgeInsets.all(3),
                 decoration: BoxDecoration(
-                  color: AppColors.textPrimary.withValues(alpha: 0.65),
+                  color: context.appColors.textPrimary.withValues(alpha: 0.65),
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(Icons.close, size: 13, color: Colors.white),
@@ -504,7 +505,7 @@ class _DetailDialogState extends State<_DetailDialog> {
   Widget build(BuildContext context) {
     final texts = Theme.of(context).textTheme;
     final labelStyle = texts.labelMedium?.copyWith(
-      color: AppColors.textSecondary,
+      color: context.appColors.textSecondary,
     );
 
     return AppDialog(

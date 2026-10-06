@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 
-import '../../../core/constants/app_colors.dart';
+import '../../../app/theme.dart';
 import '../../../shared/widgets/step_app_bar.dart';
 import '../domain/publish_draft.dart';
 import 'analyzing_step.dart';
@@ -57,7 +57,7 @@ class _PhotosStepState extends ConsumerState<PhotosStep> {
                   Text(
                     '${draft.photos.length} de ${PublishDraft.maxPhotos}',
                     style: texts.bodySmall?.copyWith(
-                      color: AppColors.textSecondary,
+                      color: context.appColors.textSecondary,
                     ),
                   ),
                 ],
@@ -207,9 +207,9 @@ class _Preview extends StatelessWidget {
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: context.appColors.surface,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: context.appColors.border),
       ),
       clipBehavior: Clip.antiAlias,
       child: photo == null
@@ -218,10 +218,10 @@ class _Preview extends StatelessWidget {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  const Icon(
+                  Icon(
                     Icons.add_a_photo_outlined,
                     size: 44,
-                    color: AppColors.textSecondary,
+                    color: context.appColors.textSecondary,
                   ),
                   const SizedBox(height: 14),
                   Text(
@@ -234,7 +234,7 @@ class _Preview extends StatelessWidget {
                     'Mientras mejor se vea, mejor se describe solo',
                     textAlign: TextAlign.center,
                     style: Theme.of(context).textTheme.bodySmall
-                        ?.copyWith(color: AppColors.textSecondary),
+                        ?.copyWith(color: context.appColors.textSecondary),
                   ),
                 ],
               ),
@@ -268,7 +268,9 @@ class _Thumbnail extends StatelessWidget {
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
-                color: selected ? AppColors.primary : AppColors.border,
+                color: selected
+                    ? context.appColors.primary
+                    : context.appColors.border,
                 width: selected ? 2 : 1,
               ),
             ),
@@ -283,7 +285,7 @@ class _Thumbnail extends StatelessWidget {
               child: Container(
                 padding: const EdgeInsets.all(3),
                 decoration: BoxDecoration(
-                  color: AppColors.textPrimary.withValues(alpha: 0.65),
+                  color: context.appColors.textPrimary.withValues(alpha: 0.65),
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(Icons.close, size: 13, color: Colors.white),
@@ -304,7 +306,7 @@ class _EmptySlot extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: AppColors.surface,
+      color: context.appColors.surface,
       borderRadius: BorderRadius.circular(12),
       child: InkWell(
         onTap: onTap,
@@ -312,10 +314,14 @@ class _EmptySlot extends StatelessWidget {
         child: Ink(
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: AppColors.border),
+            border: Border.all(color: context.appColors.border),
           ),
-          child: const Center(
-            child: Icon(Icons.add, color: AppColors.textSecondary, size: 20),
+          child: Center(
+            child: Icon(
+              Icons.add,
+              color: context.appColors.textSecondary,
+              size: 20,
+            ),
           ),
         ),
       ),
@@ -337,23 +343,23 @@ class _SourceSheet extends StatelessWidget {
             width: 40,
             height: 4,
             decoration: BoxDecoration(
-              color: AppColors.border,
+              color: context.appColors.border,
               borderRadius: BorderRadius.circular(2),
             ),
           ),
           const SizedBox(height: 16),
           ListTile(
-            leading: const Icon(
+            leading: Icon(
               Icons.photo_camera_outlined,
-              color: AppColors.primary,
+              color: context.appColors.primary,
             ),
             title: const Text('Tomar fotografía'),
             onTap: () => Navigator.of(context).pop(ImageSource.camera),
           ),
           ListTile(
-            leading: const Icon(
+            leading: Icon(
               Icons.photo_library_outlined,
-              color: AppColors.primary,
+              color: context.appColors.primary,
             ),
             title: const Text('Elegir de la galería'),
             subtitle: const Text('Puedes seleccionar varias a la vez'),

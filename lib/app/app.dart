@@ -9,6 +9,7 @@ import '../features/onboarding/presentation/onboarding_notifier.dart';
 import '../features/onboarding/presentation/onboarding_page.dart';
 import 'home_shell.dart';
 import 'theme.dart';
+import 'theme_mode_notifier.dart';
 
 class RehomeitApp extends ConsumerWidget {
   const RehomeitApp({super.key});
@@ -17,6 +18,7 @@ class RehomeitApp extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final onboarding = ref.watch(onboardingCompletedProvider);
     final auth = ref.watch(authStateProvider);
+    final isDark = ref.watch(darkModeProvider);
 
     final Widget child;
     if (!onboarding) {
@@ -30,8 +32,9 @@ class RehomeitApp extends ConsumerWidget {
 
     return MaterialApp(
       title: 'ReHomeIt',
-      theme: buildAppTheme(),
-      themeMode: ThemeMode.light,
+      theme: buildAppTheme(brightness: Brightness.light),
+      darkTheme: buildAppTheme(brightness: Brightness.dark),
+      themeMode: isDark ? ThemeMode.dark : ThemeMode.light,
       debugShowCheckedModeBanner: false,
       home: AnimatedSwitcher(
         duration: const Duration(milliseconds: 450),
@@ -49,7 +52,7 @@ class _SessionLoadingScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Scaffold(
+    return Scaffold(
       backgroundColor: authBackgroundColor,
       body: Center(
         child: Column(
@@ -62,7 +65,7 @@ class _SessionLoadingScreen extends StatelessWidget {
               style: TextStyle(
                 fontFamily: 'FreckleFace',
                 fontSize: 40,
-                color: AppColors.textPrimary,
+                color: context.appColors.textPrimary,
               ),
             ),
             SizedBox(height: 18),

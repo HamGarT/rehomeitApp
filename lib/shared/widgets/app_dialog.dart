@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/constants/app_colors.dart';
+import '../../app/theme.dart';
 import 'mascot.dart';
 
 /// Diálogo único de la app. Fija la composición que funcionó en el diálogo de
@@ -59,7 +60,7 @@ class AppDialog extends StatelessWidget {
                 subtitle!,
                 textAlign: TextAlign.center,
                 style: texts.bodySmall?.copyWith(
-                  color: AppColors.textSecondary,
+                  color: context.appColors.textSecondary,
                   height: 1.4,
                 ),
               ),

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/constants/app_colors.dart';
+import '../../../app/theme.dart';
 import 'onboarding_notifier.dart';
 import 'widgets/onboarding_illustrations.dart';
 
@@ -74,7 +75,7 @@ class _OnboardingPageState extends ConsumerState<OnboardingPage> {
                   child: TextButton(
                     onPressed: _complete,
                     style: TextButton.styleFrom(
-                      foregroundColor: AppColors.textPrimary,
+                      foregroundColor: context.appColors.textPrimary,
                     ),
                     child: const Text('Omitir'),
                   ),
@@ -145,12 +146,12 @@ class _OnboardingSlide extends StatelessWidget {
             fontSize: 50,
             fontWeight: FontWeight.w400,
             height: 1.2,
-            color: AppColors.textPrimary,
+            color: context.appColors.textPrimary,
             fontFamily: 'FreckleFace',
           );
           final descriptionStyle = texts.bodyLarge?.copyWith(
             fontSize: 19,
-            color: AppColors.textPrimary,
+            color: context.appColors.textPrimary,
             fontFamily: 'HostGrotesk',
             height: 1.45,
           );
@@ -231,8 +232,8 @@ class _Dots extends StatelessWidget {
             height: 8,
             decoration: BoxDecoration(
               color: i == active
-                  ? AppColors.textPrimary
-                  : AppColors.textPrimary.withValues(alpha: 0.3),
+                  ? context.appColors.textPrimary
+                  : context.appColors.textPrimary.withValues(alpha: 0.3),
               borderRadius: BorderRadius.circular(4),
             ),
           ),

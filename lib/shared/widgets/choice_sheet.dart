@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/constants/app_colors.dart';
+import '../../app/theme.dart';
 
 class ChoiceOption<T> {
   const ChoiceOption({required this.value, required this.label});
@@ -52,7 +53,7 @@ class _ChoiceSheet<T> extends StatelessWidget {
             width: 40,
             height: 4,
             decoration: BoxDecoration(
-              color: AppColors.border,
+              color: context.appColors.border,
               borderRadius: BorderRadius.circular(2),
             ),
           ),
@@ -72,10 +73,9 @@ class _ChoiceSheet<T> extends StatelessWidget {
               separatorBuilder: (_, _) => const SizedBox(height: 4),
               itemBuilder: (context, index) {
                 final option = options[index];
-                final isSelected = option.value == selected;
-                return _OptionRow(
+                return SelectableRow(
                   label: option.label,
-                  selected: isSelected,
+                  selected: option.value == selected,
                   onTap: () => Navigator.of(context).pop(option.value),
                 );
               },
@@ -87,8 +87,13 @@ class _ChoiceSheet<T> extends StatelessWidget {
   }
 }
 
-class _OptionRow extends StatelessWidget {
-  const _OptionRow({
+/// Fila seleccionable de las hojas de la aplicación: relleno de marca cuando
+/// está elegida y check a la derecha. Vive aquí porque la eligen tanto
+/// [showChoiceSheet] como la hoja de reporte, y D10 manda promover a `shared`
+/// lo que se necesita en dos funcionalidades.
+class SelectableRow extends StatelessWidget {
+  const SelectableRow({
+    super.key,
     required this.label,
     required this.selected,
     required this.onTap,
@@ -96,7 +101,10 @@ class _OptionRow extends StatelessWidget {
 
   final String label;
   final bool selected;
-  final VoidCallback onTap;
+
+  /// `null` deja la fila sin tocar: la usa la hoja de reporte mientras envía,
+  /// para que el motivo no cambie a mitad del envío.
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -116,7 +124,7 @@ class _OptionRow extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 15,
                     fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                    color: AppColors.textPrimary,
+                    color: context.appColors.textPrimary,
                   ),
                 ),
               ),
@@ -161,10 +169,10 @@ class SelectorField extends StatelessWidget {
         decoration: InputDecoration(
           prefixIcon: icon == null
               ? null
-              : Icon(icon, size: 20, color: AppColors.textSecondary),
-          suffixIcon: const Icon(
+              : Icon(icon, size: 20, color: context.appColors.textSecondary),
+          suffixIcon: Icon(
             Icons.expand_more,
-            color: AppColors.textSecondary,
+            color: context.appColors.textSecondary,
           ),
         ),
         child: Text(
@@ -173,8 +181,8 @@ class SelectorField extends StatelessWidget {
           overflow: TextOverflow.ellipsis,
           style: texts.bodyLarge?.copyWith(
             color: value == null
-                ? AppColors.textSecondary
-                : AppColors.textPrimary,
+                ? context.appColors.textSecondary
+                : context.appColors.textPrimary,
           ),
         ),
       ),

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/constants/app_colors.dart';
+import '../../../../app/theme.dart';
 import '../../domain/auth_validators.dart';
 import '../auth_controller.dart';
 import '../widgets/auth_widgets.dart';
@@ -165,21 +166,21 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
                         onPressed: _submitting
                             ? null
                             : Navigator.of(context).pop,
-                        child: const Text.rich(
+                        child: Text.rich(
                           TextSpan(
                             children: [
                               TextSpan(
                                 text: '¿Ya tienes una cuenta? ',
                                 style: TextStyle(
                                   fontFamily: 'HostGrotesk',
-                                  color: AppColors.textPrimary,
+                                  color: context.appColors.textPrimary,
                                 ),
                               ),
                               TextSpan(
                                 text: 'Inicia sesión',
                                 style: TextStyle(
                                   fontFamily: 'HostGrotesk',
-                                  color: AppColors.textPrimary,
+                                  color: context.appColors.textPrimary,
                                   fontWeight: FontWeight.w700,
                                   decoration: TextDecoration.underline,
                                 ),

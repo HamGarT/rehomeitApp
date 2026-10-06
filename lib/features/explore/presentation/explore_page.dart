@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/constants/app_colors.dart';
+import '../../../app/theme.dart';
 import '../../../core/constants/cajamarca_districts.dart';
 import '../../../shared/domain/publication.dart';
 import '../../../shared/widgets/app_chip.dart';
@@ -14,6 +15,13 @@ import '../domain/explore_filters.dart';
 import 'explore_controller.dart';
 import 'publication_detail_page.dart';
 import 'widgets/publication_mode_badge.dart';
+
+OutlineInputBorder _searchBorder(Color color, double width) {
+  return OutlineInputBorder(
+    borderRadius: BorderRadius.circular(18),
+    borderSide: BorderSide(color: color, width: width),
+  );
+}
 
 class ExplorePage extends ConsumerStatefulWidget {
   const ExplorePage({super.key});
@@ -76,9 +84,16 @@ class _ExplorePageState extends ConsumerState<ExplorePage> {
                       controller: _searchController,
                       onChanged: controller.updateSearch,
                       textInputAction: TextInputAction.search,
-                      decoration: const InputDecoration(
+                      decoration: InputDecoration(
                         hintText: '¿Qué necesitas? Ropa, muebles, libros...',
-                        prefixIcon: Icon(Icons.search),
+                        hintStyle: TextStyle(color: Colors.grey.shade600),
+                        prefixIcon: const Icon(
+                          Icons.search,
+                          color: Colors.black,
+                        ),
+                        border: _searchBorder(Colors.black, 1),
+                        enabledBorder: _searchBorder(Colors.black, 1),
+                        focusedBorder: _searchBorder(Colors.black, 2),
                       ),
                     ),
                   ),
@@ -219,16 +234,16 @@ class _DistrictChip extends StatelessWidget {
       trailing: selected
           ? GestureDetector(
               onTap: () => onSelect(null),
-              child: const Icon(
+              child: Icon(
                 Icons.close,
                 size: 16,
-                color: AppColors.textPrimary,
+                color: context.appColors.textPrimary,
               ),
             )
-          : const Icon(
+          : Icon(
               Icons.expand_more,
               size: 18,
-              color: AppColors.textSecondary,
+              color: context.appColors.textSecondary,
             ),
     );
   }
@@ -241,70 +256,156 @@ class _PublicationCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: () => Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (_) => PublicationDetailPage(initial: publication),
+    final palette = context.appColors;
+    final scrim = palette.imageScrim;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final radius = BorderRadius.circular(32);
+
+    // Una sombra negra no se ve sobre un fondo negro, así que en oscuro la
+    // sombra sube en tono: es un brillo tenue, no un hundimiento.
+    final shadowColor = isDark
+        ? const Color(0xFFFFFFFF)
+        : const Color(0xFF000000);
+
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: radius,
+        boxShadow: [
+          BoxShadow(
+            color: shadowColor.withValues(alpha: isDark ? 0.06 : 0.10),
+            blurRadius: 7,
+            offset: const Offset(0, 2),
           ),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  PublicationImage(
-                    url: publication.images.isEmpty
-                        ? null
-                        : publication.images.first,
-                  ),
-                  Positioned(
-                    top: 8,
-                    left: 8,
-                    child: PublicationModeBadge(mode: publication.mode),
-                  ),
-                ],
-              ),
+        ],
+      ),
+      child: Card(
+        clipBehavior: Clip.antiAlias,
+        // Sin borde: el contorno cálido de `AppColors.border` ensuciaba la
+        // foto. La sombra de abajo es lo que separa la tarjeta del fondo.
+        shape: RoundedRectangleBorder(borderRadius: radius),
+        child: InkWell(
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => PublicationDetailPage(initial: publication),
             ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    publication.title,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.titleSmall
-                        ?.copyWith(fontWeight: FontWeight.w700),
+          ),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              // 1. Background Image filling the card
+              PublicationImage(
+                url: publication.images.isEmpty
+                    ? null
+                    : publication.images.first,
+              ),
+
+              // 2. Scrim gradient at the bottom for text readability. It stops
+              // short of opaque on purpose: enough contrast to read the title
+              // over any photo, but the image stays visible instead of being
+              // replaced by a solid block.
+              Positioned(
+                bottom: 0,
+                left: 0,
+                right: 0,
+                child: Container(
+                  height: 120,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        scrim.withValues(alpha: 0),
+                        scrim.withValues(alpha: 0.45),
+                        scrim.withValues(alpha: 0.85),
+                      ],
+                      stops: const [0, 0.55, 1],
+                    ),
                   ),
-                  const SizedBox(height: 6),
-                  Row(
+                ),
+              ),
+
+              // 3. Top Left Badge (Donación)
+              Positioned(
+                top: 16,
+                left: 10,
+                child: PublicationModeBadge(mode: publication.mode),
+              ),
+
+              // 4. Top Right Yellow Action Button
+              Positioned(
+                top: 10,
+                right: 10,
+                child: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: const BoxDecoration(
+                    color: AppColors.accent, // Yellow matching the image
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.arrow_outward,
+                    color: Colors.black,
+                    size: 24,
+                  ),
+                ),
+              ),
+
+              // 5. Bottom Text Information
+              Positioned(
+                bottom: 0,
+                left: 0,
+                right: 0,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(10, 16, 20, 10),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(
-                        Icons.location_on_outlined,
-                        size: 15,
-                        color: AppColors.textSecondary,
-                      ),
-                      const SizedBox(width: 3),
-                      Expanded(
-                        child: Text(
-                          publication.district,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.bodySmall
-                              ?.copyWith(color: AppColors.textSecondary),
+                      Text(
+                        publication.title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.w700,
+                          // Va sobre el velo, no sobre la superficie: en oscuro el
+                          // velo es negro y el título tiene que volverse blanco.
+                          color: context.appColors.onImageScrim,
+                          fontSize: 18,
                         ),
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.location_on,
+                            size: 18,
+                            // Se apoya sobre el velo, igual que el título: un
+                            // gris fijo se perdía contra el velo negro de oscuro.
+                            color: context.appColors.onImageScrim.withValues(
+                              alpha: 0.72,
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          Expanded(
+                            child: Text(
+                              publication.district,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.bodyMedium
+                                  ?.copyWith(
+                                    color: context.appColors.onImageScrim
+                                        .withValues(alpha: 0.72),
+                                    fontSize: 12,
+                                  ),
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
-                ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -407,7 +508,7 @@ class _EmptyResults extends StatelessWidget {
                   : 'Sé quien empiece: publica algo que ya no uses y dale un nuevo hogar.',
               textAlign: TextAlign.center,
               style: texts.bodyLarge?.copyWith(
-                color: AppColors.textSecondary,
+                color: context.appColors.textSecondary,
                 height: 1.4,
               ),
             ),

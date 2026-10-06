@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../core/constants/app_colors.dart';
+import '../../app/theme.dart';
 
 class PublicationImage extends StatelessWidget {
   const PublicationImage({
@@ -32,12 +32,12 @@ class _ImageFallback extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const ColoredBox(
-      color: AppColors.border,
+    return ColoredBox(
+      color: context.appColors.border,
       child: Center(
         child: Icon(
           Icons.image_not_supported_outlined,
-          color: AppColors.textSecondary,
+          color: context.appColors.textSecondary,
         ),
       ),
     );

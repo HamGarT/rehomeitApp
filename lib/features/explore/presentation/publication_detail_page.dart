@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/constants/app_colors.dart';
+import '../../../app/theme.dart';
 import '../../../shared/domain/publication.dart';
 import '../../../shared/widgets/app_dialog.dart';
 import '../../../shared/widgets/publication_image.dart';
@@ -9,9 +10,32 @@ import '../../auth/presentation/auth_controller.dart';
 import '../../exchange/presentation/exchange_activity_page.dart';
 import '../../exchange/presentation/exchange_controller.dart';
 import '../../exchange/presentation/propose_exchange_sheet.dart';
+import '../../moderation/presentation/report_publication_sheet.dart';
+import '../../profile/presentation/public_profile_page.dart';
 import '../../publishing/presentation/publish_controller.dart';
+import '../domain/public_profile.dart';
 import 'explore_controller.dart';
 import 'widgets/publication_mode_badge.dart';
+
+/// Marca de tiempo en español: "Hace 55 min", "Hace 1 día".
+String _timeAgo(DateTime publishedAt) {
+  final elapsed = DateTime.now().toUtc().difference(publishedAt.toUtc());
+  if (elapsed.inMinutes < 1) return 'Hace un momento';
+  if (elapsed.inMinutes < 60) {
+    final m = elapsed.inMinutes;
+    return 'Hace $m min';
+  }
+  if (elapsed.inHours < 24) {
+    final h = elapsed.inHours;
+    return 'Hace $h ${h == 1 ? 'hora' : 'horas'}';
+  }
+  if (elapsed.inDays < 7) {
+    final d = elapsed.inDays;
+    return 'Hace $d ${d == 1 ? 'día' : 'días'}';
+  }
+  final s = (elapsed.inDays / 7).floor();
+  return 'Hace $s ${s == 1 ? 'semana' : 'semanas'}';
+}
 
 class PublicationDetailPage extends ConsumerWidget {
   const PublicationDetailPage({super.key, required this.initial});
@@ -71,6 +95,12 @@ class PublicationDetailPage extends ConsumerWidget {
                         : Icons.volunteer_activism_outlined,
                     label: publication.deliveryType!.label,
                   ),
+                const SizedBox(height: 4),
+                Text(
+                  _timeAgo(publication.publishedAt),
+                  style: Theme.of(context).textTheme.labelSmall
+                      ?.copyWith(color: context.appColors.textSecondary),
+                ),
                 const SizedBox(height: 8),
                 _PublicationTimeline(publication: publication, now: now),
                 const Divider(),
@@ -107,25 +137,24 @@ class PublicationDetailPage extends ConsumerWidget {
                 const SizedBox(height: 10),
                 profile.when(
                   loading: () => const LinearProgressIndicator(),
-                  error: (error, stackTrace) => const Text(
+                  error: (error, stackTrace) => Text(
                     'No se pudo cargar el perfil público.',
-                    style: TextStyle(color: AppColors.textSecondary),
+                    style: TextStyle(color: context.appColors.textSecondary),
                   ),
-                  data: (owner) => ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: CircleAvatar(
-                      backgroundColor: AppColors.primary,
-                      foregroundColor: AppColors.surface,
-                      child: Text(
-                        owner?.shortName.isNotEmpty == true
-                            ? owner!.shortName[0].toUpperCase()
-                            : '?',
-                      ),
-                    ),
-                    title: Text(owner?.shortName ?? 'Usuario de ReHomeIt'),
-                    subtitle: owner?.district.isNotEmpty == true
-                        ? Text(owner!.district)
-                        : null,
+                  data: (owner) => _AuthorRow(
+                    owner: owner,
+                    // La conversación se inicia desde el detalle y no desde el
+                    // perfil público (HU20, criterio 20), así que la fila solo
+                    // lleva al perfil.
+                    onTap: owner == null
+                        ? null
+                        : () => Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => PublicProfilePage(
+                                userId: publication.authorId,
+                              ),
+                            ),
+                          ),
                   ),
                 ),
                 const SizedBox(height: 16),
@@ -189,9 +218,9 @@ class _PublicationTimeline extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: context.appColors.surface,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: context.appColors.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -209,22 +238,96 @@ class _PublicationTimeline extends StatelessWidget {
               ),
               child: Row(
                 children: [
-                  const Icon(
+                  Icon(
                     Icons.check_circle,
                     size: 18,
-                    color: AppColors.primary,
+                    color: context.appColors.primary,
                   ),
                   const SizedBox(width: 8),
                   Expanded(child: Text(entries[index].$1.label)),
                   Text(
                     _formatDate(entries[index].$2),
                     style: Theme.of(context).textTheme.bodySmall
-                        ?.copyWith(color: AppColors.textSecondary),
+                        ?.copyWith(color: context.appColors.textSecondary),
                   ),
                 ],
               ),
             ),
         ],
+      ),
+    );
+  }
+}
+
+/// Fila "Publicado por" del detalle. Abre el perfil público de quien publicó
+/// (HU20, criterio 12).
+///
+/// Se sustituyó el `ListTile` por una fila propia para poder dejar la fila sin
+/// destino cuando `perfiles/{uid}` no existe: un `ListTile` con `onTap` nulo
+/// sigue leyéndose como algo pulsable.
+class _AuthorRow extends StatelessWidget {
+  const _AuthorRow({required this.owner, this.onTap});
+
+  final PublicProfile? owner;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = context.appColors;
+    final shortName = owner?.shortName ?? '';
+    final district = owner?.district ?? '';
+
+    return Semantics(
+      button: onTap != null,
+      label:
+          'Ver el perfil de ${shortName.isEmpty ? 'quien publicó' : shortName}',
+      excludeSemantics: true,
+      container: true,
+      child: GestureDetector(
+        onTap: onTap,
+        behavior: HitTestBehavior.opaque,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          child: Row(
+            children: [
+              CircleAvatar(
+                backgroundColor: palette.primary,
+                foregroundColor: palette.onPrimary,
+                child: Text(
+                  shortName.isEmpty ? '?' : shortName[0].toUpperCase(),
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      shortName.isEmpty ? 'Usuario de ReHomeIt' : shortName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.titleSmall,
+                    ),
+                    if (district.isNotEmpty)
+                      Text(
+                        district,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodySmall
+                            ?.copyWith(color: palette.textSecondary),
+                      ),
+                  ],
+                ),
+              ),
+              if (onTap != null)
+                Icon(
+                  Icons.chevron_right,
+                  size: 22,
+                  color: palette.textSecondary,
+                ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -260,7 +363,7 @@ class _FactRow extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 8),
       child: Row(
         children: [
-          Icon(icon, size: 19, color: AppColors.textSecondary),
+          Icon(icon, size: 19, color: context.appColors.textSecondary),
           const SizedBox(width: 8),
           Text(label),
         ],
@@ -318,28 +421,43 @@ class _PublicationActions extends ConsumerWidget {
     }
     if (publication.mode == PublicationMode.donation) {
       final volunteer = publication.deliveryType == DeliveryType.volunteer;
-      return _ActionNotice(
-        icon: volunteer
-            ? Icons.volunteer_activism_outlined
-            : Icons.redeem_outlined,
-        text: volunteer
-            ? 'Esta donación está disponible para recojo por voluntariado.'
-            : 'El donante realizará personalmente la entrega.',
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _ActionNotice(
+            icon: volunteer
+                ? Icons.volunteer_activism_outlined
+                : Icons.redeem_outlined,
+            text: volunteer
+                ? 'Esta donación está disponible para recojo por voluntariado.'
+                : 'El donante realizará personalmente la entrega.',
+          ),
+          const SizedBox(height: 10),
+          _ReportAction(publication: publication),
+        ],
       );
     }
-    return FilledButton.icon(
-      onPressed: () async {
-        final proposed = await showProposeExchangeSheet(
-          context,
-          requestedPublication: publication,
-        );
-        if (proposed == true && context.mounted) {
-          ScaffoldMessenger.of(context)
-              .showSnackBar(const SnackBar(content: Text('Propuesta enviada')));
-        }
-      },
-      icon: const Icon(Icons.swap_horiz),
-      label: const Text('Proponer intercambio'),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        FilledButton.icon(
+          onPressed: () async {
+            final proposed = await showProposeExchangeSheet(
+              context,
+              requestedPublication: publication,
+            );
+            if (proposed == true && context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Propuesta enviada')),
+              );
+            }
+          },
+          icon: const Icon(Icons.swap_horiz),
+          label: const Text('Proponer intercambio'),
+        ),
+        const SizedBox(height: 10),
+        _ReportAction(publication: publication),
+      ],
     );
   }
 
@@ -373,6 +491,24 @@ class _PublicationActions extends ConsumerWidget {
   }
 }
 
+class _ReportAction extends StatelessWidget {
+  const _ReportAction({required this.publication});
+
+  final Publication publication;
+
+  @override
+  Widget build(BuildContext context) {
+    // Botón de texto y no el icono de la tarjeta del feed: en el detalle la
+    // acción tiene que decir qué hace, porque reportar es la única que
+    // responde a algo que nadie más ve.
+    return TextButton.icon(
+      onPressed: () => reportPublication(context, publication: publication),
+      icon: const Icon(Icons.flag_outlined, size: 18),
+      label: const Text('Reportar publicación'),
+    );
+  }
+}
+
 class _ActionNotice extends StatelessWidget {
   const _ActionNotice({required this.icon, required this.text});
 
@@ -385,13 +521,13 @@ class _ActionNotice extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: AppColors.primary.withValues(alpha: 0.08),
+        color: context.appColors.primary.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: context.appColors.border),
       ),
       child: Row(
         children: [
-          Icon(icon, color: AppColors.primary),
+          Icon(icon, color: context.appColors.primary),
           const SizedBox(width: 10),
           Expanded(child: Text(text)),
         ],

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/constants/app_colors.dart';
+import '../../app/theme.dart';
 import 'app_dialog.dart';
 
 Future<void> showMissingFieldsDialog(
@@ -38,7 +39,7 @@ class _MissingFieldsList extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
-        color: AppColors.background,
+        color: context.appColors.background,
         borderRadius: BorderRadius.circular(14),
       ),
       child: Column(

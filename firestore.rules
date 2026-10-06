@@ -300,6 +300,51 @@ service cloud.firestore {
         && request.resource.data.offeredOwnerConfirmedAt == null;
     }
 
+    function validInitialReport() {
+      // El comentario es opcional, pero el campo tiene que estar presente: la
+      // aplicación lo escribe siempre, y la resolución del administrador no
+      // tiene por qué distinguir "vacío" de "ausente".
+      return request.resource.data.keys().hasAll([
+          'publicationId',
+          'reporterId',
+          'reason',
+          'comment',
+          'status',
+          'createdAt',
+          'resolvedAt',
+          'resolvedBy'
+        ])
+        && request.resource.data.keys().hasOnly([
+          'publicationId',
+          'reporterId',
+          'reason',
+          'comment',
+          'status',
+          'createdAt',
+          'resolvedAt',
+          'resolvedBy'
+        ])
+        && request.resource.data.publicationId is string
+        && request.resource.data.publicationId.size() > 0
+        && request.resource.data.reporterId == request.auth.uid
+        && request.resource.data.reason in [
+          'contenido_inapropiado',
+          'bien_prohibido',
+          'publicacion_enganosa',
+          'solicitud_de_dinero',
+          'otro'
+        ]
+        && (request.resource.data.comment == null
+          || (request.resource.data.comment is string
+            && request.resource.data.comment.size() <= 500))
+        // "Pendiente" y sin resolución: quien reporta no decide el resultado
+        // (HU19, criterios 9, 11 y 12).
+        && request.resource.data.status == 'pendiente'
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.resolvedAt == null
+        && request.resource.data.resolvedBy == null;
+    }
+
     function validNotificationSchema() {
       return request.resource.data.keys().hasAll([
           'recipientId',
@@ -540,14 +585,26 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    match /reportes/{reportId} {
+      allow read: if signedIn() && resource.data.reporterId == request.auth.uid;
+      allow create: if signedIn()
+        && validInitialReport()
+        && reportId == request.resource.data.reporterId + '_' + request.resource.data.publicationId
+        && !exists(/databases/$(database)/documents/reportes/$(reportId))
+        && get(
+          /databases/$(database)/documents/publicaciones/$(request.resource.data.publicationId)
+        ).data.authorId != request.auth.uid;
+      allow update, delete: if false;
+    }
+
     match /notificaciones/{notificationId} {
       allow read: if signedIn()
         && resource.data.recipientId == request.auth.uid;
       allow create: if signedIn()
         && validNotificationSchema()
         && validNotificationForProposal();
-      allow update: if signedIn()
-        && resource.data.recipientId == request.auth.uid
+allow update: if signedIn()
+        && request.resource.data.recipientId == request.auth.uid
         && resource.data.read == false
         && !('readAt' in resource.data)
         && request.resource.data.diff(resource.data).affectedKeys()

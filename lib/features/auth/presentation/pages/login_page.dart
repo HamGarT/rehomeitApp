@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../core/constants/app_colors.dart';
+import '../../../../app/theme.dart';
 import '../../domain/auth_validators.dart';
 import '../auth_controller.dart';
 import '../widgets/auth_widgets.dart';
@@ -138,21 +139,21 @@ class _LoginPageState extends ConsumerState<LoginPage> {
                       const SizedBox(height: 26),
                       TextButton(
                         onPressed: _submitting ? null : _goToRegister,
-                        child: const Text.rich(
+                        child: Text.rich(
                           TextSpan(
                             children: [
                               TextSpan(
                                 text: '¿No tienes una cuenta? ',
                                 style: TextStyle(
                                   fontFamily: 'HostGrotesk',
-                                  color: AppColors.textPrimary,
+                                  color: context.appColors.textPrimary,
                                 ),
                               ),
                               TextSpan(
                                 text: 'Regístrate',
                                 style: TextStyle(
                                   fontFamily: 'HostGrotesk',
-                                  color: AppColors.textPrimary,
+                                  color: context.appColors.textPrimary,
                                   fontWeight: FontWeight.w700,
                                   decoration: TextDecoration.underline,
                                 ),

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/constants/app_colors.dart';
+import '../../../app/theme.dart';
 import '../../../shared/domain/publication.dart';
 import '../../../shared/widgets/publication_image.dart';
 import '../../auth/presentation/auth_controller.dart';
@@ -93,10 +94,10 @@ class _ProposalCard extends ConsumerWidget {
               title: proposal.requestedPublicationTitle,
               imageUrl: proposal.requestedImageUrl,
             ),
-            const Padding(
+            Padding(
               padding: EdgeInsets.symmetric(vertical: 7),
               child: Center(
-                child: Icon(Icons.swap_vert, color: AppColors.primary),
+                child: Icon(Icons.swap_vert, color: context.appColors.primary),
               ),
             ),
             _ProposalItem(
@@ -108,13 +109,13 @@ class _ProposalCard extends ConsumerWidget {
             Text(
               'Propuesta: ${_formatDate(proposal.proposedAt)}',
               style: Theme.of(context).textTheme.bodySmall
-                  ?.copyWith(color: AppColors.textSecondary),
+                  ?.copyWith(color: context.appColors.textSecondary),
             ),
             if (proposal.respondedAt != null)
               Text(
                 'Respuesta: ${_formatDate(proposal.respondedAt!)}',
                 style: Theme.of(context).textTheme.bodySmall
-                    ?.copyWith(color: AppColors.textSecondary),
+                    ?.copyWith(color: context.appColors.textSecondary),
               ),
             if (proposal.requestedOwnerConfirmedAt != null)
               Text(
@@ -164,9 +165,9 @@ class _ProposalCard extends ConsumerWidget {
                 proposal.hasConfirmed(userId) &&
                 !proposal.bothConfirmed) ...[
               const SizedBox(height: 12),
-              const Text(
+              Text(
                 'Tu recepción está confirmada. Esperando la confirmación de la otra parte.',
-                style: TextStyle(color: AppColors.textSecondary),
+                style: TextStyle(color: context.appColors.textSecondary),
               ),
             ],
           ],
@@ -293,7 +294,7 @@ class _ProposalItem extends StatelessWidget {
               Text(
                 caption,
                 style: Theme.of(context).textTheme.bodySmall
-                    ?.copyWith(color: AppColors.textSecondary),
+                    ?.copyWith(color: context.appColors.textSecondary),
               ),
               Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
             ],
@@ -315,15 +316,14 @@ class _StatusBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
       decoration: BoxDecoration(
-        color: (positive ? AppColors.primary : AppColors.accent).withValues(
-          alpha: 0.18,
-        ),
+        color: (positive ? context.appColors.primary : AppColors.accent)
+            .withValues(alpha: 0.18),
         borderRadius: BorderRadius.circular(20),
       ),
       child: Text(
         label,
         style: Theme.of(context).textTheme.labelSmall?.copyWith(
-          color: positive ? AppColors.primary : AppColors.warning,
+          color: positive ? context.appColors.primary : AppColors.warning,
           fontWeight: FontWeight.w700,
         ),
       ),
@@ -336,15 +336,19 @@ class _NoExchanges extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Center(
+    return Center(
       child: Padding(
-        padding: EdgeInsets.all(32),
+        padding: const EdgeInsets.all(32),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.swap_horiz, size: 52, color: AppColors.textSecondary),
-            SizedBox(height: 12),
-            Text('Todavía no tienes propuestas de intercambio.'),
+            Icon(
+              Icons.swap_horiz,
+              size: 52,
+              color: context.appColors.textSecondary,
+            ),
+            const SizedBox(height: 12),
+            const Text('Todavía no tienes propuestas de intercambio.'),
           ],
         ),
       ),

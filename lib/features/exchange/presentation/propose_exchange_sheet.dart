@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../core/constants/app_colors.dart';
+import '../../../app/theme.dart';
 import '../../../shared/domain/publication.dart';
 import '../../../shared/widgets/publication_image.dart';
 import '../../auth/presentation/auth_controller.dart';
@@ -68,7 +68,7 @@ class _ProposeExchangeSheetState extends ConsumerState<_ProposeExchangeSheet> {
           Text(
             'Solo aparecen tus publicaciones de intercambio disponibles.',
             style: Theme.of(context).textTheme.bodyMedium
-                ?.copyWith(color: AppColors.textSecondary),
+                ?.copyWith(color: context.appColors.textSecondary),
           ),
           const SizedBox(height: 16),
           Flexible(
@@ -149,7 +149,7 @@ class _OfferedPublicationTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: AppColors.surface,
+      color: context.appColors.surface,
       borderRadius: BorderRadius.circular(14),
       child: InkWell(
         onTap: onTap,
@@ -159,7 +159,9 @@ class _OfferedPublicationTile extends StatelessWidget {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(14),
             border: Border.all(
-              color: selected ? AppColors.primary : AppColors.border,
+              color: selected
+                  ? context.appColors.primary
+                  : context.appColors.border,
               width: selected ? 2 : 1,
             ),
           ),
@@ -190,14 +192,16 @@ class _OfferedPublicationTile extends StatelessWidget {
                     Text(
                       publication.district,
                       style: Theme.of(context).textTheme.bodySmall
-                          ?.copyWith(color: AppColors.textSecondary),
+                          ?.copyWith(color: context.appColors.textSecondary),
                     ),
                   ],
                 ),
               ),
               Icon(
                 selected ? Icons.radio_button_checked : Icons.radio_button_off,
-                color: selected ? AppColors.primary : AppColors.textSecondary,
+                color: selected
+                    ? context.appColors.primary
+                    : context.appColors.textSecondary,
               ),
             ],
           ),
@@ -221,7 +225,7 @@ class _SheetMessage extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 42, color: AppColors.textSecondary),
+            Icon(icon, size: 42, color: context.appColors.textSecondary),
             const SizedBox(height: 12),
             Text(message, textAlign: TextAlign.center),
           ],

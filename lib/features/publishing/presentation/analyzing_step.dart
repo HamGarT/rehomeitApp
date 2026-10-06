@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/constants/app_colors.dart';
+import '../../../app/theme.dart';
 import '../../../shared/widgets/mascot.dart';
 import 'form_step.dart';
 import 'publish_draft_notifier.dart';
@@ -113,7 +114,7 @@ class _AnalyzingStepState extends ConsumerState<AnalyzingStep>
                   fontFamily: 'FreckleFace',
                   fontSize: 30,
                   fontWeight: FontWeight.w400,
-                  color: AppColors.textPrimary,
+                  color: context.appColors.textPrimary,
                 ),
               ),
               const SizedBox(height: 8),
@@ -123,7 +124,9 @@ class _AnalyzingStepState extends ConsumerState<AnalyzingStep>
                   'Estamos reconociendo el bien para completar su ficha.',
                   textAlign: TextAlign.center,
                   style: texts.bodyLarge?.copyWith(
-                    color: AppColors.textPrimary.withValues(alpha: 0.75),
+                    color: context.appColors.textPrimary.withValues(
+                      alpha: 0.75,
+                    ),
                   ),
                 ),
               ),
@@ -175,7 +178,9 @@ class _PhotoStage extends StatelessWidget {
                 height: 162 + wave * 44,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: AppColors.surface.withValues(alpha: 0.25 + wave * 0.2),
+                  color: context.appColors.surface.withValues(
+                    alpha: 0.25 + wave * 0.2,
+                  ),
                 ),
               ),
               SizedBox(
@@ -212,7 +217,7 @@ class _PhotoStage extends StatelessWidget {
                 children: [
                   if (photo == null)
                     Container(
-                      color: AppColors.border,
+                      color: context.appColors.border,
                       child: const Icon(Icons.image_outlined, size: 40),
                     )
                   else

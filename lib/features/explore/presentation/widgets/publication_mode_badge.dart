@@ -20,8 +20,10 @@ class PublicationModeBadge extends StatelessWidget {
       child: Text(
         mode.label,
         style: Theme.of(context).textTheme.labelSmall?.copyWith(
-          color: isDonation ? AppColors.surface : AppColors.textPrimary,
-          fontWeight: FontWeight.w700,
+          // El relleno es amarillo o verde, brillante en los dos modos: el
+          // texto va siempre oscuro encima.
+          color: AppColors.onAccent,
+          fontWeight: FontWeight.w500,
         ),
       ),
     );

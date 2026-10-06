@@ -3,7 +3,12 @@ import 'package:flutter/material.dart';
 /// Poses disponibles del cuy, recortadas de las ilustraciones del onboarding.
 enum MascotPose {
   wave('assets/images/mascot_wave.webp'),
-  box('assets/images/mascot_box.webp');
+  box('assets/images/mascot_box.webp'),
+
+  /// GIF en lugar de imagen fija: el cuy dormido funciona mejor dormido, y
+  /// el movimiento hace de aviso de que la pantalla está viva sin pedir
+  /// interacción.
+  sleeping('assets/images/hamster_ligero_durmiendo.gif');
 
   const MascotPose(this.asset);
 

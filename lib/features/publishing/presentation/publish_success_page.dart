@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/constants/app_colors.dart';
+import '../../../app/theme.dart';
 import '../../../shared/widgets/mascot.dart';
 import 'photos_step.dart';
 import 'publish_draft_notifier.dart';
@@ -40,7 +41,7 @@ class PublishSuccessPage extends ConsumerWidget {
                   fontFamily: 'FreckleFace',
                   fontSize: 44,
                   fontWeight: FontWeight.w400,
-                  color: AppColors.textPrimary,
+                  color: context.appColors.textPrimary,
                 ),
               ),
               const SizedBox(height: 8),
@@ -50,7 +51,7 @@ class PublishSuccessPage extends ConsumerWidget {
                 style: texts.bodyLarge?.copyWith(
                   fontSize: 17,
                   height: 1.4,
-                  color: AppColors.textPrimary.withValues(alpha: 0.8),
+                  color: context.appColors.textPrimary.withValues(alpha: 0.8),
                 ),
               ),
               const Spacer(),
@@ -68,7 +69,7 @@ class PublishSuccessPage extends ConsumerWidget {
                   );
                 },
                 style: TextButton.styleFrom(
-                  foregroundColor: AppColors.textPrimary,
+                  foregroundColor: context.appColors.textPrimary,
                   minimumSize: const Size.fromHeight(48),
                 ),
                 child: const Text('Publicar otro bien'),

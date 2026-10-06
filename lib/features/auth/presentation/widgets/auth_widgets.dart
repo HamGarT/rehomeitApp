@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../../core/constants/app_colors.dart';
+import '../../../../app/theme.dart';
 import '../../../../shared/widgets/mascot.dart';
 
 /// Color de fondo compartido con el onboarding.
@@ -18,7 +19,7 @@ class AuthMascot extends StatelessWidget {
       height: size,
       padding: EdgeInsets.fromLTRB(size * 0.1, size * 0.08, size * 0.1, 0),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: context.appColors.surface,
         borderRadius: BorderRadius.circular(32),
         boxShadow: [
           BoxShadow(
@@ -52,23 +53,23 @@ class AuthHeader extends StatelessWidget {
         Text(
           title,
           textAlign: TextAlign.center,
-          style: const TextStyle(
+          style: TextStyle(
             fontFamily: 'FreckleFace',
             fontSize: 34,
             fontWeight: FontWeight.w400,
             height: 1.15,
-            color: AppColors.textPrimary,
+            color: context.appColors.textPrimary,
           ),
         ),
         const SizedBox(height: 10),
         Text(
           subtitle,
           textAlign: TextAlign.center,
-          style: const TextStyle(
+          style: TextStyle(
             fontFamily: 'HostGrotesk',
             fontSize: 16,
             height: 1.4,
-            color: AppColors.textPrimary,
+            color: context.appColors.textPrimary,
           ),
         ),
       ],
@@ -81,19 +82,21 @@ class OrDivider extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final line = Divider(color: AppColors.textPrimary.withValues(alpha: 0.22));
+    final line = Divider(
+      color: context.appColors.textPrimary.withValues(alpha: 0.22),
+    );
     return Row(
       children: [
         Expanded(child: line),
-        const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 14),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14),
           child: Text(
             'o',
             style: TextStyle(
               fontFamily: 'HostGrotesk',
               fontSize: 14,
               fontWeight: FontWeight.w600,
-              color: AppColors.textPrimary,
+              color: context.appColors.textPrimary,
             ),
           ),
         ),
@@ -140,10 +143,10 @@ class AuthTextField extends StatelessWidget {
       textCapitalization: textCapitalization,
       autofillHints: autofillHints,
       autovalidateMode: AutovalidateMode.onUserInteraction,
-      style: const TextStyle(
+      style: TextStyle(
         fontFamily: 'HostGrotesk',
         fontSize: 15,
-        color: AppColors.textPrimary,
+        color: context.appColors.textPrimary,
       ),
       decoration: InputDecoration(
         labelText: label,
@@ -193,10 +196,10 @@ class _AuthPasswordFieldState extends State<AuthPasswordField> {
       autofillHints: widget.autofillHints,
       autovalidateMode: AutovalidateMode.onUserInteraction,
       onFieldSubmitted: widget.onFieldSubmitted,
-      style: const TextStyle(
+      style: TextStyle(
         fontFamily: 'HostGrotesk',
         fontSize: 15,
-        color: AppColors.textPrimary,
+        color: context.appColors.textPrimary,
       ),
       decoration: InputDecoration(
         labelText: widget.label,
@@ -211,7 +214,7 @@ class _AuthPasswordFieldState extends State<AuthPasswordField> {
                 ? Icons.visibility_outlined
                 : Icons.visibility_off_outlined,
             size: 20,
-            color: AppColors.textSecondary,
+            color: context.appColors.textSecondary,
           ),
         ),
       ),
@@ -240,9 +243,11 @@ class AuthPrimaryButton extends StatelessWidget {
     return FilledButton(
       onPressed: onPressed,
       style: FilledButton.styleFrom(
-        backgroundColor: AppColors.surface,
+        backgroundColor: context.appColors.surface,
         foregroundColor: AppColors.primary,
-        disabledBackgroundColor: AppColors.surface.withValues(alpha: 0.75),
+        disabledBackgroundColor: context.appColors.surface.withValues(
+          alpha: 0.75,
+        ),
         disabledForegroundColor: AppColors.primary.withValues(alpha: 0.6),
       ),
       child: loading
@@ -280,9 +285,11 @@ class GoogleSignInButton extends StatelessWidget {
     return OutlinedButton(
       onPressed: loading ? null : onPressed,
       style: OutlinedButton.styleFrom(
-        backgroundColor: AppColors.surface,
-        foregroundColor: AppColors.textPrimary,
-        side: BorderSide(color: AppColors.textPrimary.withValues(alpha: 0.16)),
+        backgroundColor: context.appColors.surface,
+        foregroundColor: context.appColors.textPrimary,
+        side: BorderSide(
+          color: context.appColors.textPrimary.withValues(alpha: 0.16),
+        ),
         minimumSize: const Size.fromHeight(52),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
       ),

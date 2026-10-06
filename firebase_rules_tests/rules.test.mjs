@@ -10,6 +10,7 @@ import {
   initializeTestEnvironment,
 } from '@firebase/rules-unit-testing';
 import {
+  deleteDoc,
   doc,
   getDoc,
   serverTimestamp,
@@ -218,6 +219,24 @@ async function confirmReceipt({
     notification({ recipientId: otherUserId, type, proposalId }),
   );
   await assertSucceeds(batch.commit());
+}
+
+function reportIdFor(reporterId, publicationId) {
+  return `${reporterId}_${publicationId}`;
+}
+
+function initialReport({ reporterId, publicationId, overrides = {} }) {
+  return {
+    publicationId,
+    reporterId,
+    reason: 'contenido_inapropiado',
+    comment: null,
+    status: 'pendiente',
+    createdAt: serverTimestamp(),
+    resolvedAt: null,
+    resolvedBy: null,
+    ...overrides,
+  };
 }
 
 test('permite crear un usuario y perfil legítimos con el esquema real', async () => {
@@ -478,6 +497,210 @@ test('deniega notificaciones a uno mismo o fuera de una transición', async () =
       proposalId,
     }),
   ));
+});
+
+test('permite reportar una publicación ajena y deja el reporte pendiente', async () => {
+  const authorId = 'publication-author';
+  await assertSucceeds(setDoc(
+    doc(firestoreFor(authorId), 'publicaciones', 'reported-publication'),
+    initialPublication({ authorId, mode: 'donacion', deliveryType: 'donante' }),
+  ));
+  const reporterId = 'reporter';
+  const reportRef = doc(
+    firestoreFor(reporterId),
+    'reportes',
+    reportIdFor(reporterId, 'reported-publication'),
+  );
+  await assertSucceeds(setDoc(
+    reportRef,
+    initialReport({ reporterId, publicationId: 'reported-publication' }),
+  ));
+  const report = await getDoc(reportRef);
+  assert.equal(report.data().status, 'pendiente');
+  assert.equal(report.data().resolvedAt, null);
+  assert.equal(report.data().resolvedBy, null);
+});
+
+test('deniega el segundo reporte de la misma publicación', async () => {
+  const authorId = 'publication-author';
+  await assertSucceeds(setDoc(
+    doc(firestoreFor(authorId), 'publicaciones', 'reported-twice'),
+    initialPublication({ authorId, mode: 'donacion', deliveryType: 'donante' }),
+  ));
+  const reporterId = 'reporter';
+  const db = firestoreFor(reporterId);
+  const reportRef = doc(db, 'reportes', reportIdFor(reporterId, 'reported-twice'));
+  await assertSucceeds(setDoc(
+    reportRef,
+    initialReport({ reporterId, publicationId: 'reported-twice' }),
+  ));
+  // El id es determinista, así que el segundo `set` llega como `update` sobre
+  // un documento existente y la regla lo deniega (HU19-04).
+  await assertFails(setDoc(
+    reportRef,
+    initialReport({
+      reporterId,
+      publicationId: 'reported-twice',
+      overrides: { reason: 'solicitud_de_dinero' },
+    }),
+  ));
+  // Tampoco vale la pena cambiar de motivo ni de comentario después.
+  await assertFails(updateDoc(reportRef, { comment: 'Otro motivo' }));
+});
+
+test('deniega reportar la propia publicación o una que no existe', async () => {
+  const authorId = 'publication-author';
+  await assertSucceeds(setDoc(
+    doc(firestoreFor(authorId), 'publicaciones', 'own-publication'),
+    initialPublication({ authorId, mode: 'donacion', deliveryType: 'donante' }),
+  ));
+  await assertFails(setDoc(
+    doc(firestoreFor(authorId), 'reportes', reportIdFor(authorId, 'own-publication')),
+    initialReport({ reporterId: authorId, publicationId: 'own-publication' }),
+  ));
+  await assertFails(setDoc(
+    doc(firestoreFor('reporter'), 'reportes', reportIdFor('reporter', 'fantasma')),
+    initialReport({ reporterId: 'reporter', publicationId: 'fantasma' }),
+  ));
+});
+
+test('el reporte solo puede escribirse con el esquema, el motivo y el estado reales', async () => {
+  const authorId = 'publication-author';
+  const publicationId = 'strict-publication';
+  await assertSucceeds(setDoc(
+    doc(firestoreFor(authorId), 'publicaciones', publicationId),
+    initialPublication({ authorId, mode: 'donacion', deliveryType: 'donante' }),
+  ));
+  const reporterId = 'reporter';
+  const db = firestoreFor(reporterId);
+  // Todos los intentos denegados apuntan al mismo documento a propósito: al
+  // fallar no queda nada escrito, así que el caso válido del final puede
+  // escribirse en el mismo id. Cada uno aísla un campo del esquema.
+  const reportRef = doc(
+    db,
+    'reportes',
+    reportIdFor(reporterId, publicationId),
+  );
+  const rejects = (overrides) => assertFails(setDoc(
+    reportRef,
+    initialReport({ reporterId, publicationId, overrides }),
+  ));
+
+  // Un id que no corresponde al par persona y publicación dejaría pasar el
+  // segundo reporte de la misma publicación.
+  await assertFails(setDoc(
+    doc(db, 'reportes', 'id-arbitrario'),
+    initialReport({ reporterId, publicationId }),
+  ));
+  // Solo los cinco motivos previstos.
+  await rejects({ reason: 'inventado' });
+  // Quien reporta no decide el resultado: el estado y la resolución los
+  // escribe el equipo administrador.
+  await rejects({ status: 'desestimado', resolvedAt: serverTimestamp(), resolvedBy: 'admin' });
+  await rejects({ status: 'retirada' });
+  // La fecha la pone el servidor y el autor del reporte es quien está
+  // autenticado.
+  await rejects({ createdAt: null });
+  await rejects({ reporterId: 'otro' });
+  // El comentario es opcional, pero acotado.
+  await rejects({ comment: 'a'.repeat(501) });
+  // Ni campos de más ni campos de menos: los tres de resolución tienen que
+  // estar presentes aunque valgan `null`.
+  await rejects({ retirado: true });
+  await assertFails(setDoc(reportRef, {
+    publicationId,
+    reporterId,
+    reason: 'otro',
+    status: 'pendiente',
+    createdAt: serverTimestamp(),
+    resolvedAt: null,
+  }));
+
+  // Con 500 caracteres exactos sí se acepta: el tope es ese.
+  await assertSucceeds(setDoc(
+    reportRef,
+    initialReport({
+      reporterId,
+      publicationId,
+      overrides: { reason: 'otro', comment: 'a'.repeat(500) },
+    }),
+  ));
+});
+
+test('el reporte no se resuelve ni se borra desde la aplicación', async () => {
+  const authorId = 'publication-author';
+  await assertSucceeds(setDoc(
+    doc(firestoreFor(authorId), 'publicaciones', 'unresolved-publication'),
+    initialPublication({ authorId, mode: 'donacion', deliveryType: 'donante' }),
+  ));
+  const reporterId = 'reporter';
+  const db = firestoreFor(reporterId);
+  const reportRef = doc(
+    db,
+    'reportes',
+    reportIdFor(reporterId, 'unresolved-publication'),
+  );
+  await assertSucceeds(setDoc(
+    reportRef,
+    initialReport({ reporterId, publicationId: 'unresolved-publication' }),
+  ));
+  // Resolver es tarea de la consola de moderación (HU19-08 a HU19-12): ni la
+  // aplicación ni el usuario que reportó tocan el resultado.
+  await assertFails(updateDoc(reportRef, {
+    status: 'desestimado',
+    resolvedAt: serverTimestamp(),
+    resolvedBy: reporterId,
+  }));
+  await assertFails(deleteDoc(reportRef));
+  const report = await getDoc(reportRef);
+  assert.equal(report.data().status, 'pendiente');
+});
+
+test('solo quien reportó lee su reporte y no el de los demás', async () => {
+  const authorId = 'publication-author';
+  await assertSucceeds(setDoc(
+    doc(firestoreFor(authorId), 'publicaciones', 'private-report-publication'),
+    initialPublication({ authorId, mode: 'donacion', deliveryType: 'donante' }),
+  ));
+  const reporterId = 'reporter';
+  await assertSucceeds(setDoc(
+    doc(firestoreFor(reporterId), 'reportes', reportIdFor(reporterId, 'private-report-publication')),
+    initialReport({ reporterId, publicationId: 'private-report-publication' }),
+  ));
+  await assertSucceeds(getDoc(doc(
+    firestoreFor(reporterId),
+    'reportes',
+    reportIdFor(reporterId, 'private-report-publication'),
+  )));
+  await assertFails(getDoc(doc(
+    firestoreFor(authorId),
+    'reportes',
+    reportIdFor(reporterId, 'private-report-publication'),
+  )));
+});
+
+test('el reporte no toca la publicación reportada', async () => {
+  // La publicación sigue visible mientras su reporte no se resuelva
+  // (HU19-07): reportarla no la anula ni le cambia el estado.
+  const authorId = 'publication-author';
+  const publicationRef = doc(
+    firestoreFor(authorId),
+    'publicaciones',
+    'still-visible-publication',
+  );
+  await assertSucceeds(setDoc(
+    publicationRef,
+    initialPublication({ authorId, mode: 'donacion', deliveryType: 'donante' }),
+  ));
+  const reporterId = 'reporter';
+  await assertSucceeds(setDoc(
+    doc(firestoreFor(reporterId), 'reportes', reportIdFor(reporterId, 'still-visible-publication')),
+    initialReport({ reporterId, publicationId: 'still-visible-publication' }),
+  ));
+  const publication = await getDoc(
+    doc(firestoreFor(reporterId), 'publicaciones', 'still-visible-publication'),
+  );
+  assert.equal(publication.data().status, 'publicada');
 });
 
 test('Storage permite nombres válidos, limpieza y deniega nombre inválido y overwrite', async () => {

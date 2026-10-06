@@ -153,3 +153,14 @@ El rol permanece en el documento privado y las reglas pueden consultarlo igual, 
 **Decisión.** App Check queda en modo obligatorio para AI Logic. En release la aplicación se acredita con Play Integrity, que valida la firma registrada en la consola. En compilaciones de depuración se usa el proveedor de depuración: cada instalación genera un token que un integrante autoriza una sola vez en la consola. La elección la hace `kDebugMode` al arrancar, sin configuración adicional por máquina.
 
 **Consecuencias.** Firestore y Authentication permanecen en modo supervisión, así una falla de App Check nunca deja a un usuario sin sesión ni sin datos; solo la IA queda cerrada. Cada integrante debe registrar su token de depuración antes de probar la sugerencia automática, y al publicar en Play Store hay que registrar la huella SHA-256 de la firma de release.
+
+---
+
+## D14 – El reporte se identifica por la persona que reporta y la publicación
+
+**Problema.** HU19-04 impide reportar dos veces la misma publicación. Consultar si ya se reportó antes de enviarlo exigiría una lectura que el usuario puede saltarse escribiendo directamente contra Firestore, y un contador de reportes sobre la publicación tampoco sirve: borrarlo es tan fácil como escribirlo.
+
+**Decisión.** El documento del reporte se identifica con la persona que reporta y la publicación, en ese orden, y las reglas solo admiten la creación con ese id y niegan toda actualización. Quien reporta deja el reporte en "Pendiente", con la fecha y sin resolución: el resultado lo determina el equipo administrador (HU19-09 a HU19-12), nunca la aplicación. El id determinista hace que el segundo reporte de la misma publicación llegue como `update` sobre algo ya escrito y la regla lo rechace, sin que el cliente tenga que consultar nada.
+
+**Consecuencias.** La aplicación necesita una regla por cada motivo y estado que escriba: agregar un valor en `ReportReason` o `ReportStatus` sin abrir `validInitialReport` deja el documento rechazado por el servidor. Como la publicación no se toca al reportarla, sigue visible mientras el reporte no se resuelva (HU19-07). Los criterios de listado, resolución y avisos al autor y a quien reportó (HU19-08 a HU19-16) pertenecen a la consola de moderación: es el reverso de este mismo esquema, con reglas propias.
+

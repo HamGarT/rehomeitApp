@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../features/auth/presentation/auth_controller.dart';
-import '../features/explore/presentation/explore_page.dart';
+import '../features/home/presentation/home_page.dart';
 import '../features/notifications/data/notifications_repository.dart';
 import '../features/profile/presentation/profile_page.dart';
 import '../features/publishing/presentation/photos_step.dart';
@@ -16,19 +16,19 @@ class HomeShell extends ConsumerStatefulWidget {
 }
 
 class _HomeShellState extends ConsumerState<HomeShell> {
+  static const _homeIndex = 0;
   static const _publishIndex = 2;
   static const _perfilIndex = 4;
-  static const _exploreIndex = 0;
 
   int _selectedIndex = 0;
   final Set<String> _displayedNotifications = {};
 
   static const _sections = <({String title, String pending})>[
-    (title: 'Explorar', pending: ''),
+    (title: 'Inicio', pending: ''),
     (title: 'Campañas', pending: 'HU15, HU16, HU17'),
     (title: 'Publicar', pending: ''),
     (title: 'Mensajes', pending: 'HU09'),
-    (title: 'Mi perfil', pending: 'HU18, HU20'),
+    (title: 'Mi perfil', pending: ''),
   ];
 
   @override
@@ -53,9 +53,13 @@ class _HomeShellState extends ConsumerState<HomeShell> {
     }
 
     return Scaffold(
-      appBar: AppBar(title: Text(section.title)),
+      // Inicio trae su propia SliverAppBar con la marca y el buscador, así que
+      // el AppBar del shell se reserva para las demás secciones.
+      appBar: _selectedIndex == _homeIndex
+          ? null
+          : AppBar(title: Text(section.title)),
       body: switch (_selectedIndex) {
-        _exploreIndex => const ExplorePage(),
+        _homeIndex => const HomePage(),
         _perfilIndex => const ProfilePage(),
         _ => Center(
           child: Text('Pendiente de implementar: ${section.pending}'),
