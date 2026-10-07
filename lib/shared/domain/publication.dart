@@ -65,6 +65,10 @@ class Publication {
     this.counterpartPublicationId,
     this.counterpartUserId,
     this.committedAt,
+    this.volunteerId,
+    this.pickedUpAt,
+    this.deliveredAt,
+    this.deliveryEvidence,
   });
 
   final String id;
@@ -85,6 +89,10 @@ class Publication {
   final String? counterpartPublicationId;
   final String? counterpartUserId;
   final DateTime? committedAt;
+  final String? volunteerId;
+  final DateTime? pickedUpAt;
+  final DateTime? deliveredAt;
+  final DeliveryEvidence? deliveryEvidence;
 
   bool get isAvailable => status == PublicationStatus.published;
 
@@ -124,6 +132,10 @@ class Publication {
       'counterpartPublicationId': counterpartPublicationId,
     if (counterpartUserId != null) 'counterpartUserId': counterpartUserId,
     if (committedAt != null) 'committedAt': Timestamp.fromDate(committedAt!),
+    if (volunteerId != null) 'volunteerId': volunteerId,
+    if (pickedUpAt != null) 'pickedUpAt': Timestamp.fromDate(pickedUpAt!),
+    if (deliveredAt != null) 'deliveredAt': Timestamp.fromDate(deliveredAt!),
+    if (deliveryEvidence != null) 'deliveryEvidence': deliveryEvidence!.toMap(),
   };
 
   factory Publication.fromMap(String id, Map<String, Object?> map) {
@@ -152,6 +164,16 @@ class Publication {
       counterpartPublicationId: map['counterpartPublicationId'] as String?,
       counterpartUserId: map['counterpartUserId'] as String?,
       committedAt: _readDate(map['committedAt']),
+      volunteerId: map['volunteerId'] as String?,
+      pickedUpAt: _readDate(map['pickedUpAt']),
+      deliveredAt: _readDate(map['deliveredAt']),
+      deliveryEvidence: map['deliveryEvidence'] is Map
+          ? DeliveryEvidence.fromMap(
+              (map['deliveryEvidence'] as Map).map(
+                (key, value) => MapEntry(key.toString(), value),
+              ),
+            )
+          : null,
     );
   }
 
@@ -180,6 +202,38 @@ class Publication {
       }
     }
     return result;
+  }
+}
+
+class DeliveryEvidence {
+  const DeliveryEvidence({
+    required this.recipientInitials,
+    required this.district,
+    required this.storagePath,
+    required this.recordedAt,
+  });
+
+  final String recipientInitials;
+  final String district;
+  final String storagePath;
+  final DateTime recordedAt;
+
+  Map<String, Object?> toMap() => {
+    'recipientInitials': recipientInitials,
+    'district': district,
+    'storagePath': storagePath,
+    'recordedAt': Timestamp.fromDate(recordedAt),
+  };
+
+  factory DeliveryEvidence.fromMap(Map<String, Object?> map) {
+    return DeliveryEvidence(
+      recipientInitials: map['recipientInitials'] as String? ?? '',
+      district: map['district'] as String? ?? '',
+      storagePath: map['storagePath'] as String? ?? '',
+      recordedAt:
+          _readDate(map['recordedAt']) ??
+          DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
+    );
   }
 }
 

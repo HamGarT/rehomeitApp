@@ -143,6 +143,219 @@ service cloud.firestore {
         );
     }
 
+    function publicationAfter(publicationId) {
+      return getAfter(
+        /databases/$(database)/documents/publicaciones/$(publicationId)
+      ).data;
+    }
+
+    function publicationBefore(publicationId) {
+      return get(
+        /databases/$(database)/documents/publicaciones/$(publicationId)
+      ).data;
+    }
+
+    function validDeliveryEvidence(publicationId, actorId) {
+      let evidence = request.resource.data.deliveryEvidence;
+      return evidence is map
+        && evidence.keys().hasAll([
+          'recipientInitials',
+          'district',
+          'storagePath',
+          'recordedAt'
+        ])
+        && evidence.keys().hasOnly([
+          'recipientInitials',
+          'district',
+          'storagePath',
+          'recordedAt'
+        ])
+        && evidence.recipientInitials is string
+        && evidence.recipientInitials.size() > 0
+        && evidence.recipientInitials.size() <= 12
+        && evidence.district in [
+          'Cajamarca',
+          'Asunción',
+          'Chetilla',
+          'Cospán',
+          'La Encañada',
+          'Jesús',
+          'Llacanora',
+          'Los Baños del Inca',
+          'Magdalena',
+          'Matara',
+          'Namora',
+          'San Juan'
+        ]
+        && evidence.storagePath.matches(
+          'entregas/' + publicationId + '/' + actorId
+            + '/evidencia\\.(jpg|jpeg|png|webp|heic|heif)'
+        )
+        && evidence.recordedAt == request.time;
+    }
+
+    function validDonationPublicationTransition(publicationId) {
+      let changed = request.resource.data.diff(resource.data).affectedKeys();
+      let datesChanged = request.resource.data.statusDates
+        .diff(resource.data.statusDates).affectedKeys();
+      let assume = resource.data.deliveryType == 'voluntario'
+        && resource.data.status == 'publicada'
+        && request.auth.uid != resource.data.authorId
+        && request.resource.data.status == 'comprometida'
+        && request.resource.data.volunteerId == request.auth.uid
+        && request.resource.data.committedAt == request.time
+        && request.resource.data.statusDates.comprometida == request.time
+        && datesChanged.hasOnly(['comprometida'])
+        && changed.hasOnly([
+          'status', 'volunteerId', 'committedAt', 'statusDates'
+        ]);
+      let release = resource.data.deliveryType == 'voluntario'
+        && resource.data.status == 'comprometida'
+        && request.auth.uid in [
+          resource.data.authorId,
+          resource.data.volunteerId
+        ]
+        && request.resource.data.status == 'publicada'
+        && !('volunteerId' in request.resource.data)
+        && !('committedAt' in request.resource.data)
+        && request.resource.data.statusDates == resource.data.statusDates
+        && changed.hasOnly(['status', 'volunteerId', 'committedAt']);
+      let pickedUp = resource.data.deliveryType == 'voluntario'
+        && resource.data.status == 'comprometida'
+        && request.auth.uid == resource.data.authorId
+        && resource.data.volunteerId is string
+        && request.resource.data.status == 'recogida'
+        && request.resource.data.volunteerId == resource.data.volunteerId
+        && request.resource.data.pickedUpAt == request.time
+        && request.resource.data.statusDates.recogida == request.time
+        && datesChanged.hasOnly(['recogida'])
+        && changed.hasOnly(['status', 'pickedUpAt', 'statusDates']);
+      let delivered = resource.data.deliveryType == 'voluntario'
+        && resource.data.status == 'recogida'
+        && request.auth.uid == resource.data.volunteerId
+        && request.resource.data.status == 'entregada'
+        && request.resource.data.deliveredAt == request.time
+        && request.resource.data.statusDates.entregada == request.time
+        && datesChanged.hasOnly(['entregada'])
+        && validDeliveryEvidence(publicationId, request.auth.uid)
+        && changed.hasOnly([
+          'status', 'deliveredAt', 'statusDates', 'deliveryEvidence'
+        ]);
+      let directDelivery = resource.data.deliveryType == 'donante'
+        && resource.data.status == 'publicada'
+        && request.auth.uid == resource.data.authorId
+        && request.resource.data.status == 'confirmada'
+        && request.resource.data.deliveredAt == request.time
+        && request.resource.data.statusDates.confirmada == request.time
+        && datesChanged.hasOnly(['confirmada'])
+        && validDeliveryEvidence(publicationId, request.auth.uid)
+        && changed.hasOnly([
+          'status', 'deliveredAt', 'statusDates', 'deliveryEvidence'
+        ]);
+      return resource.data.mode == 'donacion'
+        && request.resource.data.authorId == resource.data.authorId
+        && request.resource.data.mode == resource.data.mode
+        && request.resource.data.deliveryType == resource.data.deliveryType
+        && (assume || release || pickedUp || delivered || directDelivery);
+    }
+
+    function validConversationCreate() {
+      let publication = publicationAfter(request.resource.data.publicationId);
+      let participants = request.resource.data.participantIds;
+      return request.resource.data.keys().hasAll([
+          'publicationId',
+          'publicationTitle',
+          'publicationImageUrl',
+          'publicationMode',
+          'participantIds',
+          'createdAt',
+          'updatedAt',
+          'lastMessage',
+          'lastSenderId',
+          'lastMessageId'
+        ])
+        && request.resource.data.keys().hasOnly([
+          'publicationId',
+          'publicationTitle',
+          'publicationImageUrl',
+          'publicationMode',
+          'participantIds',
+          'createdAt',
+          'updatedAt',
+          'lastMessage',
+          'lastSenderId',
+          'lastMessageId'
+        ])
+        && request.resource.data.publicationId is string
+        && request.resource.data.publicationTitle == publication.title
+        && request.resource.data.publicationMode == publication.mode
+        && request.resource.data.publicationImageUrl
+          == publication.images[0]
+        && participants is list
+        && participants.size() == 2
+        && participants[0] != participants[1]
+        && request.auth.uid in participants
+        && publication.authorId in participants
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time
+        && request.resource.data.lastMessage == ''
+        && request.resource.data.lastSenderId == null
+        && request.resource.data.lastMessageId == null;
+    }
+
+    function validMessageCreate(conversationId, messageId) {
+      let conversation = getAfter(
+        /databases/$(database)/documents/conversaciones/$(conversationId)
+      ).data;
+      return request.resource.data.keys().hasAll([
+          'conversationId',
+          'publicationId',
+          'senderId',
+          'body',
+          'queuedAt',
+          'sentAt'
+        ])
+        && request.resource.data.keys().hasOnly([
+          'conversationId',
+          'publicationId',
+          'senderId',
+          'body',
+          'queuedAt',
+          'sentAt'
+        ])
+        && request.auth.uid in conversation.participantIds
+        && request.resource.data.senderId == request.auth.uid
+        && request.resource.data.conversationId == conversationId
+        && request.resource.data.publicationId == conversation.publicationId
+        && conversation.lastMessageId == messageId
+        && conversation.lastSenderId == request.auth.uid
+        && conversation.lastMessage == request.resource.data.body
+        && conversation.updatedAt == request.time
+        && request.resource.data.body is string
+        && request.resource.data.body.size() > 0
+        && request.resource.data.body.size() <= 1000
+        && request.resource.data.queuedAt is timestamp
+        && request.resource.data.queuedAt <= request.time
+        && request.resource.data.sentAt == request.time;
+    }
+
+    function validConversationMessageUpdate(conversationId) {
+      let message = getAfter(
+        /databases/$(database)/documents/conversaciones/$(conversationId)
+          /mensajes/$(request.resource.data.lastMessageId)
+      ).data;
+      return request.auth.uid in resource.data.participantIds
+        && request.resource.data.participantIds == resource.data.participantIds
+        && request.resource.data.updatedAt == request.time
+        && request.resource.data.lastSenderId == request.auth.uid
+        && request.resource.data.lastMessage == message.body
+        && message.senderId == request.auth.uid
+        && message.conversationId == conversationId
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'updatedAt', 'lastMessage', 'lastSenderId', 'lastMessageId'
+        ]);
+    }
+
     function proposalAfter(proposalId) {
       return getAfter(
         /databases/$(database)/documents/propuestasIntercambio/$(proposalId)
@@ -305,7 +518,6 @@ service cloud.firestore {
           'recipientId',
           'type',
           'message',
-          'proposalId',
           'publicationId',
           'createdAt',
           'read'
@@ -316,6 +528,9 @@ service cloud.firestore {
           'message',
           'proposalId',
           'publicationId',
+          'conversationId',
+          'messageId',
+          'actorId',
           'createdAt',
           'read'
         ])
@@ -326,12 +541,16 @@ service cloud.firestore {
           'propuesta_rechazada',
           'propuesta_aceptada',
           'confirmacion_intercambio_pendiente',
-          'intercambio_confirmado'
+          'intercambio_confirmado',
+          'nuevo_mensaje',
+          'recojo_asumido',
+          'compromiso_liberado',
+          'entrega_a_voluntario',
+          'entrega_destinatario'
         ]
         && request.resource.data.message is string
         && request.resource.data.message.size() > 0
         && request.resource.data.message.size() <= 500
-        && request.resource.data.proposalId is string
         && request.resource.data.publicationId is string
         && request.resource.data.createdAt == request.time
         && request.resource.data.read == false;
@@ -418,6 +637,75 @@ service cloud.firestore {
         );
     }
 
+    function validMessageNotification() {
+      let conversationId = request.resource.data.conversationId;
+      let messageId = request.resource.data.messageId;
+      let conversation = getAfter(
+        /databases/$(database)/documents/conversaciones/$(conversationId)
+      ).data;
+      let message = getAfter(
+        /databases/$(database)/documents/conversaciones/$(conversationId)
+          /mensajes/$(messageId)
+      ).data;
+      return request.resource.data.type == 'nuevo_mensaje'
+        && request.auth.uid in conversation.participantIds
+        && request.resource.data.recipientId in conversation.participantIds
+        && request.resource.data.recipientId != request.auth.uid
+        && request.resource.data.publicationId == conversation.publicationId
+        && message.senderId == request.auth.uid
+        && message.conversationId == conversationId
+        && message.publicationId == conversation.publicationId
+        && message.sentAt == request.time;
+    }
+
+    function validDeliveryNotification() {
+      let publicationId = request.resource.data.publicationId;
+      let before = publicationBefore(publicationId);
+      let after = publicationAfter(publicationId);
+      let actor = request.auth.uid;
+      let recipient = request.resource.data.recipientId;
+      let assumed = request.resource.data.type == 'recojo_asumido'
+        && before.status == 'publicada'
+        && after.status == 'comprometida'
+        && after.volunteerId == actor
+        && actor != before.authorId
+        && recipient == before.authorId;
+      let released = request.resource.data.type == 'compromiso_liberado'
+        && before.status == 'comprometida'
+        && after.status == 'publicada'
+        && actor in [before.authorId, before.volunteerId]
+        && recipient in [before.authorId, before.volunteerId]
+        && recipient != actor
+        && !('volunteerId' in after);
+      let pickedUp = request.resource.data.type == 'entrega_a_voluntario'
+        && before.status == 'comprometida'
+        && after.status == 'recogida'
+        && actor == before.authorId
+        && recipient == before.volunteerId;
+      let delivered = request.resource.data.type == 'entrega_destinatario'
+        && before.status == 'recogida'
+        && after.status == 'entregada'
+        && actor == before.volunteerId
+        && recipient == before.authorId;
+      return request.resource.data.actorId == actor
+        && before.mode == 'donacion'
+        && (assumed || released || pickedUp || delivered);
+    }
+
+    function validNotificationOrigin() {
+      return request.resource.data.type in [
+          'propuesta_intercambio',
+          'propuesta_rechazada',
+          'propuesta_aceptada',
+          'confirmacion_intercambio_pendiente',
+          'intercambio_confirmado'
+        ]
+        ? validNotificationForProposal()
+        : request.resource.data.type == 'nuevo_mensaje'
+          ? validMessageNotification()
+          : validDeliveryNotification();
+    }
+
     match /usuarios/{userId} {
       allow read: if signedIn();
       allow create: if signedIn()
@@ -457,8 +745,28 @@ service cloud.firestore {
           'exchangeProposalId' in request.resource.data
           && validExchangePublicationTransition(publicationId)
         )
+        || validDonationPublicationTransition(publicationId)
       );
       allow delete: if false;
+    }
+
+    match /conversaciones/{conversationId} {
+      allow read: if signedIn()
+        && request.auth.uid in resource.data.participantIds;
+      allow create: if signedIn() && validConversationCreate();
+      allow update: if signedIn()
+        && validConversationMessageUpdate(conversationId);
+      allow delete: if false;
+
+      match /mensajes/{messageId} {
+        allow read: if signedIn()
+          && request.auth.uid in get(
+            /databases/$(database)/documents/conversaciones/$(conversationId)
+          ).data.participantIds;
+        allow create: if signedIn()
+          && validMessageCreate(conversationId, messageId);
+        allow update, delete: if false;
+      }
     }
 
     match /propuestasIntercambio/{proposalId} {
@@ -544,7 +852,7 @@ service cloud.firestore {
         && resource.data.recipientId == request.auth.uid;
       allow create: if signedIn()
         && validNotificationSchema()
-        && validNotificationForProposal();
+        && validNotificationOrigin();
       allow update: if signedIn()
         && resource.data.recipientId == request.auth.uid
         && resource.data.read == false

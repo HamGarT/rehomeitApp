@@ -4,6 +4,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../auth/data/auth_exception.dart';
 import '../../auth/presentation/auth_controller.dart';
+import '../../delivery/presentation/delivery_controller.dart';
+import '../../explore/presentation/publication_detail_page.dart';
+import '../../../shared/widgets/publication_image.dart';
+import '../../../shared/domain/publication.dart';
 
 class ProfilePage extends ConsumerStatefulWidget {
   const ProfilePage({super.key});
@@ -123,6 +127,61 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                 ),
               ),
             ),
+            const SizedBox(height: 28),
+            Text(
+              'Mis compromisos de recojo',
+              style: texts.titleMedium?.copyWith(
+                fontWeight: FontWeight.w600,
+                color: AppColors.textPrimary,
+              ),
+            ),
+            const SizedBox(height: 12),
+            if (user != null)
+              ref
+                  .watch(volunteerCommitmentsProvider(user.uid))
+                  .when(
+                    loading: () => const LinearProgressIndicator(),
+                    error: (error, stackTrace) => const Text(
+                      'No se pudieron cargar tus compromisos.',
+                      style: TextStyle(color: AppColors.textSecondary),
+                    ),
+                    data: (publications) => publications.isEmpty
+                        ? const Text(
+                            'No tienes recojos pendientes.',
+                            style: TextStyle(color: AppColors.textSecondary),
+                          )
+                        : Column(
+                            children: [
+                              for (final publication in publications)
+                                Card(
+                                  margin: const EdgeInsets.only(bottom: 10),
+                                  child: ListTile(
+                                    leading: ClipRRect(
+                                      borderRadius: BorderRadius.circular(8),
+                                      child: SizedBox.square(
+                                        dimension: 48,
+                                        child: PublicationImage(
+                                          url: publication.images.isEmpty
+                                              ? null
+                                              : publication.images.first,
+                                        ),
+                                      ),
+                                    ),
+                                    title: Text(publication.title),
+                                    subtitle: Text(publication.status.label),
+                                    trailing: const Icon(Icons.chevron_right),
+                                    onTap: () => Navigator.of(context).push(
+                                      MaterialPageRoute(
+                                        builder: (_) => PublicationDetailPage(
+                                          initial: publication,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                  ),
             const SizedBox(height: 28),
             Text(
               'Sesión',
