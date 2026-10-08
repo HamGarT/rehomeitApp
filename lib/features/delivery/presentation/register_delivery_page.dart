@@ -7,6 +7,8 @@ import 'package:image_picker/image_picker.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/cajamarca_districts.dart';
 import '../../../shared/domain/publication.dart';
+import '../../../shared/widgets/app_snack_bar.dart';
+import '../../../shared/widgets/button_spinner.dart';
 import '../../auth/presentation/auth_controller.dart';
 import '../domain/delivery_draft.dart';
 import 'delivery_controller.dart';
@@ -90,10 +92,7 @@ class _RegisterDeliveryPageState extends ConsumerState<RegisterDeliveryPage> {
             FilledButton.icon(
               onPressed: busy ? null : _submit,
               icon: busy
-                  ? const SizedBox.square(
-                      dimension: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
+                  ? const ButtonSpinner()
                   : const Icon(Icons.check_circle_outline),
               label: Text(
                 widget.publication.deliveryType == DeliveryType.owner
@@ -141,7 +140,11 @@ class _RegisterDeliveryPageState extends ConsumerState<RegisterDeliveryPage> {
   Future<void> _submit() async {
     final userId = ref.read(authStateProvider).value?.uid;
     if (userId == null) {
-      _show('Inicia sesión para registrar la entrega.', error: true);
+      showAppSnackBar(
+        context,
+        'Inicia sesión para registrar la entrega.',
+        kind: AppSnackBarKind.error,
+      );
       return;
     }
     final draft = DeliveryDraft(
@@ -151,7 +154,7 @@ class _RegisterDeliveryPageState extends ConsumerState<RegisterDeliveryPage> {
     );
     final validation = draft.validate();
     if (validation != null) {
-      _show(validation, error: true);
+      showAppSnackBar(context, validation, kind: AppSnackBarKind.error);
       return;
     }
     final response = await ref
@@ -163,7 +166,7 @@ class _RegisterDeliveryPageState extends ConsumerState<RegisterDeliveryPage> {
         );
     if (!mounted) return;
     if (response.error != null) {
-      _show(response.error!, error: true);
+      showAppSnackBar(context, response.error!, kind: AppSnackBarKind.error);
       return;
     }
     final pending = response.result == DeliverySubmissionResult.pending;
@@ -179,17 +182,6 @@ class _RegisterDeliveryPageState extends ConsumerState<RegisterDeliveryPage> {
         backgroundColor: pending ? AppColors.warning : AppColors.success,
       ),
     );
-  }
-
-  void _show(String message, {required bool error}) {
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          content: Text(message),
-          backgroundColor: error ? AppColors.error : AppColors.success,
-        ),
-      );
   }
 }
 

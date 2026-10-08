@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../../core/constants/app_colors.dart';
 import '../../../../shared/domain/publication.dart';
+import '../../../../shared/widgets/app_badge.dart';
 
 class PublicationModeBadge extends StatelessWidget {
   const PublicationModeBadge({super.key, required this.mode});
@@ -11,21 +12,12 @@ class PublicationModeBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isDonation = mode == PublicationMode.donation;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-      decoration: BoxDecoration(
-        color: isDonation ? AppColors.success : AppColors.accent,
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Text(
-        mode.label,
-        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-          // El relleno es amarillo o verde, brillante en los dos modos: el
-          // texto va siempre oscuro encima.
-          color: AppColors.onAccent,
-          fontWeight: FontWeight.w500,
-        ),
-      ),
+    return AppBadge(
+      label: mode.label,
+      background: isDonation ? AppColors.success : AppColors.accent,
+      // El relleno es amarillo o verde, brillante en los dos modos: el texto va
+      // siempre oscuro encima.
+      foreground: AppColors.onAccent,
     );
   }
 }

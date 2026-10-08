@@ -6,6 +6,8 @@ import '../../../app/theme_mode_notifier.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../shared/domain/publication.dart';
 import '../../../shared/widgets/app_dialog.dart';
+import '../../../shared/widgets/app_snack_bar.dart';
+import '../../../shared/widgets/button_spinner.dart';
 import '../../../shared/widgets/mascot.dart';
 import '../../auth/data/auth_exception.dart';
 import '../../auth/presentation/auth_controller.dart';
@@ -47,24 +49,16 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
     try {
       await ref.read(authControllerProvider.notifier).signOut();
     } catch (error) {
-      if (mounted) _showError(friendlyAuthError(error));
+      if (mounted) {
+        showAppSnackBar(
+          context,
+          friendlyAuthError(error),
+          kind: AppSnackBarKind.error,
+        );
+      }
     } finally {
       if (mounted) setState(() => _signingOut = false);
     }
-  }
-
-  void _showError(String message) {
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          content: Text(
-            message.isEmpty ? 'Algo salió mal. Inténtalo de nuevo.' : message,
-          ),
-          behavior: SnackBarBehavior.floating,
-          backgroundColor: AppColors.error,
-        ),
-      );
   }
 
   void _refresh() => ref.invalidate(profilePublicationsProvider);
@@ -128,13 +122,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
                   minimumSize: const Size.fromHeight(52),
                 ),
                 icon: _signingOut
-                    ? const SizedBox.square(
-                        dimension: 18,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: AppColors.error,
-                        ),
-                      )
+                    ? const ButtonSpinner(color: AppColors.error)
                     : const Icon(Icons.logout),
                 label: const Text('Cerrar sesión'),
               ),

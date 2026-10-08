@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../../core/constants/app_colors.dart';
 import '../../../../app/theme.dart';
+import '../../../../shared/widgets/button_spinner.dart';
 import '../../../../shared/widgets/mascot.dart';
 
 /// Color de fondo compartido con el onboarding.
@@ -251,13 +252,7 @@ class AuthPrimaryButton extends StatelessWidget {
         disabledForegroundColor: AppColors.primary.withValues(alpha: 0.6),
       ),
       child: loading
-          ? const SizedBox.square(
-              dimension: 20,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                color: AppColors.primary,
-              ),
-            )
+          ? const ButtonSpinner(color: AppColors.primary)
           : Text(
               label,
               style: const TextStyle(
@@ -294,13 +289,7 @@ class GoogleSignInButton extends StatelessWidget {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
       ),
       child: loading
-          ? const SizedBox.square(
-              dimension: 20,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                color: AppColors.primary,
-              ),
-            )
+          ? const ButtonSpinner(color: AppColors.primary)
           : Row(
               mainAxisSize: MainAxisSize.min,
               children: [

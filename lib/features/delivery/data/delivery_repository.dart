@@ -5,6 +5,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/firebase/firebase_errors.dart';
+import '../../../core/firebase/firestore_commit.dart';
+import '../../../shared/data/notification_payload.dart';
 import '../../../shared/domain/publication.dart';
 import '../../messaging/data/messaging_repository.dart';
 import '../domain/delivery_draft.dart';
@@ -103,15 +106,16 @@ class DeliveryRepository {
             'lastMessageId': null,
           });
         }
-        transaction.set(_firestore.collection('notificaciones').doc(), {
-          'recipientId': current.authorId,
-          'type': 'recojo_asumido',
-          'message': 'Un usuario asumió el recojo de ${current.title}.',
-          'publicationId': current.id,
-          'actorId': volunteerId,
-          'createdAt': FieldValue.serverTimestamp(),
-          'read': false,
-        });
+        transaction.set(
+          _firestore.collection('notificaciones').doc(),
+          notificationPayload(
+            recipientId: current.authorId,
+            type: 'recojo_asumido',
+            message: 'Un usuario asumió el recojo de ${current.title}.',
+            publicationId: current.id,
+            actorId: volunteerId,
+          ),
+        );
       });
     } on DeliveryFailure {
       rethrow;
@@ -140,22 +144,20 @@ class DeliveryRepository {
       'volunteerId': FieldValue.delete(),
       'committedAt': FieldValue.delete(),
     });
-    batch.set(_firestore.collection('notificaciones').doc(), {
-      'recipientId': recipientId,
-      'type': 'compromiso_liberado',
-      'message': isOwner
-          ? 'El donante canceló el compromiso de ${publication.title}; el bien volvió a estar disponible.'
-          : 'El voluntario desistió del recojo de ${publication.title}; el bien volvió a estar disponible.',
-      'publicationId': publication.id,
-      'actorId': actorId,
-      'createdAt': FieldValue.serverTimestamp(),
-      'read': false,
-    });
+    batch.set(
+      _firestore.collection('notificaciones').doc(),
+      notificationPayload(
+        recipientId: recipientId,
+        type: 'compromiso_liberado',
+        message: isOwner
+            ? 'El donante canceló el compromiso de ${publication.title}; el bien volvió a estar disponible.'
+            : 'El voluntario desistió del recojo de ${publication.title}; el bien volvió a estar disponible.',
+        publicationId: publication.id,
+        actorId: actorId,
+      ),
+    );
     try {
-      await batch.commit().timeout(const Duration(seconds: 8));
-    } on TimeoutException {
-      // Firestore conserva el lote local y lo sincroniza al volver la conexión.
-      return;
+      await commitOfflineTolerant(batch);
     } on FirebaseException catch (error) {
       throw DeliveryFailure(_friendlyFirebaseMessage(error));
     }
@@ -179,44 +181,21 @@ class DeliveryRepository {
       'statusDates.${PublicationStatus.pickedUp.wireValue}':
           FieldValue.serverTimestamp(),
     });
+    // Id fijo: si el lote se reintenta sin conexión no se duplica el aviso.
     batch.set(
       _firestore
           .collection('notificaciones')
           .doc('entrega_voluntario_${publication.id}'),
-      {
-        'recipientId': volunteerId,
-        'type': 'entrega_a_voluntario',
-        'message': 'El donante confirmó la entrega de ${publication.title}.',
-        'publicationId': publication.id,
-        'actorId': ownerId,
-        'createdAt': FieldValue.serverTimestamp(),
-        'read': false,
-      },
+      notificationPayload(
+        recipientId: volunteerId,
+        type: 'entrega_a_voluntario',
+        message: 'El donante confirmó la entrega de ${publication.title}.',
+        publicationId: publication.id,
+        actorId: ownerId,
+      ),
     );
     try {
-      await batch.commit().timeout(const Duration(seconds: 8));
-    } on TimeoutException {
-      // Firestore conserva el lote local y lo sincroniza al volver la conexión.
-      return;
-    } on FirebaseException catch (error) {
-      throw DeliveryFailure(_friendlyFirebaseMessage(error));
-    }
-  }
-
-  Future<void> cancelPublication({
-    required Publication publication,
-    required String ownerId,
-  }) async {
-    if (publication.authorId != ownerId ||
-        publication.status != PublicationStatus.published) {
-      throw const DeliveryFailure(
-        'Solo puedes anular una publicación propia sin compromiso activo.',
-      );
-    }
-    try {
-      await _firestore.collection('publicaciones').doc(publication.id).update({
-        'status': PublicationStatus.cancelled.wireValue,
-      });
+      await commitOfflineTolerant(batch);
     } on FirebaseException catch (error) {
       throw DeliveryFailure(_friendlyFirebaseMessage(error));
     }
@@ -255,7 +234,9 @@ class DeliveryRepository {
       await _synchronize(pending);
       return DeliverySubmissionResult.synchronized;
     } on FirebaseException catch (error) {
-      if (_isRetryable(error)) return DeliverySubmissionResult.pending;
+      if (isOfflineFirebaseError(error)) {
+        return DeliverySubmissionResult.pending;
+      }
       throw DeliveryFailure(_friendlyFirebaseMessage(error));
     } on TimeoutException {
       return DeliverySubmissionResult.pending;
@@ -352,15 +333,13 @@ class DeliveryRepository {
         _firestore
             .collection('notificaciones')
             .doc('entrega_destinatario_${pending.publicationId}'),
-        {
-          'recipientId': authorId,
-          'type': 'entrega_destinatario',
-          'message': 'La entrega al destinatario fue registrada. Podrás confirmar el cierre cuando esa opción esté habilitada.',
-          'publicationId': pending.publicationId,
-          'actorId': pending.userId,
-          'createdAt': FieldValue.serverTimestamp(),
-          'read': false,
-        },
+        notificationPayload(
+          recipientId: authorId,
+          type: 'entrega_destinatario',
+          message: 'La entrega al destinatario fue registrada. Podrás confirmar el cierre cuando esa opción esté habilitada.',
+          publicationId: pending.publicationId,
+          actorId: pending.userId,
+        ),
       );
     }
     await batch.commit();
@@ -374,17 +353,11 @@ class DeliveryFailure implements Exception {
   final String message;
 }
 
-bool _isRetryable(FirebaseException error) =>
-    error.code == 'unavailable' ||
-    error.code == 'network-request-failed' ||
-    error.code == 'retry-limit-exceeded' ||
-    error.code == 'unknown';
-
 String _friendlyFirebaseMessage(FirebaseException error) {
-  if (_isRetryable(error)) {
+  if (isOfflineFirebaseError(error)) {
     return 'Sin conexión. La operación se conservará para reintentarse.';
   }
-  if (error.code == 'permission-denied' || error.code == 'unauthorized') {
+  if (isPermissionFirebaseError(error)) {
     return 'La operación no está permitida para el estado actual del bien.';
   }
   return 'No se pudo completar la operación (${error.code}).';

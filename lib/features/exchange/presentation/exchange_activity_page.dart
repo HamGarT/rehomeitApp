@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../core/constants/app_colors.dart';
 import '../../../app/theme.dart';
+import '../../../core/constants/app_colors.dart';
+import '../../../core/utils/date_format.dart';
 import '../../../shared/domain/publication.dart';
+import '../../../shared/widgets/app_badge.dart';
+import '../../../shared/widgets/app_snack_bar.dart';
 import '../../../shared/widgets/publication_image.dart';
 import '../../auth/presentation/auth_controller.dart';
 import '../domain/exchange_proposal.dart';
@@ -75,7 +78,7 @@ class _ProposalCard extends ConsumerWidget {
                         ?.copyWith(fontWeight: FontWeight.w700),
                   ),
                 ),
-                _StatusBadge(
+                _ProposalStatusBadge(
                   label: proposal.status == ExchangeProposalStatus.accepted
                       ? effectiveStatus.label
                       : proposal.status.label,
@@ -107,24 +110,24 @@ class _ProposalCard extends ConsumerWidget {
             ),
             const SizedBox(height: 12),
             Text(
-              'Propuesta: ${_formatDate(proposal.proposedAt)}',
+              'Propuesta: ${formatDateTime(proposal.proposedAt)}',
               style: Theme.of(context).textTheme.bodySmall
                   ?.copyWith(color: context.appColors.textSecondary),
             ),
             if (proposal.respondedAt != null)
               Text(
-                'Respuesta: ${_formatDate(proposal.respondedAt!)}',
+                'Respuesta: ${formatDateTime(proposal.respondedAt!)}',
                 style: Theme.of(context).textTheme.bodySmall
                     ?.copyWith(color: context.appColors.textSecondary),
               ),
             if (proposal.requestedOwnerConfirmedAt != null)
               Text(
-                'Confirmación del propietario solicitado: ${_formatDate(proposal.requestedOwnerConfirmedAt!)}',
+                'Confirmación del propietario solicitado: ${formatDateTime(proposal.requestedOwnerConfirmedAt!)}',
                 style: Theme.of(context).textTheme.bodySmall,
               ),
             if (proposal.offeredOwnerConfirmedAt != null)
               Text(
-                'Confirmación del proponente: ${_formatDate(proposal.offeredOwnerConfirmedAt!)}',
+                'Confirmación del proponente: ${formatDateTime(proposal.offeredOwnerConfirmedAt!)}',
                 style: Theme.of(context).textTheme.bodySmall,
               ),
             if (incoming &&
@@ -208,10 +211,10 @@ class _ProposalCard extends ConsumerWidget {
         .read(exchangeControllerProvider.notifier)
         .respond(proposalId: proposal.id, ownerId: userId, accept: accept);
     if (!context.mounted) return;
-    _showResult(
+    showAppSnackBar(
       context,
       error ?? (accept ? 'Propuesta aceptada' : 'Propuesta rechazada'),
-      isError: error != null,
+      kind: error != null ? AppSnackBarKind.error : AppSnackBarKind.success,
     );
   }
 
@@ -241,26 +244,11 @@ class _ProposalCard extends ConsumerWidget {
         .read(exchangeControllerProvider.notifier)
         .confirmReceipt(proposalId: proposal.id, userId: userId);
     if (!context.mounted) return;
-    _showResult(
+    showAppSnackBar(
       context,
       error ?? 'Recepción confirmada',
-      isError: error != null,
+      kind: error != null ? AppSnackBarKind.error : AppSnackBarKind.success,
     );
-  }
-
-  void _showResult(
-    BuildContext context,
-    String message, {
-    required bool isError,
-  }) {
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          content: Text(message),
-          backgroundColor: isError ? AppColors.error : AppColors.success,
-        ),
-      );
   }
 }
 
@@ -305,28 +293,19 @@ class _ProposalItem extends StatelessWidget {
   }
 }
 
-class _StatusBadge extends StatelessWidget {
-  const _StatusBadge({required this.label, required this.positive});
+class _ProposalStatusBadge extends StatelessWidget {
+  const _ProposalStatusBadge({required this.label, required this.positive});
 
   final String label;
   final bool positive;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-      decoration: BoxDecoration(
-        color: (positive ? context.appColors.primary : AppColors.accent)
-            .withValues(alpha: 0.18),
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Text(
-        label,
-        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-          color: positive ? context.appColors.primary : AppColors.warning,
-          fontWeight: FontWeight.w700,
-        ),
-      ),
+    final accent = positive ? context.appColors.primary : AppColors.accent;
+    return AppBadge(
+      label: label,
+      background: accent.withValues(alpha: 0.18),
+      foreground: positive ? context.appColors.primary : AppColors.warning,
     );
   }
 }
@@ -374,11 +353,4 @@ class _ExchangeError extends StatelessWidget {
       ),
     );
   }
-}
-
-String _formatDate(DateTime date) {
-  final local = date.toLocal();
-  String two(int value) => value.toString().padLeft(2, '0');
-  return '${two(local.day)}/${two(local.month)}/${local.year} '
-      '${two(local.hour)}:${two(local.minute)}';
 }

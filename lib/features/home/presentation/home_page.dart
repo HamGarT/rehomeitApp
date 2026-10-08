@@ -5,6 +5,7 @@ import 'dart:math' as math;
 
 import '../../../app/theme.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../core/utils/date_format.dart';
 import '../../../shared/domain/publication.dart';
 import '../../../shared/widgets/mascot.dart';
 import '../../../shared/widgets/publication_image.dart';
@@ -25,26 +26,6 @@ void _startPublishing(WidgetRef ref) {
   ref.read(publishDraftProvider.notifier).reset();
   Navigator.of(ref.context)
       .push(MaterialPageRoute(builder: (_) => const PhotosStep()));
-}
-
-/// Marca de tiempo en español: "Hace 55 min", "Hace 1 día".
-String _timeAgo(DateTime publishedAt) {
-  final elapsed = DateTime.now().toUtc().difference(publishedAt.toUtc());
-  if (elapsed.inMinutes < 1) return 'Hace un momento';
-  if (elapsed.inMinutes < 60) {
-    final m = elapsed.inMinutes;
-    return 'Hace $m min';
-  }
-  if (elapsed.inHours < 24) {
-    final h = elapsed.inHours;
-    return 'Hace $h ${h == 1 ? 'hora' : 'horas'}';
-  }
-  if (elapsed.inDays < 7) {
-    final d = elapsed.inDays;
-    return 'Hace $d ${d == 1 ? 'día' : 'días'}';
-  }
-  final s = (elapsed.inDays / 7).floor();
-  return 'Hace $s ${s == 1 ? 'semana' : 'semanas'}';
 }
 
 /// Normaliza un texto a hashtag: minúsculas, sin tildes ni signos y sin
@@ -411,7 +392,7 @@ class _FeedPost extends ConsumerWidget {
         Padding(
           padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
           child: Text(
-            _timeAgo(publication.publishedAt),
+            timeAgo(publication.publishedAt),
             style: Theme.of(context).textTheme.labelSmall
                 ?.copyWith(color: palette.textSecondary),
           ),

@@ -42,14 +42,6 @@ class DeliveryController extends Notifier<AsyncValue<void>> {
     );
   }
 
-  Future<String?> cancelPublication(Publication publication, String ownerId) {
-    return _run(
-      () => ref
-          .read(deliveryRepositoryProvider)
-          .cancelPublication(publication: publication, ownerId: ownerId),
-    );
-  }
-
   Future<({String? error, DeliverySubmissionResult? result})> register({
     required Publication publication,
     required String userId,

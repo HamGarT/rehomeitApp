@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../../../core/utils/firestore_dates.dart';
 import '../../../shared/domain/publication.dart';
 
 enum ExchangeProposalStatus { pending, accepted, rejected }
@@ -65,14 +66,8 @@ class ExchangeProposal {
     final firstConfirmation = firstConfirmationAt;
     if (firstConfirmation == null) return PublicationStatus.committed;
 
-    final elapsed = now.toUtc().difference(firstConfirmation.toUtc());
-    if (elapsed >= const Duration(hours: 72)) {
-      return PublicationStatus.closedWithoutConfirmation;
-    }
-    if (elapsed >= const Duration(hours: 48)) {
-      return PublicationStatus.pendingConfirmation;
-    }
-    return PublicationStatus.delivered;
+    return Publication.statusAfterDelivery(firstConfirmation, now) ??
+        PublicationStatus.delivered;
   }
 
   Map<String, Object?> toMap() => {
@@ -112,11 +107,15 @@ class ExchangeProposal {
       offeredImageUrl: map['offeredImageUrl'] as String?,
       status: ExchangeProposalStatusWire.fromValue(map['status'] as String?),
       proposedAt:
-          _readDate(map['proposedAt']) ??
+          readFirestoreDate(map['proposedAt']) ??
           DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
-      respondedAt: _readDate(map['respondedAt']),
-      requestedOwnerConfirmedAt: _readDate(map['requestedOwnerConfirmedAt']),
-      offeredOwnerConfirmedAt: _readDate(map['offeredOwnerConfirmedAt']),
+      respondedAt: readFirestoreDate(map['respondedAt']),
+      requestedOwnerConfirmedAt: readFirestoreDate(
+        map['requestedOwnerConfirmedAt'],
+      ),
+      offeredOwnerConfirmedAt: readFirestoreDate(
+        map['offeredOwnerConfirmedAt'],
+      ),
     );
   }
 }
@@ -140,10 +139,4 @@ extension ExchangeProposalStatusWire on ExchangeProposalStatus {
     'rechazada' => ExchangeProposalStatus.rejected,
     _ => throw FormatException('Estado de propuesta inválido: $value'),
   };
-}
-
-DateTime? _readDate(Object? value) {
-  if (value is Timestamp) return value.toDate();
-  if (value is DateTime) return value;
-  return null;
 }

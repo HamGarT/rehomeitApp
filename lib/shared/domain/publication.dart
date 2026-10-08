@@ -1,5 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../../core/utils/firestore_dates.dart';
+
 enum PublicationMode { donation, exchange }
 
 enum DeliveryType { owner, volunteer }
@@ -94,20 +96,36 @@ class Publication {
   final DateTime? deliveredAt;
   final DeliveryEvidence? deliveryEvidence;
 
+  /// Plazos de HU07-18, HU07-19, HU13-12 y HU13-13 desde la entrega: pasado el
+  /// primero la confirmación se muestra como pendiente; pasado el segundo la
+  /// operación se cierra sin confirmación. Se derivan al consultar (D02), nunca
+  /// se escriben.
+  static const pendingConfirmationAfter = Duration(hours: 48);
+  static const closeWithoutConfirmationAfter = Duration(hours: 72);
+
   bool get isAvailable => status == PublicationStatus.published;
 
   PublicationStatus effectiveStatus(DateTime now) {
     if (status != PublicationStatus.delivered) return status;
     final deliveredAt = statusDates[PublicationStatus.delivered];
     if (deliveredAt == null) return status;
+    return statusAfterDelivery(deliveredAt, now) ?? status;
+  }
+
+  /// Estado derivado del tiempo transcurrido desde [deliveredAt], o `null` si
+  /// todavía no venció ningún plazo. Lo comparten donaciones e intercambios.
+  static PublicationStatus? statusAfterDelivery(
+    DateTime deliveredAt,
+    DateTime now,
+  ) {
     final elapsed = now.toUtc().difference(deliveredAt.toUtc());
-    if (elapsed >= const Duration(hours: 72)) {
+    if (elapsed >= closeWithoutConfirmationAfter) {
       return PublicationStatus.closedWithoutConfirmation;
     }
-    if (elapsed >= const Duration(hours: 48)) {
+    if (elapsed >= pendingConfirmationAfter) {
       return PublicationStatus.pendingConfirmation;
     }
-    return status;
+    return null;
   }
 
   Map<String, Object?> toMap() => {
@@ -157,16 +175,16 @@ class Publication {
           .whereType<String>()
           .toList(growable: false),
       publishedAt:
-          _readDate(map['publishedAt']) ??
+          readFirestoreDate(map['publishedAt']) ??
           DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
       statusDates: _readStatusDates(map['statusDates']),
       exchangeProposalId: map['exchangeProposalId'] as String?,
       counterpartPublicationId: map['counterpartPublicationId'] as String?,
       counterpartUserId: map['counterpartUserId'] as String?,
-      committedAt: _readDate(map['committedAt']),
+      committedAt: readFirestoreDate(map['committedAt']),
       volunteerId: map['volunteerId'] as String?,
-      pickedUpAt: _readDate(map['pickedUpAt']),
-      deliveredAt: _readDate(map['deliveredAt']),
+      pickedUpAt: readFirestoreDate(map['pickedUpAt']),
+      deliveredAt: readFirestoreDate(map['deliveredAt']),
       deliveryEvidence: map['deliveryEvidence'] is Map
           ? DeliveryEvidence.fromMap(
               (map['deliveryEvidence'] as Map).map(
@@ -193,7 +211,7 @@ class Publication {
     if (raw is! Map) return const {};
     final result = <PublicationStatus, DateTime>{};
     for (final entry in raw.entries) {
-      final date = _readDate(entry.value);
+      final date = readFirestoreDate(entry.value);
       if (date == null) continue;
       try {
         result[PublicationStatusWire.fromValue(entry.key.toString())] = date;
@@ -231,7 +249,7 @@ class DeliveryEvidence {
       district: map['district'] as String? ?? '',
       storagePath: map['storagePath'] as String? ?? '',
       recordedAt:
-          _readDate(map['recordedAt']) ??
+          readFirestoreDate(map['recordedAt']) ??
           DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
     );
   }
@@ -311,10 +329,4 @@ extension PublicationStatusWire on PublicationStatus {
     'retirada' => PublicationStatus.removed,
     _ => throw FormatException('Estado de publicación inválido: $value'),
   };
-}
-
-DateTime? _readDate(Object? value) {
-  if (value is Timestamp) return value.toDate();
-  if (value is DateTime) return value;
-  return null;
 }

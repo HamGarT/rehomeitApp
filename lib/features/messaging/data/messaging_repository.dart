@@ -3,6 +3,9 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/firebase/firebase_errors.dart';
+import '../../../core/firebase/firestore_commit.dart';
+import '../../../shared/data/notification_payload.dart';
 import '../../../shared/domain/publication.dart';
 import '../domain/conversation.dart';
 
@@ -183,23 +186,21 @@ class MessagingRepository {
       'lastMessageId': messageRef.id,
       'updatedAt': FieldValue.serverTimestamp(),
     });
-    batch.set(notificationRef, {
-      'recipientId': recipientId,
-      'type': 'nuevo_mensaje',
-      'message':
-          'Tienes un nuevo mensaje sobre ${conversation.publicationTitle}.',
-      'publicationId': conversation.publicationId,
-      'conversationId': conversation.id,
-      'messageId': messageRef.id,
-      'createdAt': FieldValue.serverTimestamp(),
-      'read': false,
-    });
+    batch.set(
+      notificationRef,
+      notificationPayload(
+        recipientId: recipientId,
+        type: 'nuevo_mensaje',
+        message:
+            'Tienes un nuevo mensaje sobre ${conversation.publicationTitle}.',
+        publicationId: conversation.publicationId,
+        conversationId: conversation.id,
+        messageId: messageRef.id,
+      ),
+    );
 
     try {
-      await batch.commit().timeout(const Duration(seconds: 8));
-    } on TimeoutException {
-      // Firestore ya conservó el lote local; se enviará al recuperar conexión.
-      return;
+      await commitOfflineTolerant(batch);
     } on FirebaseException catch (error) {
       throw MessagingFailure(_friendlyMessage(error));
     }
@@ -213,10 +214,10 @@ class MessagingFailure implements Exception {
 }
 
 String _friendlyMessage(FirebaseException error) {
-  if (error.code == 'unavailable' || error.code == 'network-request-failed') {
+  if (isOfflineFirebaseError(error)) {
     return 'Sin conexión. El mensaje quedará pendiente y se enviará automáticamente.';
   }
-  if (error.code == 'permission-denied') {
+  if (isPermissionFirebaseError(error)) {
     return 'Tu sesión no permite acceder a esta conversación.';
   }
   return 'No se pudo completar la operación de mensajería.';

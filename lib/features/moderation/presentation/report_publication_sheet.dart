@@ -5,7 +5,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../app/theme.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../shared/domain/publication.dart';
+import '../../../shared/widgets/button_spinner.dart';
 import '../../../shared/widgets/choice_sheet.dart';
+import '../../../shared/widgets/sheet_handle.dart';
 import '../../auth/presentation/auth_controller.dart';
 import '../domain/publication_report.dart';
 import 'report_controller.dart';
@@ -101,16 +103,7 @@ class _ReportPublicationSheetState
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               const SizedBox(height: 10),
-              Center(
-                child: Container(
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: context.appColors.border,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-              ),
+              const SheetHandle(),
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 18, 20, 4),
                 child: Column(
@@ -207,10 +200,7 @@ class _ReportPublicationSheetState
                       ? null
                       : () => _submit(reporterId),
                   child: sending
-                      ? const SizedBox.square(
-                          dimension: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
+                      ? const ButtonSpinner()
                       : const Text('Enviar reporte'),
                 ),
               ),

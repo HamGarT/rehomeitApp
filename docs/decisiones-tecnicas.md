@@ -2,7 +2,7 @@
 
 Decisiones que condicionan la implementación y que no se deducen leyendo las historias de usuario. Cada una registra el problema que resuelve y lo que implica asumirla.
 
-Última actualización: 23 de setiembre de 2026.
+Última actualización: 7 de octubre de 2026.
 
 ---
 
@@ -123,6 +123,19 @@ El rol permanece en el documento privado y las reglas pueden consultarlo igual, 
 | `notifications` | Transversal, según D01 |
 
 **Consecuencias.** Cada integrante trabaja dentro de su propia carpeta y los conflictos al integrar se reducen al mínimo. A cambio se acepta cierta duplicación entre funcionalidades: cuando algo se necesita en dos o más, se promueve a `core` o a `shared` en lugar de referenciarlo de una carpeta a otra.
+
+Lo ya promovido, para no reescribirlo en una feature nueva:
+
+| Necesidad | Dónde vive |
+|-----------|------------|
+| Fechas: "Hace 5 min", `dd/MM/yyyy HH:mm`, `dd/MM HH:mm`, hora o día | `core/utils/date_format.dart` |
+| Leer un `Timestamp` que puede venir nulo desde la caché | `core/utils/firestore_dates.dart` |
+| Saber si un `FirebaseException` es "sin conexión" o "sin permiso" | `core/firebase/firebase_errors.dart` |
+| Confirmar un lote sin bloquear la interfaz cuando no hay red | `core/firebase/firestore_commit.dart` |
+| Documento de `notificaciones` (D01) | `shared/data/notification_payload.dart` |
+| Diálogo, chip, hoja de selección, asa de hoja, snackbar, spinner de botón, píldora, mascota, imagen de publicación | `shared/widgets/` |
+
+Los mensajes que ve el usuario ante un error siguen en cada repositorio: lo que se comparte es el criterio para clasificar el error, no el texto, porque cada dominio le dice algo distinto.
 
 ---
 

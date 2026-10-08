@@ -1,6 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/firebase/firebase_errors.dart';
+import '../../../shared/data/notification_payload.dart';
 import '../../../shared/domain/publication.dart';
 import '../domain/exchange_proposal.dart';
 
@@ -112,7 +114,7 @@ class ExchangeRepository {
         });
         transaction.set(
           notificationRef,
-          _notification(
+          notificationPayload(
             recipientId: requested.authorId,
             type: 'propuesta_intercambio',
             message: 'Recibiste una propuesta por ${requested.title}.',
@@ -163,7 +165,7 @@ class ExchangeRepository {
           });
           transaction.set(
             _firestore.collection('notificaciones').doc(),
-            _notification(
+            notificationPayload(
               recipientId: proposal.offeredOwnerId,
               type: 'propuesta_rechazada',
               message:
@@ -223,7 +225,7 @@ class ExchangeRepository {
         });
         transaction.set(
           _firestore.collection('notificaciones').doc(),
-          _notification(
+          notificationPayload(
             recipientId: proposal.offeredOwnerId,
             type: 'propuesta_aceptada',
             message:
@@ -306,7 +308,7 @@ class ExchangeRepository {
         );
         transaction.set(
           _firestore.collection('notificaciones').doc(),
-          _notification(
+          notificationPayload(
             recipientId: isRequestedOwner
                 ? proposal.offeredOwnerId
                 : proposal.requestedOwnerId,
@@ -338,24 +340,6 @@ class ExchangeRepository {
   }
 }
 
-Map<String, Object?> _notification({
-  required String recipientId,
-  required String type,
-  required String message,
-  required String proposalId,
-  required String publicationId,
-}) {
-  return {
-    'recipientId': recipientId,
-    'type': type,
-    'message': message,
-    'proposalId': proposalId,
-    'publicationId': publicationId,
-    'createdAt': FieldValue.serverTimestamp(),
-    'read': false,
-  };
-}
-
 class ExchangeFailure implements Exception {
   const ExchangeFailure(this.message);
 
@@ -363,7 +347,7 @@ class ExchangeFailure implements Exception {
 }
 
 String _firebaseMessage(FirebaseException error) {
-  if (error.code == 'unavailable' || error.code == 'network-request-failed') {
+  if (isOfflineFirebaseError(error)) {
     return 'No se pudo completar la operación. Revisa tu conexión.';
   }
   if (error.code == 'failed-precondition' &&

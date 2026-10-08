@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/firebase/firebase_errors.dart';
 import '../../../shared/domain/publication.dart';
 import '../domain/publication_report.dart';
 
@@ -65,15 +66,15 @@ class ReportFailure implements Exception {
 }
 
 String _friendlyReportError(FirebaseException error) {
-  if (error.code == 'unavailable' || error.code == 'network-request-failed') {
+  if (isOfflineFirebaseError(error)) {
     return 'No se pudo enviar el reporte. Revisa tu conexión.';
   }
   if (error.code == 'permission-denied') {
-    // La regla nega el id ya escrito, que es el motivo más probable: la misma
+    // La regla niega el id ya escrito, que es el motivo más probable: la misma
     // persona ya reportó esa publicación.
     return 'No se pudo enviar el reporte. Es posible que ya lo hayas enviado para esta publicación.';
   }
-  if (error.code == 'unauthenticated' || error.code == 'unauthorized') {
+  if (isPermissionFirebaseError(error)) {
     return 'Tu sesión no permite reportar. Vuelve a iniciar sesión.';
   }
   return 'No se pudo enviar el reporte. Inténtalo nuevamente.';

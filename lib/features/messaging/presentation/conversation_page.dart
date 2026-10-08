@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/constants/app_colors.dart';
+import '../../../core/utils/date_format.dart';
 import '../../../shared/widgets/publication_image.dart';
 import '../../auth/presentation/auth_controller.dart';
 import '../../explore/data/explore_repository.dart';
@@ -219,7 +220,7 @@ class _MessageBubble extends StatelessWidget {
                   const SizedBox(width: 3),
                   const Text('Pendiente · '),
                 ],
-                Text(_messageTime(message.sentAt)),
+                Text(formatShortDateTime(message.sentAt)),
               ],
             ),
           ],
@@ -273,11 +274,4 @@ class _Composer extends StatelessWidget {
       ),
     );
   }
-}
-
-String _messageTime(DateTime date) {
-  final local = date.toLocal();
-  String two(int value) => value.toString().padLeft(2, '0');
-  return '${two(local.day)}/${two(local.month)} '
-      '${two(local.hour)}:${two(local.minute)}';
 }

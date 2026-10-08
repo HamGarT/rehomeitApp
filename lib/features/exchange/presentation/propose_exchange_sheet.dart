@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/theme.dart';
 import '../../../shared/domain/publication.dart';
+import '../../../shared/widgets/button_spinner.dart';
 import '../../../shared/widgets/publication_image.dart';
 import '../../auth/presentation/auth_controller.dart';
 import '../../publishing/presentation/photos_step.dart';
@@ -115,10 +116,7 @@ class _ProposeExchangeSheetState extends ConsumerState<_ProposeExchangeSheet> {
                 ? null
                 : () => _submit(user.uid),
             child: isSubmitting
-                ? const SizedBox.square(
-                    dimension: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
+                ? const ButtonSpinner()
                 : const Text('Enviar propuesta'),
           ),
         ],

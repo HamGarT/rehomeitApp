@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../../app/theme.dart';
+import '../../../shared/widgets/sheet_handle.dart';
 import '../../../shared/widgets/step_app_bar.dart';
 import '../domain/publish_draft.dart';
 import 'analyzing_step.dart';
@@ -339,14 +340,7 @@ class _SourceSheet extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           const SizedBox(height: 12),
-          Container(
-            width: 40,
-            height: 4,
-            decoration: BoxDecoration(
-              color: context.appColors.border,
-              borderRadius: BorderRadius.circular(2),
-            ),
-          ),
+          const SheetHandle(),
           const SizedBox(height: 16),
           ListTile(
             leading: Icon(

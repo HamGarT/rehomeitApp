@@ -4,6 +4,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/firebase/firebase_errors.dart';
 import '../../../core/utils/image_mime_type.dart';
 import '../../../shared/domain/publication.dart';
 import '../domain/publish_draft.dart';
@@ -160,12 +161,10 @@ class PublishingFailure implements Exception {
 }
 
 String _friendlyFirebaseError(FirebaseException error) {
-  if (error.code == 'network-request-failed' ||
-      error.code == 'retry-limit-exceeded' ||
-      error.code == 'unavailable') {
+  if (isOfflineFirebaseError(error)) {
     return 'Se requiere conexión a internet para subir las fotografías. Tus datos se conservaron.';
   }
-  if (error.code == 'unauthenticated' || error.code == 'unauthorized') {
+  if (isPermissionFirebaseError(error)) {
     return 'Tu sesión no permite publicar. Vuelve a iniciar sesión.';
   }
   return 'No se pudo registrar la publicación. Tus datos se conservaron para que puedas reintentar.';

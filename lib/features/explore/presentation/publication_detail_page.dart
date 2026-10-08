@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../core/constants/app_colors.dart';
 import '../../../app/theme.dart';
+import '../../../core/constants/app_colors.dart';
+import '../../../core/utils/date_format.dart';
 import '../../../shared/domain/publication.dart';
 import '../../../shared/widgets/app_dialog.dart';
+import '../../../shared/widgets/app_snack_bar.dart';
+import '../../../shared/widgets/button_spinner.dart';
 import '../../../shared/widgets/publication_image.dart';
 import '../../auth/presentation/auth_controller.dart';
 import '../../exchange/presentation/exchange_activity_page.dart';
@@ -21,26 +24,6 @@ import '../../publishing/presentation/publish_controller.dart';
 import '../domain/public_profile.dart';
 import 'explore_controller.dart';
 import 'widgets/publication_mode_badge.dart';
-
-/// Marca de tiempo en español: "Hace 55 min", "Hace 1 día".
-String _timeAgo(DateTime publishedAt) {
-  final elapsed = DateTime.now().toUtc().difference(publishedAt.toUtc());
-  if (elapsed.inMinutes < 1) return 'Hace un momento';
-  if (elapsed.inMinutes < 60) {
-    final m = elapsed.inMinutes;
-    return 'Hace $m min';
-  }
-  if (elapsed.inHours < 24) {
-    final h = elapsed.inHours;
-    return 'Hace $h ${h == 1 ? 'hora' : 'horas'}';
-  }
-  if (elapsed.inDays < 7) {
-    final d = elapsed.inDays;
-    return 'Hace $d ${d == 1 ? 'día' : 'días'}';
-  }
-  final s = (elapsed.inDays / 7).floor();
-  return 'Hace $s ${s == 1 ? 'semana' : 'semanas'}';
-}
 
 class PublicationDetailPage extends ConsumerWidget {
   const PublicationDetailPage({super.key, required this.initial});
@@ -102,7 +85,7 @@ class PublicationDetailPage extends ConsumerWidget {
                   ),
                 const SizedBox(height: 4),
                 Text(
-                  _timeAgo(publication.publishedAt),
+                  timeAgo(publication.publishedAt),
                   style: Theme.of(context).textTheme.labelSmall
                       ?.copyWith(color: context.appColors.textSecondary),
                 ),
@@ -202,25 +185,22 @@ class _PublicationTimeline extends StatelessWidget {
               publication.status != PublicationStatus.published)
             (status, date),
     ];
+    // Los hitos por vencimiento no están en statusDates (D02): se calculan a
+    // partir de la entrega.
     final deliveredAt = publication.statusDates[PublicationStatus.delivered];
     if (deliveredAt != null &&
-        effectiveStatus == PublicationStatus.pendingConfirmation) {
+        (effectiveStatus == PublicationStatus.pendingConfirmation ||
+            effectiveStatus == PublicationStatus.closedWithoutConfirmation)) {
       entries.add((
         PublicationStatus.pendingConfirmation,
-        deliveredAt.add(const Duration(hours: 48)),
+        deliveredAt.add(Publication.pendingConfirmationAfter),
       ));
-    }
-    if (deliveredAt != null &&
-        effectiveStatus == PublicationStatus.closedWithoutConfirmation) {
-      entries
-        ..add((
-          PublicationStatus.pendingConfirmation,
-          deliveredAt.add(const Duration(hours: 48)),
-        ))
-        ..add((
+      if (effectiveStatus == PublicationStatus.closedWithoutConfirmation) {
+        entries.add((
           PublicationStatus.closedWithoutConfirmation,
-          deliveredAt.add(const Duration(hours: 72)),
+          deliveredAt.add(Publication.closeWithoutConfirmationAfter),
         ));
+      }
     }
 
     return Container(
@@ -255,7 +235,7 @@ class _PublicationTimeline extends StatelessWidget {
                   const SizedBox(width: 8),
                   Expanded(child: Text(entries[index].$1.label)),
                   Text(
-                    _formatDate(entries[index].$2),
+                    formatDateTime(entries[index].$2),
                     style: Theme.of(context).textTheme.bodySmall
                         ?.copyWith(color: context.appColors.textSecondary),
                   ),
@@ -543,19 +523,13 @@ class _PublicationActions extends ConsumerWidget {
     );
   }
 
-  /// Retiro de la publicación (HU03-18). Es la misma escritura que hacía
-  /// "Anular publicación" en la rama de entregas, así que se conserva una sola
-  /// acción con el diálogo compartido de la aplicación.
   Widget _withdrawButton(BuildContext context, WidgetRef ref) {
     final withdrawing = ref.watch(publishControllerProvider).isLoading;
     return OutlinedButton.icon(
       onPressed: withdrawing ? null : () => _withdraw(context, ref),
       style: OutlinedButton.styleFrom(foregroundColor: AppColors.error),
       icon: withdrawing
-          ? const SizedBox.square(
-              dimension: 18,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            )
+          ? const ButtonSpinner()
           : const Icon(Icons.remove_circle_outline),
       label: const Text('Retirar publicación'),
     );
@@ -595,21 +569,23 @@ class _PublicationActions extends ConsumerWidget {
     WidgetRef ref,
     String userId,
   ) async {
-    final confirmed = await _confirm(
+    final confirmed = await showAppConfirmDialog(
       context,
+      icon: Icons.volunteer_activism_outlined,
       title: 'Asumir recojo',
-      message: 'Te comprometes a recoger este bien y coordinar con el donante.',
-      action: 'Asumir',
+      subtitle:
+          'Te comprometes a recoger este bien y coordinar con el donante.',
+      confirmLabel: 'Asumir',
     );
     if (!confirmed || !context.mounted) return;
     final error = await ref
         .read(deliveryControllerProvider.notifier)
         .assume(publication, userId);
     if (context.mounted) {
-      _show(
+      _showOutcome(
         context,
-        error ?? 'Recojo asumido. Ya puedes coordinar por mensajes.',
-        error != null,
+        error,
+        'Recojo asumido. Ya puedes coordinar por mensajes.',
       );
     }
   }
@@ -619,42 +595,44 @@ class _PublicationActions extends ConsumerWidget {
     WidgetRef ref,
     String userId,
   ) async {
-    final owner = userId == publication.authorId;
-    final confirmed = await _confirm(
+    final isOwner = userId == publication.authorId;
+    final confirmed = await showAppConfirmDialog(
       context,
-      title: owner ? 'Cancelar compromiso' : 'Desistir del recojo',
-      message: 'El bien volverá a estar disponible para otros usuarios.',
-      action: owner ? 'Cancelar compromiso' : 'Desistir',
+      icon: Icons.undo,
+      title: isOwner ? 'Cancelar compromiso' : 'Desistir del recojo',
+      subtitle: 'El bien volverá a estar disponible para otros usuarios.',
+      // "Cancelar" junto a "Cancelar compromiso" sería ambiguo.
+      cancelLabel: 'Volver',
+      confirmLabel: isOwner ? 'Cancelar compromiso' : 'Desistir',
     );
     if (!confirmed || !context.mounted) return;
     final error = await ref
         .read(deliveryControllerProvider.notifier)
         .release(publication, userId);
     if (context.mounted) {
-      _show(
-        context,
-        error ?? 'El bien volvió a estar disponible.',
-        error != null,
-      );
+      _showOutcome(context, error, 'El bien volvió a estar disponible.');
     }
   }
 
   Future<void> _confirmHandoff(BuildContext context, WidgetRef ref) async {
-    final confirmed = await _confirm(
+    final confirmed = await showAppConfirmDialog(
       context,
+      icon: Icons.inventory_2_outlined,
       title: 'Confirmar entrega al voluntario',
-      message: 'Confirma únicamente si el voluntario ya recibió el bien. Esta operación no puede revertirse.',
-      action: 'Confirmar entrega',
+      subtitle:
+          'Confirma únicamente si el voluntario ya recibió el bien. '
+          'Esta operación no puede revertirse.',
+      confirmLabel: 'Confirmar entrega',
     );
     if (!confirmed || !context.mounted) return;
     final error = await ref
         .read(deliveryControllerProvider.notifier)
         .confirmHandoff(publication, publication.authorId);
     if (context.mounted) {
-      _show(
+      _showOutcome(
         context,
-        error ?? 'Entrega confirmada. El traslado está en curso.',
-        error != null,
+        error,
+        'Entrega confirmada. El traslado está en curso.',
       );
     }
   }
@@ -690,7 +668,11 @@ class _PublicationActions extends ConsumerWidget {
       }
       if (!context.mounted) return;
       if (conversation == null) {
-        _show(context, 'La conversación aún no está disponible.', true);
+        showAppSnackBar(
+          context,
+          'La conversación aún no está disponible.',
+          kind: AppSnackBarKind.error,
+        );
         return;
       }
       await Navigator.of(context).push(
@@ -699,45 +681,18 @@ class _PublicationActions extends ConsumerWidget {
         ),
       );
     } on MessagingFailure catch (error) {
-      if (context.mounted) _show(context, error.message, true);
+      if (context.mounted) {
+        showAppSnackBar(context, error.message, kind: AppSnackBarKind.error);
+      }
     }
   }
 
-  Future<bool> _confirm(
-    BuildContext context, {
-    required String title,
-    required String message,
-    required String action,
-  }) async {
-    return await showDialog<bool>(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: Text(title),
-            content: Text(message),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(false),
-                child: const Text('Volver'),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.of(context).pop(true),
-                child: Text(action),
-              ),
-            ],
-          ),
-        ) ??
-        false;
-  }
-
-  void _show(BuildContext context, String message, bool isError) {
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          content: Text(message),
-          backgroundColor: isError ? AppColors.error : AppColors.success,
-        ),
-      );
+  void _showOutcome(BuildContext context, String? error, String success) {
+    showAppSnackBar(
+      context,
+      error ?? success,
+      kind: error != null ? AppSnackBarKind.error : AppSnackBarKind.success,
+    );
   }
 }
 
@@ -784,11 +739,4 @@ class _ActionNotice extends StatelessWidget {
       ),
     );
   }
-}
-
-String _formatDate(DateTime date) {
-  final local = date.toLocal();
-  String two(int value) => value.toString().padLeft(2, '0');
-  return '${two(local.day)}/${two(local.month)}/${local.year} '
-      '${two(local.hour)}:${two(local.minute)}';
 }

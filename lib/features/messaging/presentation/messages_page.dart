@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/constants/app_colors.dart';
+import '../../../core/utils/date_format.dart';
 import '../../../shared/widgets/publication_image.dart';
 import '../../auth/presentation/auth_controller.dart';
 import '../domain/conversation.dart';
@@ -80,7 +81,7 @@ class _ConversationTile extends StatelessWidget {
           overflow: TextOverflow.ellipsis,
         ),
         trailing: Text(
-          _compactDate(conversation.updatedAt),
+          formatCompactDate(conversation.updatedAt),
           style: Theme.of(context).textTheme.labelSmall
               ?.copyWith(color: AppColors.textSecondary),
         ),
@@ -120,16 +121,4 @@ class _EmptyMessages extends StatelessWidget {
       ),
     );
   }
-}
-
-String _compactDate(DateTime date) {
-  final local = date.toLocal();
-  final now = DateTime.now();
-  String two(int value) => value.toString().padLeft(2, '0');
-  if (local.year == now.year &&
-      local.month == now.month &&
-      local.day == now.day) {
-    return '${two(local.hour)}:${two(local.minute)}';
-  }
-  return '${two(local.day)}/${two(local.month)}';
 }

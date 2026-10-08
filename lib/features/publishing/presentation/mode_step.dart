@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../shared/widgets/button_spinner.dart';
 import '../../../shared/widgets/missing_fields_dialog.dart';
 import '../../../shared/widgets/step_app_bar.dart';
 import '../../auth/presentation/auth_controller.dart';
@@ -81,10 +82,7 @@ class ModeStep extends ConsumerWidget {
                   ? null
                   : () => _publish(context, ref, draft),
               child: isPublishing
-                  ? const SizedBox.square(
-                      dimension: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
+                  ? const ButtonSpinner()
                   : const Text('Publicar'),
             ),
           ],

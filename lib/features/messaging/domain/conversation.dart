@@ -1,4 +1,4 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
+import '../../../core/utils/firestore_dates.dart';
 
 class Conversation {
   const Conversation({
@@ -26,7 +26,7 @@ class Conversation {
   final DateTime updatedAt;
 
   factory Conversation.fromMap(String id, Map<String, Object?> map) {
-    final createdAt = _readDate(map['createdAt']);
+    final createdAt = readFirestoreDate(map['createdAt']);
     return Conversation(
       id: id,
       publicationId: map['publicationId'] as String? ?? '',
@@ -41,7 +41,7 @@ class Conversation {
       createdAt:
           createdAt ?? DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
       updatedAt:
-          _readDate(map['updatedAt']) ??
+          readFirestoreDate(map['updatedAt']) ??
           createdAt ??
           DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
     );
@@ -79,16 +79,10 @@ class ChatMessage {
       senderId: map['senderId'] as String? ?? '',
       body: map['body'] as String? ?? '',
       sentAt:
-          _readDate(map['sentAt']) ??
-          _readDate(map['queuedAt']) ??
+          readFirestoreDate(map['sentAt']) ??
+          readFirestoreDate(map['queuedAt']) ??
           DateTime.now(),
       isPending: isPending,
     );
   }
-}
-
-DateTime? _readDate(Object? value) {
-  if (value is Timestamp) return value.toDate();
-  if (value is DateTime) return value;
-  return null;
 }

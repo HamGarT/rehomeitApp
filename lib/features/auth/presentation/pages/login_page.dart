@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../../core/constants/app_colors.dart';
 import '../../../../app/theme.dart';
+import '../../../../shared/widgets/app_snack_bar.dart';
 import '../../domain/auth_validators.dart';
 import '../auth_controller.dart';
 import '../widgets/auth_widgets.dart';
@@ -45,7 +45,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
     if (!mounted) return;
     setState(() => _pending = null);
     if (error != null && error.isNotEmpty) {
-      _showError(error);
+      showAppSnackBar(context, error, kind: AppSnackBarKind.error);
       return;
     }
     Navigator.of(context).popUntil((route) => route.isFirst);
@@ -59,22 +59,10 @@ class _LoginPageState extends ConsumerState<LoginPage> {
     if (!mounted) return;
     setState(() => _pending = null);
     if (error != null && error.isNotEmpty) {
-      _showError(error);
+      showAppSnackBar(context, error, kind: AppSnackBarKind.error);
       return;
     }
     Navigator.of(context).popUntil((route) => route.isFirst);
-  }
-
-  void _showError(String message) {
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          content: Text(message),
-          behavior: SnackBarBehavior.floating,
-          backgroundColor: AppColors.error,
-        ),
-      );
   }
 
   // Usa la transición del tema, la misma que el resto de la app.

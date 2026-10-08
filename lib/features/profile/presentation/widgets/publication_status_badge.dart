@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../../app/theme.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../shared/domain/publication.dart';
+import '../../../../shared/widgets/app_badge.dart';
 
 /// Distintivo con el estado de una publicación en la lista del perfil.
 ///
@@ -34,17 +35,10 @@ class PublicationStatusBadge extends StatelessWidget {
       _ => (palette.chipFill, palette.textSecondary),
     };
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-      decoration: BoxDecoration(
-        color: background,
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Text(
-        status.label,
-        style: Theme.of(context).textTheme.labelSmall
-            ?.copyWith(color: foreground, fontWeight: FontWeight.w600),
-      ),
+    return AppBadge(
+      label: status.label,
+      background: background,
+      foreground: foreground,
     );
   }
 }

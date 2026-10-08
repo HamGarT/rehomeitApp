@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/constants/app_colors.dart';
 import '../../app/theme.dart';
+import 'sheet_handle.dart';
 
 class ChoiceOption<T> {
   const ChoiceOption({required this.value, required this.label});
@@ -49,14 +50,7 @@ class _ChoiceSheet<T> extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           const SizedBox(height: 10),
-          Container(
-            width: 40,
-            height: 4,
-            decoration: BoxDecoration(
-              color: context.appColors.border,
-              borderRadius: BorderRadius.circular(2),
-            ),
-          ),
+          const SheetHandle(),
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 18, 20, 8),
             child: Text(
