@@ -88,7 +88,7 @@ class _AnalyzingStepState extends ConsumerState<AnalyzingStep>
     final texts = Theme.of(context).textTheme;
     final current = _index < photos.length ? photos[_index] : null;
 
-    // Superficie de marca: el cuy con la caja "recibe" el bien mientras la
+    // Superficie de marca: la mascota con la caja "recibe" el bien mientras la
     // IA lo reconoce. El anillo con las fotos se mantiene porque muestra qué
     // se está analizando.
     return Scaffold(

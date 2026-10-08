@@ -2,7 +2,7 @@
 
 Decisiones que condicionan la implementación y que no se deducen leyendo las historias de usuario. Cada una registra el problema que resuelve y lo que implica asumirla.
 
-Última actualización: 7 de octubre de 2026.
+Última actualización: 8 de octubre de 2026.
 
 ---
 
@@ -153,9 +153,11 @@ Los mensajes que ve el usuario ante un error siguen en cada repositorio: lo que 
 
 **Problema.** Los paneles de inicio y el acceso usaban el amarillo `#F3CA20`, tipografías propias y la mascota, mientras el resto de la aplicación seguía la paleta verde original con la fuente por defecto. Eran dos identidades. Extender el amarillo pleno a toda la aplicación compite con las fotografías de los bienes, deslumbra sobre tarjetas blancas y cansa en sesiones largas.
 
-**Decisión.** La paleta se unifica alrededor de los paneles, con dos superficies. La de marca, amarillo pleno, se reserva a momentos con carga emocional: onboarding, acceso, carga, análisis de fotografías, estados vacíos y el éxito al publicar; ahí aparece el cuy. La de contenido, crema `#FFF6D9`, sostiene explorar, detalle, formulario y perfil. El marrón del cuy es el color primario, el amarillo el acento y el verde queda para donación y éxito. HostGrotesk es la fuente de toda la aplicación y FreckleFace solo de los titulares de marca. Una única transición entre pantallas, fundido con leve ascenso, y un único diálogo (`AppDialog`), chip (`AppChip`) y hoja de selección (`showChoiceSheet`) en `shared/widgets`.
+**Decisión.** La paleta se unifica alrededor de los paneles, con dos superficies. La de marca, amarillo pleno `#FFE600`, se reserva a momentos con carga emocional: onboarding, acceso, carga, análisis de fotografías, estados vacíos y el éxito al publicar; ahí aparece la mascota. La de contenido es blanca y sostiene inicio, explorar, detalle, formulario y perfil. El negro es el color de interacción (botones rellenos, enlaces, iconos seleccionados), el amarillo el único acento y el verde queda para donación y éxito. No hay un color primario de marca distinto del negro. El modo oscuro es neutro: negro de fondo, gris carbón para lo que flota encima, texto casi blanco y la interacción sube a gris claro; los tonos de marca no cambian entre modos porque ya contrastan contra ambos. La mascota es el hámster. HostGrotesk es la fuente de toda la aplicación y FreckleFace solo de los titulares de marca. Una única transición entre pantallas, fundido con leve ascenso, y un único diálogo (`AppDialog`), chip (`AppChip`) y hoja de selección (`showChoiceSheet`) en `shared/widgets`.
 
-**Consecuencias.** Los colores entran por los tokens de `AppColors`, de modo que un ajuste de paleta no toca pantallas. Ningún texto va sobre amarillo salvo en marrón oscuro. La mascota no decora: si aparece en más lugares, pierde el efecto. Los assets del cuy se recortaron de las ilustraciones del onboarding y viven en `assets/images/mascot_*.webp`.
+Esta paleta reemplaza desde el 8 de octubre de 2026 a la de marrón y crema del 23 de setiembre, que compartía estructura pero no tonos.
+
+**Consecuencias.** Los colores entran por los tokens de `AppColors` y `AppColorsDark`, de modo que un ajuste de paleta no toca pantallas. Ninguna pantalla fija un color por su cuenta, porque un valor fijo se ve bien en un modo y rompe el otro. Ningún texto va sobre amarillo salvo en oscuro (`onAccent`). La mascota no decora: si aparece en más lugares, pierde el efecto. De sus tres poses, solo la dormida es ya el hámster (`assets/images/hamster_ligero_durmiendo.gif`); saludo y caja siguen siendo los recortes del cuy anterior en `assets/images/mascot_*.webp` hasta que se reemplacen.
 
 ---
 

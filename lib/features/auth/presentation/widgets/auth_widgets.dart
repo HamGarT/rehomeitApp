@@ -30,7 +30,7 @@ class AuthMascot extends StatelessWidget {
           ),
         ],
       ),
-      // El cuy asoma desde el borde inferior de la tarjeta, como en un marco.
+      // La mascota asoma desde el borde inferior de la tarjeta, como en un marco.
       child: Align(
         alignment: Alignment.bottomCenter,
         child: Mascot(pose: MascotPose.wave, height: size * 0.92),

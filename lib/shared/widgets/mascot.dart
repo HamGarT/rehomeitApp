@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 
-/// Poses disponibles del cuy, recortadas de las ilustraciones del onboarding.
+/// Poses de la mascota. La oficial es el hámster (D13); saludo y caja son
+/// todavía los recortes del cuy anterior, a la espera de su reemplazo.
 enum MascotPose {
   wave('assets/images/mascot_wave.webp'),
   box('assets/images/mascot_box.webp'),
 
-  /// GIF en lugar de imagen fija: el cuy dormido funciona mejor dormido, y
+  /// GIF en lugar de imagen fija: el hámster dormido funciona mejor dormido, y
   /// el movimiento hace de aviso de que la pantalla está viva sin pedir
   /// interacción.
   sleeping('assets/images/hamster_ligero_durmiendo.gif');
