@@ -5,6 +5,8 @@ import '../../../app/theme.dart';
 import '../../../shared/domain/publication.dart';
 import '../../../shared/widgets/publication_image.dart';
 import '../../auth/presentation/auth_controller.dart';
+import '../../publishing/presentation/photos_step.dart';
+import '../../publishing/presentation/publish_draft_notifier.dart';
 import 'exchange_controller.dart';
 
 Future<bool?> showProposeExchangeSheet(
@@ -79,9 +81,17 @@ class _ProposeExchangeSheetState extends ConsumerState<_ProposeExchangeSheet> {
                 message: 'No pudimos cargar tus publicaciones.',
               ),
               data: (items) => items.isEmpty
-                  ? const _SheetMessage(
+                  ? _SheetMessage(
                       icon: Icons.inventory_2_outlined,
                       message: 'No tienes una publicación de intercambio disponible. Publica un bien para poder proponer un canje.',
+                      actionLabel: 'Publicar un bien',
+                      onAction: () {
+                        ref.read(publishDraftProvider.notifier).reset();
+                        Navigator.of(context).pop();
+                        Navigator.of(context).push(
+                          MaterialPageRoute(builder: (_) => const PhotosStep()),
+                        );
+                      },
                     )
                   : ListView.separated(
                       shrinkWrap: true,
@@ -212,10 +222,17 @@ class _OfferedPublicationTile extends StatelessWidget {
 }
 
 class _SheetMessage extends StatelessWidget {
-  const _SheetMessage({required this.icon, required this.message});
+  const _SheetMessage({
+    required this.icon,
+    required this.message,
+    this.actionLabel,
+    this.onAction,
+  });
 
   final IconData icon;
   final String message;
+  final String? actionLabel;
+  final VoidCallback? onAction;
 
   @override
   Widget build(BuildContext context) {
@@ -228,6 +245,13 @@ class _SheetMessage extends StatelessWidget {
             Icon(icon, size: 42, color: context.appColors.textSecondary),
             const SizedBox(height: 12),
             Text(message, textAlign: TextAlign.center),
+            if (onAction != null) ...[
+              const SizedBox(height: 14),
+              FilledButton(
+                onPressed: onAction,
+                child: Text(actionLabel ?? 'Continuar'),
+              ),
+            ],
           ],
         ),
       ),

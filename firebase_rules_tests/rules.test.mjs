@@ -12,6 +12,7 @@ import {
 import {
   deleteDoc,
   doc,
+  deleteField,
   getDoc,
   serverTimestamp,
   setDoc,
@@ -730,4 +731,430 @@ test('Storage permite nombres válidos, limpieza y deniega nombre inválido y ov
     contentType: 'image/jpeg',
   }));
   await assertSucceeds(deleteObject(cleanupRef));
+});
+
+const donorId = 'donor-user';
+const volunteerId = 'volunteer-user';
+const otherVolunteerId = 'other-volunteer';
+const donationPublicationId = 'AbCdEfGhIjKlMnOpQrSt';
+
+function conversationData(participants = [donorId, volunteerId]) {
+  return {
+    publicationId: donationPublicationId,
+    publicationTitle: 'Mesa solidaria',
+    publicationImageUrl: 'https://example.test/foto_0.jpg',
+    publicationMode: 'donacion',
+    participantIds: [...participants].sort(),
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+    lastMessage: '',
+    lastSenderId: null,
+    lastMessageId: null,
+  };
+}
+
+async function createVolunteerDonation(deliveryType = 'voluntario') {
+  const db = firestoreFor(donorId);
+  await assertSucceeds(setDoc(
+    doc(db, 'publicaciones', donationPublicationId),
+    initialPublication({
+      authorId: donorId,
+      mode: 'donacion',
+      deliveryType,
+      title: 'Mesa solidaria',
+    }),
+  ));
+}
+
+async function seedCommitted(volunteer = volunteerId) {
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), 'publicaciones', donationPublicationId), {
+      ...initialPublication({
+        authorId: donorId,
+        mode: 'donacion',
+        deliveryType: 'voluntario',
+        title: 'Mesa solidaria',
+      }),
+      publishedAt: new Date('2026-01-01T00:00:00Z'),
+      status: 'comprometida',
+      volunteerId: volunteer,
+      committedAt: new Date('2026-01-02T00:00:00Z'),
+      statusDates: {
+        publicada: new Date('2026-01-01T00:00:00Z'),
+        comprometida: new Date('2026-01-02T00:00:00Z'),
+      },
+    });
+  });
+}
+
+async function seedPickedUp() {
+  await seedCommitted();
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    await updateDoc(
+      doc(context.firestore(), 'publicaciones', donationPublicationId),
+      {
+        status: 'recogida',
+        pickedUpAt: new Date('2026-01-03T00:00:00Z'),
+        'statusDates.recogida': new Date('2026-01-03T00:00:00Z'),
+      },
+    );
+  });
+}
+
+test('HU09: solo participantes leen la conversación', async () => {
+  await createVolunteerDonation();
+  const conversationId = 'private-conversation';
+  await assertSucceeds(setDoc(
+    doc(firestoreFor(volunteerId), 'conversaciones', conversationId),
+    conversationData(),
+  ));
+  await assertSucceeds(getDoc(
+    doc(firestoreFor(donorId), 'conversaciones', conversationId),
+  ));
+  await assertFails(getDoc(
+    doc(firestoreFor('third-user'), 'conversaciones', conversationId),
+  ));
+});
+
+test('HU09: participante envía y no puede falsificar senderId', async () => {
+  await createVolunteerDonation();
+  const conversationId = 'message-conversation';
+  await assertSucceeds(setDoc(
+    doc(firestoreFor(volunteerId), 'conversaciones', conversationId),
+    conversationData(),
+  ));
+  const db = firestoreFor(volunteerId);
+  const messageId = 'message-1';
+  const batch = writeBatch(db);
+  batch.set(
+    doc(db, 'conversaciones', conversationId, 'mensajes', messageId),
+    {
+      conversationId,
+      publicationId: donationPublicationId,
+      senderId: volunteerId,
+      body: 'Coordinaré el recojo mañana.',
+      queuedAt: new Date('2026-01-01T00:00:00Z'),
+      sentAt: serverTimestamp(),
+    },
+  );
+  batch.update(doc(db, 'conversaciones', conversationId), {
+    lastMessage: 'Coordinaré el recojo mañana.',
+    lastSenderId: volunteerId,
+    lastMessageId: messageId,
+    updatedAt: serverTimestamp(),
+  });
+  batch.set(doc(db, 'notificaciones', `mensaje_${messageId}`), {
+    recipientId: donorId,
+    type: 'nuevo_mensaje',
+    message: 'Tienes un nuevo mensaje sobre Mesa solidaria.',
+    publicationId: donationPublicationId,
+    conversationId,
+    messageId,
+    createdAt: serverTimestamp(),
+    read: false,
+  });
+  await assertSucceeds(batch.commit());
+  await assertSucceeds(getDoc(
+    doc(
+      firestoreFor(donorId),
+      'conversaciones',
+      conversationId,
+      'mensajes',
+      messageId,
+    ),
+  ));
+  await assertFails(getDoc(
+    doc(
+      firestoreFor('third-user'),
+      'conversaciones',
+      conversationId,
+      'mensajes',
+      messageId,
+    ),
+  ));
+
+  const forgedId = 'forged-message';
+  const forged = writeBatch(db);
+  forged.set(
+    doc(db, 'conversaciones', conversationId, 'mensajes', forgedId),
+    {
+      conversationId,
+      publicationId: donationPublicationId,
+      senderId: donorId,
+      body: 'Mensaje falsificado',
+      queuedAt: new Date('2026-01-01T00:00:00Z'),
+      sentAt: serverTimestamp(),
+    },
+  );
+  forged.update(doc(db, 'conversaciones', conversationId), {
+    lastMessage: 'Mensaje falsificado',
+    lastSenderId: donorId,
+    lastMessageId: forgedId,
+    updatedAt: serverTimestamp(),
+  });
+  await assertFails(forged.commit());
+});
+
+test('HU10: propietario no puede asumir su propio recojo', async () => {
+  await createVolunteerDonation();
+  await assertFails(updateDoc(
+    doc(firestoreFor(donorId), 'publicaciones', donationPublicationId),
+    {
+      status: 'comprometida',
+      volunteerId: donorId,
+      committedAt: serverTimestamp(),
+      'statusDates.comprometida': serverTimestamp(),
+    },
+  ));
+});
+
+test('HU10: compromiso, conversación y notificación se crean atómicamente', async () => {
+  await createVolunteerDonation();
+  const db = firestoreFor(volunteerId);
+  const batch = writeBatch(db);
+  batch.update(doc(db, 'publicaciones', donationPublicationId), {
+    status: 'comprometida',
+    volunteerId,
+    committedAt: serverTimestamp(),
+    'statusDates.comprometida': serverTimestamp(),
+  });
+  batch.set(
+    doc(db, 'conversaciones', 'pickup-conversation'),
+    conversationData(),
+  );
+  batch.set(doc(db, 'notificaciones', 'pickup-assumed'), {
+    recipientId: donorId,
+    type: 'recojo_asumido',
+    message: 'Un usuario asumió el recojo de Mesa solidaria.',
+    publicationId: donationPublicationId,
+    actorId: volunteerId,
+    createdAt: serverTimestamp(),
+    read: false,
+  });
+  await assertSucceeds(batch.commit());
+});
+
+test('HU10: solo uno de dos voluntarios puede asumir el mismo bien', async () => {
+  await createVolunteerDonation();
+  const attempts = await Promise.allSettled([
+    updateDoc(
+      doc(firestoreFor(volunteerId), 'publicaciones', donationPublicationId),
+      {
+        status: 'comprometida',
+        volunteerId,
+        committedAt: serverTimestamp(),
+        'statusDates.comprometida': serverTimestamp(),
+      },
+    ),
+    updateDoc(
+      doc(firestoreFor(otherVolunteerId), 'publicaciones', donationPublicationId),
+      {
+        status: 'comprometida',
+        volunteerId: otherVolunteerId,
+        committedAt: serverTimestamp(),
+        'statusDates.comprometida': serverTimestamp(),
+      },
+    ),
+  ]);
+  assert.equal(attempts.filter((result) => result.status === 'fulfilled').length, 1);
+  assert.equal(attempts.filter((result) => result.status === 'rejected').length, 1);
+});
+
+test('HU10: voluntario desiste y donante cancela solo en comprometida', async () => {
+  for (const actor of [volunteerId, donorId]) {
+    await testEnv.clearFirestore();
+    await seedCommitted();
+    await assertSucceeds(updateDoc(
+      doc(firestoreFor(actor), 'publicaciones', donationPublicationId),
+      {
+        status: 'publicada',
+        volunteerId: deleteField(),
+        committedAt: deleteField(),
+      },
+    ));
+  }
+  await testEnv.clearFirestore();
+  await seedPickedUp();
+  await assertFails(updateDoc(
+    doc(firestoreFor(volunteerId), 'publicaciones', donationPublicationId),
+    { status: 'publicada' },
+  ));
+  await assertFails(updateDoc(
+    doc(firestoreFor(donorId), 'publicaciones', donationPublicationId),
+    { status: 'publicada' },
+  ));
+});
+
+test('HU11: solo donante confirma comprometida a recogida', async () => {
+  await seedCommitted();
+  const transition = {
+    status: 'recogida',
+    pickedUpAt: serverTimestamp(),
+    'statusDates.recogida': serverTimestamp(),
+  };
+  await assertFails(updateDoc(
+    doc(firestoreFor(volunteerId), 'publicaciones', donationPublicationId),
+    transition,
+  ));
+  await assertSucceeds(updateDoc(
+    doc(firestoreFor(donorId), 'publicaciones', donationPublicationId),
+    transition,
+  ));
+});
+
+test('HU11: transición legítima notifica al voluntario en el mismo lote', async () => {
+  await seedCommitted();
+  const db = firestoreFor(donorId);
+  const batch = writeBatch(db);
+  batch.update(doc(db, 'publicaciones', donationPublicationId), {
+    status: 'recogida',
+    pickedUpAt: serverTimestamp(),
+    'statusDates.recogida': serverTimestamp(),
+  });
+  batch.set(doc(db, 'notificaciones', 'picked-up-notification'), {
+    recipientId: volunteerId,
+    type: 'entrega_a_voluntario',
+    message: 'El donante confirmó la entrega de Mesa solidaria.',
+    publicationId: donationPublicationId,
+    actorId: donorId,
+    createdAt: serverTimestamp(),
+    read: false,
+  });
+  await assertSucceeds(batch.commit());
+});
+
+test('HU11: nunca permite recogida a publicada', async () => {
+  await seedPickedUp();
+  await assertFails(updateDoc(
+    doc(firestoreFor(donorId), 'publicaciones', donationPublicationId),
+    { status: 'publicada' },
+  ));
+  await assertFails(updateDoc(
+    doc(firestoreFor(volunteerId), 'publicaciones', donationPublicationId),
+    { status: 'publicada' },
+  ));
+});
+
+function deliveryEvidence(actorId = volunteerId, overrides = {}) {
+  return {
+    recipientInitials: 'M.R.',
+    district: 'Cajamarca',
+    storagePath:
+      `entregas/${donationPublicationId}/${actorId}/evidencia.jpg`,
+    recordedAt: serverTimestamp(),
+    ...overrides,
+  };
+}
+
+test('HU12: solo voluntario asignado registra recogida a entregada', async () => {
+  await seedPickedUp();
+  const update = {
+    status: 'entregada',
+    deliveredAt: serverTimestamp(),
+    'statusDates.entregada': serverTimestamp(),
+    deliveryEvidence: deliveryEvidence(),
+  };
+  await assertFails(updateDoc(
+    doc(firestoreFor('third-user'), 'publicaciones', donationPublicationId),
+    update,
+  ));
+  await assertSucceeds(updateDoc(
+    doc(firestoreFor(volunteerId), 'publicaciones', donationPublicationId),
+    update,
+  ));
+});
+
+test('HU12: entrega legítima notifica al donante en el mismo lote', async () => {
+  await seedPickedUp();
+  const db = firestoreFor(volunteerId);
+  const batch = writeBatch(db);
+  batch.update(doc(db, 'publicaciones', donationPublicationId), {
+    status: 'entregada',
+    deliveredAt: serverTimestamp(),
+    'statusDates.entregada': serverTimestamp(),
+    deliveryEvidence: deliveryEvidence(),
+  });
+  batch.set(doc(db, 'notificaciones', 'delivered-notification'), {
+    recipientId: donorId,
+    type: 'entrega_destinatario',
+    message: 'La entrega al destinatario fue registrada.',
+    publicationId: donationPublicationId,
+    actorId: volunteerId,
+    createdAt: serverTimestamp(),
+    read: false,
+  });
+  await assertSucceeds(batch.commit());
+});
+
+test('HU12: rechaza datos sensibles o campos arbitrarios del destinatario', async () => {
+  await seedPickedUp();
+  const db = firestoreFor(volunteerId);
+  const publicationRef = doc(db, 'publicaciones', donationPublicationId);
+  await assertFails(updateDoc(publicationRef, {
+    status: 'entregada',
+    deliveredAt: serverTimestamp(),
+    'statusDates.entregada': serverTimestamp(),
+    deliveryEvidence: deliveryEvidence(volunteerId, { dni: '12345678' }),
+  }));
+  await assertFails(updateDoc(publicationRef, {
+    status: 'entregada',
+    deliveredAt: serverTimestamp(),
+    'statusDates.entregada': serverTimestamp(),
+    deliveryEvidence: deliveryEvidence(volunteerId, {
+      district: 'Distrito inventado',
+    }),
+  }));
+});
+
+test('HU12: entrega directa pasa de publicada a confirmada solo por donante', async () => {
+  await createVolunteerDonation('donante');
+  const update = {
+    status: 'confirmada',
+    deliveredAt: serverTimestamp(),
+    'statusDates.confirmada': serverTimestamp(),
+    deliveryEvidence: deliveryEvidence(donorId),
+  };
+  await assertFails(updateDoc(
+    doc(firestoreFor(volunteerId), 'publicaciones', donationPublicationId),
+    update,
+  ));
+  await assertSucceeds(updateDoc(
+    doc(firestoreFor(donorId), 'publicaciones', donationPublicationId),
+    update,
+  ));
+});
+
+test('HU12 Storage: autoriza actor correcto y prohíbe tercero y overwrite', async () => {
+  await seedPickedUp();
+  const path =
+    `entregas/${donationPublicationId}/${volunteerId}/evidencia.jpg`;
+  const bytes = new Uint8Array([0xff, 0xd8, 0xff, 0xd9]);
+  await assertFails(uploadBytes(
+    ref(storageFor('third-user'), path),
+    bytes,
+    { contentType: 'image/jpeg' },
+  ));
+  const evidenceRef = ref(storageFor(volunteerId), path);
+  await assertSucceeds(uploadBytes(evidenceRef, bytes, {
+    contentType: 'image/jpeg',
+  }));
+  await assertFails(uploadBytes(evidenceRef, bytes, {
+    contentType: 'image/jpeg',
+  }));
+});
+
+test('notificaciones HU09-HU12 no pueden fabricarse sin operación legítima', async () => {
+  await createVolunteerDonation();
+  await assertFails(setDoc(
+    doc(firestoreFor(volunteerId), 'notificaciones', 'forged-delivery'),
+    {
+      recipientId: donorId,
+      type: 'recojo_asumido',
+      message: 'Notificación inventada',
+      publicationId: donationPublicationId,
+      actorId: volunteerId,
+      createdAt: serverTimestamp(),
+      read: false,
+    },
+  ));
 });

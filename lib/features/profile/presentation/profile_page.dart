@@ -9,6 +9,7 @@ import '../../../shared/widgets/app_dialog.dart';
 import '../../../shared/widgets/mascot.dart';
 import '../../auth/data/auth_exception.dart';
 import '../../auth/presentation/auth_controller.dart';
+import '../../delivery/presentation/delivery_controller.dart';
 import '../../explore/presentation/explore_controller.dart';
 import '../domain/profile_summary.dart';
 import 'profile_controller.dart';
@@ -109,6 +110,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
           //   ),
           // ),
           ..._ownPublicationSlivers(publications),
+          ..._commitmentSlivers(userId),
           const SliverToBoxAdapter(child: _AppearanceSection()),
           const SliverToBoxAdapter(
             child: ProfileSectionHeader(title: 'Sesión'),
@@ -230,6 +232,38 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
         ];
       },
     );
+  }
+
+  /// Recojos asumidos como voluntario (HU10). Van aparte del historial porque
+  /// no son publicaciones propias, y la sección se omite cuando no hay ninguno
+  /// para no sumar un bloque vacío al perfil de quien nunca hizo voluntariado.
+  List<Widget> _commitmentSlivers(String userId) {
+    final items =
+        ref.watch(volunteerCommitmentsProvider(userId)).value ??
+        const <Publication>[];
+    if (items.isEmpty) return const [];
+    return [
+      SliverToBoxAdapter(
+        child: ProfileSectionHeader(
+          title: 'Mis compromisos de recojo',
+          trailing: '${items.length}',
+        ),
+      ),
+      SliverPadding(
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        sliver: SliverList.separated(
+          itemCount: items.length,
+          separatorBuilder: (_, _) => const SizedBox(height: 10),
+          itemBuilder: (context, index) {
+            final item = items[index];
+            return ProfilePublicationTile(
+              publication: item,
+              status: item.effectiveStatus(DateTime.now()),
+            );
+          },
+        ),
+      ),
+    ];
   }
 }
 

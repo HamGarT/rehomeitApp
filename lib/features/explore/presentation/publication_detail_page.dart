@@ -10,6 +10,11 @@ import '../../auth/presentation/auth_controller.dart';
 import '../../exchange/presentation/exchange_activity_page.dart';
 import '../../exchange/presentation/exchange_controller.dart';
 import '../../exchange/presentation/propose_exchange_sheet.dart';
+import '../../delivery/presentation/delivery_controller.dart';
+import '../../delivery/presentation/register_delivery_page.dart';
+import '../../messaging/data/messaging_repository.dart';
+import '../../messaging/domain/conversation.dart';
+import '../../messaging/presentation/conversation_page.dart';
 import '../../moderation/presentation/report_publication_sheet.dart';
 import '../../profile/presentation/public_profile_page.dart';
 import '../../publishing/presentation/publish_controller.dart';
@@ -160,7 +165,7 @@ class PublicationDetailPage extends ConsumerWidget {
                 const SizedBox(height: 16),
                 _PublicationActions(
                   publication: publication,
-                  isOwner: currentUserId == publication.authorId,
+                  currentUserId: currentUserId,
                 ),
               ],
             ),
@@ -188,10 +193,14 @@ class _PublicationTimeline extends StatelessWidget {
       ),
       for (final status in const [
         PublicationStatus.committed,
+        PublicationStatus.pickedUp,
         PublicationStatus.delivered,
         PublicationStatus.confirmed,
       ])
-        if (publication.statusDates[status] case final date?) (status, date),
+        if (publication.statusDates[status] case final date?)
+          if (status != PublicationStatus.committed ||
+              publication.status != PublicationStatus.published)
+            (status, date),
     ];
     final deliveredAt = publication.statusDates[PublicationStatus.delivered];
     if (deliveredAt != null &&
@@ -373,91 +382,182 @@ class _FactRow extends StatelessWidget {
 }
 
 class _PublicationActions extends ConsumerWidget {
-  const _PublicationActions({required this.publication, required this.isOwner});
+  const _PublicationActions({
+    required this.publication,
+    required this.currentUserId,
+  });
 
   final Publication publication;
-  final bool isOwner;
+  final String? currentUserId;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    if (!publication.isAvailable) {
-      return const _ActionNotice(
-        icon: Icons.lock_clock_outlined,
-        text: 'Esta publicación ya no está disponible.',
-      );
-    }
-    if (isOwner) {
-      final withdrawing = ref.watch(publishControllerProvider).isLoading;
+    final userId = currentUserId;
+    if (userId == null) return const SizedBox.shrink();
+    final isOwner = userId == publication.authorId;
+    final isVolunteer = userId == publication.volunteerId;
+    final busy = ref.watch(deliveryControllerProvider).isLoading;
+
+    if (publication.mode == PublicationMode.donation) {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (publication.mode == PublicationMode.exchange)
+          if (publication.status == PublicationStatus.published &&
+              publication.deliveryType == DeliveryType.volunteer &&
+              !isOwner)
+            FilledButton.icon(
+              onPressed: busy
+                  ? null
+                  : () => _assumePickup(context, ref, userId),
+              icon: const Icon(Icons.volunteer_activism_outlined),
+              label: const Text('Asumir recojo'),
+            ),
+          if (publication.status == PublicationStatus.published &&
+              publication.deliveryType == DeliveryType.owner &&
+              isOwner)
+            FilledButton.icon(
+              onPressed: () => _openDeliveryForm(context),
+              icon: const Icon(Icons.redeem_outlined),
+              label: const Text('Registrar entrega al destinatario'),
+            ),
+          if (publication.status == PublicationStatus.committed && isOwner)
+            FilledButton.icon(
+              onPressed: busy ? null : () => _confirmHandoff(context, ref),
+              icon: const Icon(Icons.inventory_2_outlined),
+              label: const Text('Confirmar entrega al voluntario'),
+            ),
+          if (publication.status == PublicationStatus.pickedUp && isVolunteer)
+            FilledButton.icon(
+              onPressed: () => _openDeliveryForm(context),
+              icon: const Icon(Icons.add_a_photo_outlined),
+              label: const Text('Registrar entrega al destinatario'),
+            ),
+          if (publication.status == PublicationStatus.committed &&
+              (isOwner || isVolunteer)) ...[
+            const SizedBox(height: 10),
+            OutlinedButton.icon(
+              onPressed: busy ? null : () => _release(context, ref, userId),
+              icon: const Icon(Icons.undo),
+              label: Text(
+                isOwner ? 'Cancelar compromiso' : 'Desistir del recojo',
+              ),
+            ),
+          ],
+          if (publication.status == PublicationStatus.pickedUp && isOwner)
+            const _ActionNotice(
+              icon: Icons.local_shipping_outlined,
+              text: 'Entrega en curso. El voluntario trasladará el bien al destinatario.',
+            ),
+          if (publication.status == PublicationStatus.published && isOwner) ...[
+            const SizedBox(height: 10),
+            _withdrawButton(context, ref),
+          ],
+          if (!isOwner) ...[
+            const SizedBox(height: 10),
+            OutlinedButton.icon(
+              onPressed: () => _openConversation(context, ref, userId),
+              icon: const Icon(Icons.chat_bubble_outline),
+              label: const Text('Enviar mensaje'),
+            ),
+          ] else if (publication.volunteerId != null) ...[
+            const SizedBox(height: 10),
+            OutlinedButton.icon(
+              onPressed: () => _openConversation(context, ref, userId),
+              icon: const Icon(Icons.chat_bubble_outline),
+              label: const Text('Coordinar con el voluntario'),
+            ),
+          ],
+          if (publication.status == PublicationStatus.delivered)
+            const _ActionNotice(
+              icon: Icons.check_circle_outline,
+              text: 'La entrega al destinatario fue registrada.',
+            ),
+          if (publication.status == PublicationStatus.confirmed)
+            const _ActionNotice(
+              icon: Icons.verified_outlined,
+              text: 'Donación confirmada.',
+            ),
+          if (!isOwner) ...[
+            const SizedBox(height: 10),
+            _ReportAction(publication: publication),
+          ],
+        ],
+      );
+    }
+
+    if (isOwner) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (publication.status == PublicationStatus.published) ...[
             FilledButton.icon(
               onPressed: () => Navigator.of(context).push(
                 MaterialPageRoute(builder: (_) => const ExchangeActivityPage()),
               ),
               icon: const Icon(Icons.swap_horiz),
               label: const Text('Ver propuestas de intercambio'),
-            )
-          else
+            ),
+            const SizedBox(height: 10),
+            _withdrawButton(context, ref),
+          ] else
             const _ActionNotice(
               icon: Icons.person_outline,
-              text: 'Esta es tu publicación.',
+              text: 'Consulta el avance en Mis intercambios.',
             ),
-          const SizedBox(height: 10),
-          OutlinedButton.icon(
-            onPressed: withdrawing ? null : () => _withdraw(context, ref),
-            style: OutlinedButton.styleFrom(foregroundColor: AppColors.error),
-            icon: withdrawing
-                ? const SizedBox.square(
-                    dimension: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.remove_circle_outline),
-            label: const Text('Retirar publicación'),
-          ),
-        ],
-      );
-    }
-    if (publication.mode == PublicationMode.donation) {
-      final volunteer = publication.deliveryType == DeliveryType.volunteer;
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _ActionNotice(
-            icon: volunteer
-                ? Icons.volunteer_activism_outlined
-                : Icons.redeem_outlined,
-            text: volunteer
-                ? 'Esta donación está disponible para recojo por voluntariado.'
-                : 'El donante realizará personalmente la entrega.',
-          ),
-          const SizedBox(height: 10),
-          _ReportAction(publication: publication),
         ],
       );
     }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        FilledButton.icon(
-          onPressed: () async {
-            final proposed = await showProposeExchangeSheet(
-              context,
-              requestedPublication: publication,
-            );
-            if (proposed == true && context.mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Propuesta enviada')),
+        if (publication.isAvailable)
+          FilledButton.icon(
+            onPressed: () async {
+              final proposed = await showProposeExchangeSheet(
+                context,
+                requestedPublication: publication,
               );
-            }
-          },
-          icon: const Icon(Icons.swap_horiz),
-          label: const Text('Proponer intercambio'),
+              if (proposed == true && context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Propuesta enviada')),
+                );
+              }
+            },
+            icon: const Icon(Icons.swap_horiz),
+            label: const Text('Proponer intercambio'),
+          )
+        else
+          const _ActionNotice(
+            icon: Icons.lock_clock_outlined,
+            text: 'Esta publicación ya no está disponible.',
+          ),
+        const SizedBox(height: 10),
+        OutlinedButton.icon(
+          onPressed: () => _openConversation(context, ref, userId),
+          icon: const Icon(Icons.chat_bubble_outline),
+          label: const Text('Enviar mensaje'),
         ),
         const SizedBox(height: 10),
         _ReportAction(publication: publication),
       ],
+    );
+  }
+
+  /// Retiro de la publicación (HU03-18). Es la misma escritura que hacía
+  /// "Anular publicación" en la rama de entregas, así que se conserva una sola
+  /// acción con el diálogo compartido de la aplicación.
+  Widget _withdrawButton(BuildContext context, WidgetRef ref) {
+    final withdrawing = ref.watch(publishControllerProvider).isLoading;
+    return OutlinedButton.icon(
+      onPressed: withdrawing ? null : () => _withdraw(context, ref),
+      style: OutlinedButton.styleFrom(foregroundColor: AppColors.error),
+      icon: withdrawing
+          ? const SizedBox.square(
+              dimension: 18,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : const Icon(Icons.remove_circle_outline),
+      label: const Text('Retirar publicación'),
     );
   }
 
@@ -488,6 +588,156 @@ class _PublicationActions extends ConsumerWidget {
     messenger.showSnackBar(
       const SnackBar(content: Text('Publicación retirada')),
     );
+  }
+
+  Future<void> _assumePickup(
+    BuildContext context,
+    WidgetRef ref,
+    String userId,
+  ) async {
+    final confirmed = await _confirm(
+      context,
+      title: 'Asumir recojo',
+      message: 'Te comprometes a recoger este bien y coordinar con el donante.',
+      action: 'Asumir',
+    );
+    if (!confirmed || !context.mounted) return;
+    final error = await ref
+        .read(deliveryControllerProvider.notifier)
+        .assume(publication, userId);
+    if (context.mounted) {
+      _show(
+        context,
+        error ?? 'Recojo asumido. Ya puedes coordinar por mensajes.',
+        error != null,
+      );
+    }
+  }
+
+  Future<void> _release(
+    BuildContext context,
+    WidgetRef ref,
+    String userId,
+  ) async {
+    final owner = userId == publication.authorId;
+    final confirmed = await _confirm(
+      context,
+      title: owner ? 'Cancelar compromiso' : 'Desistir del recojo',
+      message: 'El bien volverá a estar disponible para otros usuarios.',
+      action: owner ? 'Cancelar compromiso' : 'Desistir',
+    );
+    if (!confirmed || !context.mounted) return;
+    final error = await ref
+        .read(deliveryControllerProvider.notifier)
+        .release(publication, userId);
+    if (context.mounted) {
+      _show(
+        context,
+        error ?? 'El bien volvió a estar disponible.',
+        error != null,
+      );
+    }
+  }
+
+  Future<void> _confirmHandoff(BuildContext context, WidgetRef ref) async {
+    final confirmed = await _confirm(
+      context,
+      title: 'Confirmar entrega al voluntario',
+      message: 'Confirma únicamente si el voluntario ya recibió el bien. Esta operación no puede revertirse.',
+      action: 'Confirmar entrega',
+    );
+    if (!confirmed || !context.mounted) return;
+    final error = await ref
+        .read(deliveryControllerProvider.notifier)
+        .confirmHandoff(publication, publication.authorId);
+    if (context.mounted) {
+      _show(
+        context,
+        error ?? 'Entrega confirmada. El traslado está en curso.',
+        error != null,
+      );
+    }
+  }
+
+  void _openDeliveryForm(BuildContext context) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => RegisterDeliveryPage(publication: publication),
+      ),
+    );
+  }
+
+  Future<void> _openConversation(
+    BuildContext context,
+    WidgetRef ref,
+    String userId,
+  ) async {
+    try {
+      Conversation? conversation;
+      if (userId == publication.authorId && publication.volunteerId != null) {
+        final id = MessagingRepository.conversationId(
+          publicationId: publication.id,
+          firstUserId: publication.authorId,
+          secondUserId: publication.volunteerId!,
+        );
+        conversation = await ref
+            .read(messagingRepositoryProvider)
+            .getConversation(id);
+      } else {
+        conversation = await ref
+            .read(messagingRepositoryProvider)
+            .startConversation(publication: publication, userId: userId);
+      }
+      if (!context.mounted) return;
+      if (conversation == null) {
+        _show(context, 'La conversación aún no está disponible.', true);
+        return;
+      }
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => ConversationPage(conversation: conversation!),
+        ),
+      );
+    } on MessagingFailure catch (error) {
+      if (context.mounted) _show(context, error.message, true);
+    }
+  }
+
+  Future<bool> _confirm(
+    BuildContext context, {
+    required String title,
+    required String message,
+    required String action,
+  }) async {
+    return await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: Text(title),
+            content: Text(message),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(false),
+                child: const Text('Volver'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(context).pop(true),
+                child: Text(action),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+  }
+
+  void _show(BuildContext context, String message, bool isError) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: isError ? AppColors.error : AppColors.success,
+        ),
+      );
   }
 }
 
