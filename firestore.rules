@@ -241,6 +241,15 @@ service cloud.firestore {
         && changed.hasOnly([
           'status', 'deliveredAt', 'statusDates', 'deliveryEvidence'
         ]);
+      let closeConfirmed = resource.data.deliveryType == 'voluntario'
+        && resource.data.status == 'entregada'
+        && request.auth.uid == resource.data.authorId
+        && request.resource.data.status == 'confirmada'
+        && request.resource.data.statusDates.confirmada == request.time
+        && datesChanged.hasOnly(['confirmada'])
+        && request.time < resource.data.statusDates.entregada
+          + duration.value(120, 'h')
+        && changed.hasOnly(['status', 'statusDates']);
       let directDelivery = resource.data.deliveryType == 'donante'
         && resource.data.status == 'publicada'
         && request.auth.uid == resource.data.authorId
@@ -256,7 +265,8 @@ service cloud.firestore {
         && request.resource.data.authorId == resource.data.authorId
         && request.resource.data.mode == resource.data.mode
         && request.resource.data.deliveryType == resource.data.deliveryType
-        && (assume || release || pickedUp || delivered || directDelivery);
+        && (assume || release || pickedUp || delivered || closeConfirmed
+          || directDelivery);
     }
 
     function validConversationCreate() {
@@ -591,7 +601,8 @@ service cloud.firestore {
           'recojo_asumido',
           'compromiso_liberado',
           'entrega_a_voluntario',
-          'entrega_destinatario'
+          'entrega_destinatario',
+          'cierre_confirmado'
         ]
         && request.resource.data.message is string
         && request.resource.data.message.size() > 0
@@ -732,9 +743,14 @@ service cloud.firestore {
         && after.status == 'entregada'
         && actor == before.volunteerId
         && recipient == before.authorId;
+      let closed = request.resource.data.type == 'cierre_confirmado'
+        && before.status == 'entregada'
+        && after.status == 'confirmada'
+        && actor == before.authorId
+        && recipient == before.volunteerId;
       return request.resource.data.actorId == actor
         && before.mode == 'donacion'
-        && (assumed || released || pickedUp || delivered);
+        && (assumed || released || pickedUp || delivered || closed);
     }
 
     function validNotificationOrigin() {

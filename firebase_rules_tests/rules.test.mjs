@@ -1106,6 +1106,72 @@ test('HU12: rechaza datos sensibles o campos arbitrarios del destinatario', asyn
   }));
 });
 
+async function seedDelivered(deliveredAt = new Date()) {
+  await seedPickedUp();
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    await updateDoc(
+      doc(context.firestore(), 'publicaciones', donationPublicationId),
+      {
+        status: 'entregada',
+        deliveredAt,
+        'statusDates.entregada': deliveredAt,
+        deliveryEvidence: { ...deliveryEvidence(), recordedAt: deliveredAt },
+      },
+    );
+  });
+}
+
+test('HU13: solo el donante confirma el cierre de entregada a confirmada', async () => {
+  await seedDelivered();
+  const update = {
+    status: 'confirmada',
+    'statusDates.confirmada': serverTimestamp(),
+  };
+  await assertFails(updateDoc(
+    doc(firestoreFor(volunteerId), 'publicaciones', donationPublicationId),
+    update,
+  ));
+  await assertFails(updateDoc(
+    doc(firestoreFor('third-user'), 'publicaciones', donationPublicationId),
+    update,
+  ));
+  await assertSucceeds(updateDoc(
+    doc(firestoreFor(donorId), 'publicaciones', donationPublicationId),
+    update,
+  ));
+});
+
+test('HU13: el cierre no procede pasado el segundo plazo', async () => {
+  await seedDelivered(new Date('2026-01-04T00:00:00Z'));
+  await assertFails(updateDoc(
+    doc(firestoreFor(donorId), 'publicaciones', donationPublicationId),
+    {
+      status: 'confirmada',
+      'statusDates.confirmada': serverTimestamp(),
+    },
+  ));
+});
+
+test('HU13: el cierre notifica al voluntario en el mismo lote', async () => {
+  await seedDelivered();
+  const db = firestoreFor(donorId);
+  const batch = writeBatch(db);
+  batch.update(doc(db, 'publicaciones', donationPublicationId), {
+    status: 'confirmada',
+    'statusDates.confirmada': serverTimestamp(),
+  });
+  batch.set(doc(db, 'notificaciones', 'closed-notification'), {
+    recipientId: volunteerId,
+    type: 'cierre_confirmado',
+    message: 'El donante confirmó el cierre de la entrega.',
+    publicationId: donationPublicationId,
+    actorId: donorId,
+    createdAt: serverTimestamp(),
+    read: false,
+  });
+  await assertSucceeds(batch.commit());
+});
+
 test('HU12: entrega directa pasa de publicada a confirmada solo por donante', async () => {
   await createVolunteerDonation('donante');
   const update = {

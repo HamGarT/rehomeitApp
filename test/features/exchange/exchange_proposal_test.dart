@@ -52,7 +52,13 @@ void main() {
       );
       expect(
         exchange.effectivePublicationStatus(
-          firstConfirmation.add(const Duration(hours: 72)),
+          firstConfirmation.add(const Duration(hours: 119)),
+        ),
+        PublicationStatus.pendingConfirmation,
+      );
+      expect(
+        exchange.effectivePublicationStatus(
+          firstConfirmation.add(const Duration(hours: 120)),
         ),
         PublicationStatus.closedWithoutConfirmation,
       );

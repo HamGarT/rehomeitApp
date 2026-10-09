@@ -9,6 +9,13 @@ final volunteerCommitmentsProvider =
       return ref.watch(deliveryRepositoryProvider).watchCommitments(userId);
     });
 
+final deliveryEvidenceUrlProvider = FutureProvider.family<String, String>((
+  ref,
+  storagePath,
+) {
+  return ref.watch(deliveryRepositoryProvider).evidenceUrl(storagePath);
+});
+
 final deliveryControllerProvider =
     NotifierProvider<DeliveryController, AsyncValue<void>>(
       DeliveryController.new,
@@ -39,6 +46,14 @@ class DeliveryController extends Notifier<AsyncValue<void>> {
       () => ref
           .read(deliveryRepositoryProvider)
           .confirmHandoff(publication: publication, ownerId: ownerId),
+    );
+  }
+
+  Future<String?> confirmClose(Publication publication, String ownerId) {
+    return _run(
+      () => ref
+          .read(deliveryRepositoryProvider)
+          .confirmClose(publication: publication, ownerId: ownerId),
     );
   }
 

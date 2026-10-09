@@ -14,6 +14,7 @@ import '../../exchange/presentation/exchange_activity_page.dart';
 import '../../exchange/presentation/exchange_controller.dart';
 import '../../exchange/presentation/propose_exchange_sheet.dart';
 import '../../delivery/presentation/delivery_controller.dart';
+import '../../delivery/presentation/delivery_detail_sheet.dart';
 import '../../delivery/presentation/register_delivery_page.dart';
 import '../../messaging/data/messaging_repository.dart';
 import '../../messaging/presentation/conversation_page.dart';
@@ -148,6 +149,7 @@ class PublicationDetailPage extends ConsumerWidget {
                 _PublicationActions(
                   publication: publication,
                   currentUserId: currentUserId,
+                  now: now,
                 ),
               ],
             ),
@@ -330,10 +332,12 @@ class _PublicationActions extends ConsumerWidget {
   const _PublicationActions({
     required this.publication,
     required this.currentUserId,
+    required this.now,
   });
 
   final Publication publication;
   final String? currentUserId;
+  final DateTime now;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -341,10 +345,28 @@ class _PublicationActions extends ConsumerWidget {
     if (userId == null) return const SizedBox.shrink();
     final busy = ref.watch(deliveryControllerProvider).isLoading;
     final isAuthor = publication.isAuthor(userId);
+    final canConfirmClose = publication.canConfirmClose(userId, now);
+    final hasEvidence =
+        publication.deliveryEvidence != null &&
+        (isAuthor || publication.isVolunteer(userId));
 
-    // Cada botón entra por un predicado de `Publication`; aquí solo se decide
-    // el orden y el separador entre ellos.
     final actions = <Widget>[
+      if (canConfirmClose || hasEvidence)
+        FilledButton.icon(
+          onPressed: () => showDeliveryDetailSheet(
+            context,
+            publication: publication,
+            userId: userId,
+          ),
+          icon: Icon(
+            canConfirmClose ? Icons.verified_outlined : Icons.receipt_long,
+          ),
+          label: Text(
+            canConfirmClose
+                ? 'Revisar entrega y confirmar cierre'
+                : 'Ver entrega registrada',
+          ),
+        ),
       if (publication.canAssumePickup(userId))
         FilledButton.icon(
           onPressed: busy ? null : () => _assumePickup(context, ref, userId),

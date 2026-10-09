@@ -99,12 +99,10 @@ class Publication {
   final DateTime? deliveredAt;
   final DeliveryEvidence? deliveryEvidence;
 
-  /// Plazos de HU07-18, HU07-19, HU13-12 y HU13-13 desde la entrega: pasado el
-  /// primero la confirmación se muestra como pendiente; pasado el segundo la
-  /// operación se cierra sin confirmación. Se derivan al consultar (D02), nunca
-  /// se escriben.
+  /// Plazos desde la entrega (HU13-12 y HU13-13). El segundo corre desde que
+  /// venció el primero. Se derivan al consultar (D02), nunca se escriben.
   static const pendingConfirmationAfter = Duration(hours: 48);
-  static const closeWithoutConfirmationAfter = Duration(hours: 72);
+  static const closeWithoutConfirmationAfter = Duration(hours: 48 + 72);
 
   bool get isAvailable => status == PublicationStatus.published;
 
@@ -115,29 +113,20 @@ class Publication {
   bool isVolunteer(String userId) =>
       volunteerId != null && userId == volunteerId;
 
-  /// Quién puede hacer qué, según modalidad, estado y rol. Las pantallas leen
-  /// estos predicados en vez de combinar campos, y las reglas de Firestore
-  /// aplican las mismas condiciones del lado del servidor.
-
-  /// HU10: un tercero asume el recojo de una donación que espera voluntario.
   bool canAssumePickup(String userId) =>
       isDonation &&
       deliveryType == DeliveryType.volunteer &&
       isAvailable &&
       !isAuthor(userId);
 
-  /// HU10: donante o voluntario deshacen el compromiso mientras no hubo recojo.
   bool canReleaseCommitment(String userId) =>
       isDonation &&
       status == PublicationStatus.committed &&
       (isAuthor(userId) || isVolunteer(userId));
 
-  /// HU11: el donante confirma que el voluntario ya recogió el bien.
   bool canConfirmHandoff(String userId) =>
       isDonation && status == PublicationStatus.committed && isAuthor(userId);
 
-  /// HU12: registra la entrega al destinatario el voluntario tras recoger, o el
-  /// donante cuando entrega él mismo.
   bool canRegisterDelivery(String userId) =>
       isDonation &&
       ((status == PublicationStatus.pickedUp && isVolunteer(userId)) ||
@@ -145,21 +134,23 @@ class Publication {
               isAvailable &&
               isAuthor(userId)));
 
-  /// HU03-18: solo el autor y solo mientras nadie se comprometió.
+  bool canConfirmClose(String userId, DateTime now) =>
+      isDonation &&
+      deliveryType == DeliveryType.volunteer &&
+      isAuthor(userId) &&
+      status == PublicationStatus.delivered &&
+      effectiveStatus(now) != PublicationStatus.closedWithoutConfirmation;
+
   bool canWithdraw(String userId) => isAvailable && isAuthor(userId);
 
-  /// HU07-3: proponer canje exige que la publicación sea ajena y esté libre.
   bool canProposeExchange(String userId) =>
       mode == PublicationMode.exchange && isAvailable && !isAuthor(userId);
 
-  /// HU09: con quién conversa [userId] desde el detalle. Para un tercero es
-  /// el autor; para el autor de una donación, su voluntario. `null` si no hay
-  /// con quién hablar todavía.
+  /// Con quién conversa [userId]: el autor, o su voluntario si es el autor.
   String? conversationCounterpart(String userId) =>
       isAuthor(userId) ? volunteerId : authorId;
 
-  /// Hitos alcanzados con su fecha, para el recorrido (HU07-13, HU14). Los de
-  /// vencimiento no están en [statusDates] (D02): se derivan de la entrega.
+  /// Hitos alcanzados; los de vencimiento se derivan de la entrega (D02).
   List<PublicationMilestone> milestones(DateTime now) {
     final reached = <PublicationMilestone>[
       (

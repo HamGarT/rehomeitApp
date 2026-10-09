@@ -121,7 +121,7 @@ void main() {
         },
       );
       final afterThreeDays = publication.milestones(
-        delivered.add(const Duration(hours: 73)),
+        delivered.add(const Duration(hours: 121)),
       );
       expect(afterThreeDays.map((m) => m.status), [
         PublicationStatus.published,

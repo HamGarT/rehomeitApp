@@ -68,7 +68,11 @@ void main() {
       PublicationStatus.pendingConfirmation,
     );
     expect(
-      publication.effectiveStatus(deliveredAt.add(const Duration(hours: 72))),
+      publication.effectiveStatus(deliveredAt.add(const Duration(hours: 119))),
+      PublicationStatus.pendingConfirmation,
+    );
+    expect(
+      publication.effectiveStatus(deliveredAt.add(const Duration(hours: 120))),
       PublicationStatus.closedWithoutConfirmation,
     );
   });

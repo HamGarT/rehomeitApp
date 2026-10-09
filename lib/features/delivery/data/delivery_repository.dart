@@ -201,6 +201,47 @@ class DeliveryRepository {
     }
   }
 
+  Future<void> confirmClose({
+    required Publication publication,
+    required String ownerId,
+  }) async {
+    final volunteerId = publication.volunteerId;
+    if (volunteerId == null ||
+        !publication.canConfirmClose(ownerId, DateTime.now())) {
+      throw const DeliveryFailure('No puedes confirmar el cierre.');
+    }
+    final publicationRef = _firestore
+        .collection('publicaciones')
+        .doc(publication.id);
+    final batch = _firestore.batch();
+    batch.update(publicationRef, {
+      'status': PublicationStatus.confirmed.wireValue,
+      'statusDates.${PublicationStatus.confirmed.wireValue}':
+          FieldValue.serverTimestamp(),
+    });
+    batch.set(
+      _firestore
+          .collection('notificaciones')
+          .doc('cierre_confirmado_${publication.id}'),
+      notificationPayload(
+        recipientId: volunteerId,
+        type: 'cierre_confirmado',
+        message: 'El donante confirmó el cierre de ${publication.title}.',
+        publicationId: publication.id,
+        actorId: ownerId,
+      ),
+    );
+    try {
+      await commitOfflineTolerant(batch);
+    } on FirebaseException catch (error) {
+      throw DeliveryFailure(_friendlyFirebaseMessage(error));
+    }
+  }
+
+  Future<String> evidenceUrl(String storagePath) {
+    return _storage.ref(storagePath).getDownloadURL();
+  }
+
   Future<DeliverySubmissionResult> registerDelivery({
     required Publication publication,
     required String userId,
