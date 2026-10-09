@@ -1,4 +1,5 @@
 import '../../../core/utils/firestore_dates.dart';
+import '../../../shared/domain/publication.dart';
 
 class Conversation {
   const Conversation({
@@ -17,7 +18,7 @@ class Conversation {
   final String id;
   final String publicationId;
   final String publicationTitle;
-  final String publicationMode;
+  final PublicationMode publicationMode;
   final String? publicationImageUrl;
   final List<String> participantIds;
   final String lastMessage;
@@ -31,7 +32,11 @@ class Conversation {
       id: id,
       publicationId: map['publicationId'] as String? ?? '',
       publicationTitle: map['publicationTitle'] as String? ?? '',
-      publicationMode: map['publicationMode'] as String? ?? '',
+      // Las reglas garantizan que coincide con la modalidad de la
+      // publicación, así que un valor desconocido es un error y no un caso.
+      publicationMode: PublicationModeWire.fromValue(
+        map['publicationMode'] as String?,
+      ),
       publicationImageUrl: map['publicationImageUrl'] as String?,
       participantIds: (map['participantIds'] as List<Object?>? ?? const [])
           .whereType<String>()

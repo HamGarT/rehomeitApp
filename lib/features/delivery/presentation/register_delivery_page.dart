@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../../../app/theme.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/cajamarca_districts.dart';
 import '../../../shared/domain/publication.dart';
@@ -193,9 +194,9 @@ class _PrivacyNotice extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: AppColors.primary.withValues(alpha: 0.09),
+        color: context.appColors.primary.withValues(alpha: 0.09),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: context.appColors.border),
       ),
       child: const Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -225,21 +226,21 @@ class _EvidencePreview extends StatelessWidget {
       width: double.infinity,
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: context.appColors.surface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: context.appColors.border),
       ),
       child: photo == null
-          ? const Column(
+          ? Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Icon(
                   Icons.add_a_photo_outlined,
                   size: 44,
-                  color: AppColors.textSecondary,
+                  color: context.appColors.textSecondary,
                 ),
-                SizedBox(height: 8),
-                Text('La fotografía es obligatoria'),
+                const SizedBox(height: 8),
+                const Text('La fotografía es obligatoria'),
               ],
             )
           : Image.file(photo!, fit: BoxFit.cover, cacheWidth: 1000),

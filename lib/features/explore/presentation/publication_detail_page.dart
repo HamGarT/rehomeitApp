@@ -498,8 +498,10 @@ class _PublicationActions extends ConsumerWidget {
                 requestedPublication: publication,
               );
               if (proposed == true && context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Propuesta enviada')),
+                showAppSnackBar(
+                  context,
+                  'Propuesta enviada',
+                  kind: AppSnackBarKind.success,
                 );
               }
             },
@@ -552,11 +554,11 @@ class _PublicationActions extends ConsumerWidget {
         .withdraw(publication.id);
     if (!context.mounted) return;
     if (error != null) {
-      ScaffoldMessenger.of(context)
-        ..hideCurrentSnackBar()
-        ..showSnackBar(SnackBar(content: Text(error)));
+      showAppSnackBar(context, error, kind: AppSnackBarKind.error);
       return;
     }
+    // El snackbar se muestra tras cerrar el detalle, así que necesita el
+    // contexto de la pantalla que queda debajo, no el de esta.
     final messenger = ScaffoldMessenger.of(context);
     Navigator.of(context).pop();
     messenger.showSnackBar(

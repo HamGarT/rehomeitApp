@@ -208,15 +208,17 @@ class _PublishCta extends StatelessWidget {
                 Text(
                   'Hey aún no has publicado nada, vamos pon a chambear a nuestro amigo!!',
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    color: Colors.black,
+                    color: AppColors.onAccent,
                     fontWeight: FontWeight.w800,
                     height: 1.25,
                   ),
                 ),
                 const SizedBox(height: 16),
+                // Sobre el amarillo, que es el mismo en claro y oscuro, el
+                // botón va siempre negro con icono blanco.
                 _CircleButton(
                   icon: Icons.arrow_outward,
-                  background: Colors.black,
+                  background: AppColors.onAccent,
                   foreground: Colors.white,
                   onTap: onPublish,
                 ),
@@ -844,14 +846,11 @@ class _StackedCardsState extends State<_StackedCards>
                         clipBehavior: Clip.none,
                         alignment: Alignment.center,
                         children: [
-                          if (hidden != null) hidden,
+                          ?hidden,
                           // El cruce de orden ocurre a mitad de animación.
-                          if (p < 0.5) ...[
-                            if (incoming != null) incoming,
-                            if (outgoing != null) outgoing,
-                          ] else ...[
-                            if (outgoing != null) outgoing,
-                            if (incoming != null) incoming,
+                          if (p < 0.5) ...[?incoming, ?outgoing] else ...[
+                            ?outgoing,
+                            ?incoming,
                           ],
                           if (canCycle)
                             Positioned(
@@ -934,7 +933,7 @@ class _CardFrame extends StatelessWidget {
         borderRadius: borderRadius,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.18 * elevation),
+            color: Colors.black.withValues(alpha: 0.18 * elevation),
             blurRadius: 16 * elevation,
             offset: Offset(0, 6 * elevation),
           ),
@@ -946,7 +945,7 @@ class _CardFrame extends StatelessWidget {
           fit: StackFit.expand,
           children: [
             child,
-            if (dimmed) Container(color: Colors.black.withOpacity(0.25)),
+            if (dimmed) Container(color: Colors.black.withValues(alpha: 0.25)),
           ],
         ),
       ),

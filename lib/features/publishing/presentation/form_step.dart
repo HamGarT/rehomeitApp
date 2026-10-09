@@ -319,7 +319,7 @@ class _AiBanner extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: const Color(0xFFFDF1DE),
+        color: AppColors.accentSoft,
         borderRadius: BorderRadius.circular(16),
       ),
       child: Row(
@@ -330,7 +330,11 @@ class _AiBanner extends StatelessWidget {
           Expanded(
             child: Text(
               'Completamos estos datos a partir de tus fotos. Revísalos y edita lo que necesites.',
-              style: Theme.of(context).textTheme.bodySmall,
+              // El fondo amarillo suave es igual en ambos modos; el texto
+              // del tema sería blanco en oscuro y no se leería.
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: AppColors.onAccent),
             ),
           ),
         ],
@@ -459,7 +463,13 @@ class _DetailCard extends StatelessWidget {
                   color: context.appColors.textPrimary.withValues(alpha: 0.65),
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(Icons.close, size: 13, color: Colors.white),
+                // El círculo toma el color del texto, así que el icono toma
+                // el de la superficie: contrasta en los dos modos.
+                child: Icon(
+                  Icons.close,
+                  size: 13,
+                  color: context.appColors.surface,
+                ),
               ),
             ),
           ),

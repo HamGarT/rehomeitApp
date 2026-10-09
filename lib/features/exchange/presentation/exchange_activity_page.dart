@@ -6,6 +6,7 @@ import '../../../core/constants/app_colors.dart';
 import '../../../core/utils/date_format.dart';
 import '../../../shared/domain/publication.dart';
 import '../../../shared/widgets/app_badge.dart';
+import '../../../shared/widgets/app_dialog.dart';
 import '../../../shared/widgets/app_snack_bar.dart';
 import '../../../shared/widgets/publication_image.dart';
 import '../../auth/presentation/auth_controller.dart';
@@ -184,28 +185,17 @@ class _ProposalCard extends ConsumerWidget {
     WidgetRef ref, {
     required bool accept,
   }) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(accept ? 'Aceptar intercambio' : 'Rechazar propuesta'),
-        content: Text(
-          accept
-              ? 'Ambas publicaciones pasarán a Comprometida. ¿Deseas continuar?'
-              : 'La publicación seguirá disponible para otras propuestas.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancelar'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: Text(accept ? 'Aceptar' : 'Rechazar'),
-          ),
-        ],
-      ),
+    final confirmed = await showAppConfirmDialog(
+      context,
+      icon: accept ? Icons.swap_horiz : Icons.close,
+      destructive: !accept,
+      title: accept ? 'Aceptar intercambio' : 'Rechazar propuesta',
+      subtitle: accept
+          ? 'Ambas publicaciones pasarán a Comprometida.'
+          : 'La publicación seguirá disponible para otras propuestas.',
+      confirmLabel: accept ? 'Aceptar' : 'Rechazar',
     );
-    if (confirmed != true || !context.mounted) return;
+    if (!confirmed || !context.mounted) return;
 
     final error = await ref
         .read(exchangeControllerProvider.notifier)
@@ -219,26 +209,15 @@ class _ProposalCard extends ConsumerWidget {
   }
 
   Future<void> _confirm(BuildContext context, WidgetRef ref) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Confirmar recepción'),
-        content: const Text(
-          'Confirma solo cuando ya hayas recibido el bien acordado.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Volver'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Confirmar'),
-          ),
-        ],
-      ),
+    final confirmed = await showAppConfirmDialog(
+      context,
+      icon: Icons.check_circle_outline,
+      title: 'Confirmar recepción',
+      subtitle: 'Confirma solo cuando ya hayas recibido el bien acordado.',
+      cancelLabel: 'Volver',
+      confirmLabel: 'Confirmar',
     );
-    if (confirmed != true || !context.mounted) return;
+    if (!confirmed || !context.mounted) return;
 
     final error = await ref
         .read(exchangeControllerProvider.notifier)

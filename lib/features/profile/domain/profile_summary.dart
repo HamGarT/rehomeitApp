@@ -86,13 +86,6 @@ class ProfileSummary {
     );
   }
 
-  /// Publicaciones que el perfil propio muestra tal cual, incluidas anuladas y
-  /// retiradas: quien las retiró tiene derecho a verlas en su historial.
-  ///
-  /// Devuelve la lista sin ordenar porque la consulta ya llega ordenada por
-  /// fecha de publicación.
-  static List<Publication> ownPublications(List<Publication> items) => items;
-
   /// Publicaciones que el perfil público de otra persona puede ver (HU20,
   /// criterio 17): todas menos las anuladas y las retiradas, que el criterio 7
   /// de HU19 retira del listado, de la búsqueda y del detalle.

@@ -21,12 +21,18 @@ class ProfileStat {
   final String semanticLabel;
 }
 
-/// Fila de contadores. Va en la tarjeta del perfil, no en una tarjeta por
-/// cifra: son tres datos del mismo grupo y tres cajas las harían competir.
+/// Tarjeta de actividad: fila de contadores y, opcionalmente, un pie con
+/// una cifra más del mismo grupo. Una tarjeta por cifra las haría competir;
+/// el pie evita además una segunda superficie para el impacto ambiental, que
+/// en la interfaz neutra del perfil se leería como un elemento ajeno.
 class ProfileStats extends StatelessWidget {
-  const ProfileStats({super.key, required this.stats});
+  const ProfileStats({super.key, required this.stats, this.footer});
 
   final List<ProfileStat> stats;
+
+  /// Va bajo los contadores, separado por una línea. El perfil público no lo
+  /// pasa: solo enseña contadores (HU20, criterio 18).
+  final Widget? footer;
 
   @override
   Widget build(BuildContext context) {
@@ -34,48 +40,71 @@ class ProfileStats extends StatelessWidget {
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 8),
+      padding: const EdgeInsets.symmetric(vertical: 18),
       decoration: BoxDecoration(
         color: palette.surface,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: palette.border),
       ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          for (var index = 0; index < stats.length; index++) ...[
-            if (index > 0)
-              // Separador vertical entre cifras. Un `Divider` horizontal
-              // partiría la fila en dos bandas y la dejaría más alta.
-              Container(
-                width: 1,
-                height: 34,
-                margin: const EdgeInsets.only(top: 4),
-                color: palette.border,
-              ),
-            Expanded(
-              child: Semantics(
-                label: '${stats[index].semanticLabel}: ${stats[index].value}',
-                excludeSemantics: true,
-                child: Column(
-                  children: [
-                    Text(
-                      '${stats[index].value}',
-                      style: Theme.of(context).textTheme.titleLarge
-                          ?.copyWith(fontWeight: FontWeight.w700),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (var index = 0; index < stats.length; index++) ...[
+                  if (index > 0)
+                    // Separador vertical entre cifras. Un `Divider` horizontal
+                    // partiría la fila en dos bandas y la dejaría más alta.
+                    Container(
+                      width: 1,
+                      height: 34,
+                      margin: const EdgeInsets.only(top: 4),
+                      color: palette.border,
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      stats[index].label,
-                      textAlign: TextAlign.center,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.bodySmall
-                          ?.copyWith(color: palette.textSecondary, height: 1.2),
+                  Expanded(
+                    child: Semantics(
+                      label:
+                          '${stats[index].semanticLabel}: ${stats[index].value}',
+                      excludeSemantics: true,
+                      child: Column(
+                        children: [
+                          Text(
+                            '${stats[index].value}',
+                            style: Theme.of(context).textTheme.titleLarge
+                                ?.copyWith(fontWeight: FontWeight.w700),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            stats[index].label,
+                            textAlign: TextAlign.center,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(
+                                  color: palette.textSecondary,
+                                  height: 1.2,
+                                ),
+                          ),
+                        ],
+                      ),
                     ),
-                  ],
-                ),
-              ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          if (footer != null) ...[
+            Container(
+              height: 1,
+              margin: const EdgeInsets.fromLTRB(18, 16, 18, 14),
+              color: palette.border,
+            ),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 18),
+              child: footer,
             ),
           ],
         ],
@@ -84,68 +113,73 @@ class ProfileStats extends StatelessWidget {
   }
 }
 
-/// Acumulado estimado de residuos evitados (HU18 y HU20, criterio 8).
+/// Acumulado estimado de residuos evitados (HU18 y HU20, criterio 8). Se
+/// pinta como pie de [ProfileStats], sin superficie propia.
 ///
 /// El aviso del criterio 6 va siempre debajo de la cifra y no en un tooltip:
 /// "estimación" escrito a la vista es lo que evita que alguien lo lea como una
 /// medición del bien que publicó.
-class ImpactCard extends StatelessWidget {
-  const ImpactCard({super.key, required this.kilograms});
+class ImpactSummary extends StatelessWidget {
+  const ImpactSummary({super.key, required this.kilograms});
 
   final double kilograms;
+
+  /// El icono va en un círculo porque es el mismo recurso que usa el avatar de
+  /// la cabecera; así el verde entra como acento puntual y no como fondo.
+  static const _iconCircleSize = 40.0;
 
   @override
   Widget build(BuildContext context) {
     final palette = context.appColors;
 
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        // Verde muy diluido: el tinte suficiente para leerlo como "impacto",
-        // sin competir con las fotos ni gritar. El texto se queda en la
-        // paleta porque el verde de marca es demasiado claro para escribir
-        // encima en modo claro.
-        color: AppColors.success.withValues(alpha: 0.10),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: AppColors.success.withValues(alpha: 0.28)),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(Icons.eco_outlined, color: AppColors.success, size: 26),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Residuos evitados',
-                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                    color: palette.textPrimary,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  _amount(kilograms),
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w700,
-                    color: palette.textPrimary,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  'Es una estimación según el peso promedio de la categoría '
-                  'de cada bien, no una medida de lo que publicaste.',
-                  style: Theme.of(context).textTheme.bodySmall
-                      ?.copyWith(color: palette.textSecondary, height: 1.35),
-                ),
-              ],
-            ),
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          width: _iconCircleSize,
+          height: _iconCircleSize,
+          decoration: BoxDecoration(
+            color: AppColors.success.withValues(alpha: 0.14),
+            shape: BoxShape.circle,
           ),
-        ],
-      ),
+          alignment: Alignment.center,
+          child: const Icon(
+            Icons.eco_outlined,
+            color: AppColors.success,
+            size: 22,
+          ),
+        ),
+        const SizedBox(width: 14),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Residuos evitados',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: palette.textSecondary,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                _amount(kilograms),
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: palette.textPrimary,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Es una estimación según el peso promedio de la categoría '
+                'de cada bien, no una medida de lo que publicaste.',
+                style: Theme.of(context).textTheme.bodySmall
+                    ?.copyWith(color: palette.textSecondary, height: 1.35),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 

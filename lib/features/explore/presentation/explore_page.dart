@@ -86,14 +86,22 @@ class _ExplorePageState extends ConsumerState<ExplorePage> {
                       textInputAction: TextInputAction.search,
                       decoration: InputDecoration(
                         hintText: '¿Qué necesitas? Ropa, muebles, libros...',
-                        hintStyle: TextStyle(color: Colors.grey.shade600),
-                        prefixIcon: const Icon(
-                          Icons.search,
-                          color: Colors.black,
+                        hintStyle: TextStyle(
+                          color: context.appColors.textSecondary,
                         ),
-                        border: _searchBorder(Colors.black, 1),
-                        enabledBorder: _searchBorder(Colors.black, 1),
-                        focusedBorder: _searchBorder(Colors.black, 2),
+                        prefixIcon: Icon(
+                          Icons.search,
+                          color: context.appColors.primary,
+                        ),
+                        border: _searchBorder(context.appColors.primary, 1),
+                        enabledBorder: _searchBorder(
+                          context.appColors.primary,
+                          1,
+                        ),
+                        focusedBorder: _searchBorder(
+                          context.appColors.primary,
+                          2,
+                        ),
                       ),
                     ),
                   ),
@@ -338,12 +346,12 @@ class _PublicationCard extends StatelessWidget {
                 child: Container(
                   padding: const EdgeInsets.all(8),
                   decoration: const BoxDecoration(
-                    color: AppColors.accent, // Yellow matching the image
+                    color: AppColors.accent,
                     shape: BoxShape.circle,
                   ),
                   child: const Icon(
                     Icons.arrow_outward,
-                    color: Colors.black,
+                    color: AppColors.onAccent,
                     size: 24,
                   ),
                 ),

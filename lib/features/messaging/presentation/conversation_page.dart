@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../app/theme.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/utils/date_format.dart';
+import '../../../shared/domain/publication.dart';
 import '../../../shared/widgets/publication_image.dart';
 import '../../auth/presentation/auth_controller.dart';
 import '../../explore/data/explore_repository.dart';
@@ -140,7 +142,7 @@ class _PublicationHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: AppColors.surface,
+      color: context.appColors.surface,
       child: InkWell(
         onTap: onTap,
         child: Padding(
@@ -168,11 +170,10 @@ class _PublicationHeader extends StatelessWidget {
                       style: const TextStyle(fontWeight: FontWeight.w700),
                     ),
                     Text(
-                      conversation.publicationMode == 'intercambio'
-                          ? 'Intercambio'
-                          : 'Donación',
-                      style: Theme.of(context).textTheme.bodySmall
-                          ?.copyWith(color: AppColors.textSecondary),
+                      conversation.publicationMode.label,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: context.appColors.textSecondary,
+                      ),
                     ),
                   ],
                 ),
@@ -202,10 +203,10 @@ class _MessageBubble extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(12, 9, 10, 6),
         decoration: BoxDecoration(
           color: isOwn
-              ? AppColors.primary.withValues(alpha: 0.16)
-              : AppColors.surface,
+              ? context.appColors.primary.withValues(alpha: 0.16)
+              : context.appColors.surface,
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: AppColors.border),
+          border: Border.all(color: context.appColors.border),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.end,
@@ -245,7 +246,7 @@ class _Composer extends StatelessWidget {
   Widget build(BuildContext context) {
     return Material(
       elevation: 4,
-      color: AppColors.surface,
+      color: context.appColors.surface,
       child: Padding(
         padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
         child: Row(

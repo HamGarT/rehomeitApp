@@ -94,15 +94,12 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: ProfileStats(stats: _ownStats(summary)),
+              child: ProfileStats(
+                stats: _ownStats(summary),
+                footer: ImpactSummary(kilograms: summary.avoidedKg),
+              ),
             ),
           ),
-          // SliverToBoxAdapter(
-          //   child: Padding(
-          //     padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-          //     child: ImpactCard(kilograms: summary.avoidedKg),
-          //   ),
-          // ),
           ..._ownPublicationSlivers(publications),
           ..._commitmentSlivers(userId),
           const SliverToBoxAdapter(child: _AppearanceSection()),

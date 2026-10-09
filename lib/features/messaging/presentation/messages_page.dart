@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../core/constants/app_colors.dart';
+import '../../../app/theme.dart';
 import '../../../core/utils/date_format.dart';
 import '../../../shared/widgets/publication_image.dart';
 import '../../auth/presentation/auth_controller.dart';
@@ -83,7 +83,7 @@ class _ConversationTile extends StatelessWidget {
         trailing: Text(
           formatCompactDate(conversation.updatedAt),
           style: Theme.of(context).textTheme.labelSmall
-              ?.copyWith(color: AppColors.textSecondary),
+              ?.copyWith(color: context.appColors.textSecondary),
         ),
         onTap: () => Navigator.of(context).push(
           MaterialPageRoute(
@@ -100,19 +100,19 @@ class _EmptyMessages extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Center(
+    return Center(
       child: Padding(
-        padding: EdgeInsets.all(32),
+        padding: const EdgeInsets.all(32),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(
               Icons.chat_bubble_outline,
               size: 52,
-              color: AppColors.textSecondary,
+              color: context.appColors.textSecondary,
             ),
-            SizedBox(height: 12),
-            Text(
+            const SizedBox(height: 12),
+            const Text(
               'Aún no tienes conversaciones. Puedes iniciar una desde el detalle de un bien.',
               textAlign: TextAlign.center,
             ),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:rehomeitapp/app/theme.dart';
 import 'package:rehomeitapp/features/delivery/presentation/register_delivery_page.dart';
 import 'package:rehomeitapp/shared/domain/publication.dart';
 
@@ -27,6 +28,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         child: MaterialApp(
+          theme: buildAppTheme(brightness: Brightness.light),
           home: RegisterDeliveryPage(publication: publication),
         ),
       ),

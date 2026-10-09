@@ -32,7 +32,7 @@ class MessagingRepository {
         .collection('conversaciones')
         .where('participantIds', arrayContains: userId)
         .orderBy('updatedAt', descending: true)
-        .snapshots(includeMetadataChanges: true)
+        .snapshots()
         .map(
           (snapshot) => snapshot.docs
               .map((doc) => Conversation.fromMap(doc.id, doc.data()))
@@ -129,7 +129,7 @@ class MessagingRepository {
           publicationImageUrl: current.images.isEmpty
               ? null
               : current.images.first,
-          publicationMode: current.mode.wireValue,
+          publicationMode: current.mode,
           participantIds: participants,
           createdAt: now,
           updatedAt: now,
