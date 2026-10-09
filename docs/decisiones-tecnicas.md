@@ -133,7 +133,8 @@ Lo ya promovido, para no reescribirlo en una feature nueva:
 | Saber si un `FirebaseException` es "sin conexión" o "sin permiso" | `core/firebase/firebase_errors.dart` |
 | Confirmar un lote sin bloquear la interfaz cuando no hay red | `core/firebase/firestore_commit.dart` |
 | Documento de `notificaciones` (D01) | `shared/data/notification_payload.dart` |
-| Diálogo, chip, hoja de selección, asa de hoja, snackbar, spinner de botón, píldora, mascota, imagen de publicación | `shared/widgets/` |
+| Diálogo, chip, hoja de selección, asa de hoja, snackbar, spinner de botón, píldora, distintivos de modalidad y de estado, mascota, imagen de publicación | `shared/widgets/` |
+| Quién puede hacer qué con una publicación (`canAssumePickup`, `canConfirmClose`, etc.), la ruta de hitos y quién generó cada uno | `shared/domain/publication.dart` |
 
 Los mensajes que ve el usuario ante un error siguen en cada repositorio: lo que se comparte es el criterio para clasificar el error, no el texto, porque cada dominio le dice algo distinto.
 
