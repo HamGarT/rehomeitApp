@@ -16,7 +16,6 @@ import '../../exchange/presentation/propose_exchange_sheet.dart';
 import '../../delivery/presentation/delivery_controller.dart';
 import '../../delivery/presentation/register_delivery_page.dart';
 import '../../messaging/data/messaging_repository.dart';
-import '../../messaging/domain/conversation.dart';
 import '../../messaging/presentation/conversation_page.dart';
 import '../../moderation/presentation/report_publication_sheet.dart';
 import '../../profile/presentation/public_profile_page.dart';
@@ -653,33 +652,19 @@ class _PublicationActions extends ConsumerWidget {
     String userId,
   ) async {
     try {
-      Conversation? conversation;
-      if (userId == publication.authorId && publication.volunteerId != null) {
-        final id = MessagingRepository.conversationId(
-          publicationId: publication.id,
-          firstUserId: publication.authorId,
-          secondUserId: publication.volunteerId!,
-        );
-        conversation = await ref
-            .read(messagingRepositoryProvider)
-            .getConversation(id);
-      } else {
-        conversation = await ref
-            .read(messagingRepositoryProvider)
-            .startConversation(publication: publication, userId: userId);
-      }
+      // El autor solo llega aquí con un voluntario asignado; para cualquier
+      // otro usuario la otra parte es el autor y el repositorio lo resuelve.
+      final conversation = await ref
+          .read(messagingRepositoryProvider)
+          .startConversation(
+            publication: publication,
+            userId: userId,
+            counterpartId: publication.volunteerId,
+          );
       if (!context.mounted) return;
-      if (conversation == null) {
-        showAppSnackBar(
-          context,
-          'La conversación aún no está disponible.',
-          kind: AppSnackBarKind.error,
-        );
-        return;
-      }
       await Navigator.of(context).push(
         MaterialPageRoute(
-          builder: (_) => ConversationPage(conversation: conversation!),
+          builder: (_) => ConversationPage(conversation: conversation),
         ),
       );
     } on MessagingFailure catch (error) {

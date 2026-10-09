@@ -70,11 +70,17 @@ class MessagingRepository {
         : null;
   }
 
+  /// Abre, o crea si no existe, la conversación de [publication] entre su
+  /// autor y la otra parte. Si quien llama es el autor, [counterpartId] dice
+  /// con quién; si no, la otra parte es siempre el autor y [counterpartId] se
+  /// ignora. Las reglas exigen que el autor esté entre los participantes.
   Future<Conversation> startConversation({
     required Publication publication,
     required String userId,
+    String? counterpartId,
   }) async {
-    if (publication.authorId == userId) {
+    final otherId = userId == publication.authorId ? counterpartId : userId;
+    if (otherId == null || otherId == publication.authorId) {
       throw const MessagingFailure(
         'No puedes iniciar una conversación contigo mismo.',
       );
@@ -82,7 +88,7 @@ class MessagingRepository {
     final id = conversationId(
       publicationId: publication.id,
       firstUserId: publication.authorId,
-      secondUserId: userId,
+      secondUserId: otherId,
     );
     final reference = _firestore.collection('conversaciones').doc(id);
 
@@ -107,7 +113,7 @@ class MessagingRepository {
           throw const MessagingFailure('La publicación cambió de propietario.');
         }
         final now = DateTime.now().toUtc();
-        final participants = [current.authorId, userId]..sort();
+        final participants = [current.authorId, otherId]..sort();
         transaction.set(reference, {
           'publicationId': current.id,
           'publicationTitle': current.title,
