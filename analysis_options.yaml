@@ -15,9 +15,6 @@ analyzer:
     - android/**
     - ios/**
     - web/**
-    - windows/**
-    - macos/**
-    - linux/**
     - firebase_rules_tests/node_modules/**
 
 linter:
