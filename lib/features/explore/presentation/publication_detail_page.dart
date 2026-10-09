@@ -13,6 +13,7 @@ import '../../auth/presentation/auth_controller.dart';
 import '../../exchange/presentation/exchange_activity_page.dart';
 import '../../exchange/presentation/exchange_controller.dart';
 import '../../exchange/presentation/propose_exchange_sheet.dart';
+import '../../journey/presentation/publication_journey_page.dart';
 import '../../delivery/presentation/delivery_controller.dart';
 import '../../delivery/presentation/delivery_detail_sheet.dart';
 import '../../delivery/presentation/register_delivery_page.dart';
@@ -23,7 +24,7 @@ import '../../profile/presentation/public_profile_page.dart';
 import '../../publishing/presentation/publish_controller.dart';
 import '../domain/public_profile.dart';
 import 'explore_controller.dart';
-import 'widgets/publication_mode_badge.dart';
+import '../../../shared/widgets/publication_mode_badge.dart';
 
 class PublicationDetailPage extends ConsumerWidget {
   const PublicationDetailPage({super.key, required this.initial});
@@ -209,6 +210,19 @@ class _PublicationTimeline extends StatelessWidget {
                 ],
               ),
             ),
+          const SizedBox(height: 6),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton.icon(
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => PublicationJourneyPage(initial: publication),
+                ),
+              ),
+              icon: const Icon(Icons.timeline, size: 18),
+              label: const Text('Ver recorrido completo'),
+            ),
+          ),
         ],
       ),
     );

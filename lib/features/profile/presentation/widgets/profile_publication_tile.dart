@@ -4,7 +4,7 @@ import '../../../../app/theme.dart';
 import '../../../../shared/domain/publication.dart';
 import '../../../../shared/widgets/publication_image.dart';
 import '../../../explore/presentation/publication_detail_page.dart';
-import 'publication_status_badge.dart';
+import '../../../../shared/widgets/publication_status_badge.dart';
 
 /// Fila de publicación en la lista del perfil: miniatura, título, distrito y
 /// el estado del bien.

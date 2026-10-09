@@ -95,6 +95,47 @@ void main() {
     );
   });
 
+  group('ruta esperada', () {
+    test('cada modalidad recorre sus propios hitos', () {
+      expect(_publication().expectedPath, [
+        PublicationStatus.published,
+        PublicationStatus.committed,
+        PublicationStatus.pickedUp,
+        PublicationStatus.delivered,
+        PublicationStatus.confirmed,
+      ]);
+      expect(_publication(deliveryType: DeliveryType.owner).expectedPath, [
+        PublicationStatus.published,
+        PublicationStatus.confirmed,
+      ]);
+      expect(
+        _publication(
+          mode: PublicationMode.exchange,
+          deliveryType: null,
+        ).expectedPath,
+        [
+          PublicationStatus.published,
+          PublicationStatus.committed,
+          PublicationStatus.delivered,
+          PublicationStatus.confirmed,
+        ],
+      );
+    });
+
+    test('el intercambio solo expone al autor como actor', () {
+      final donation = _publication(volunteerId: 'vol');
+      expect(donation.milestoneActorId(PublicationStatus.committed), 'vol');
+      expect(donation.milestoneActorId(PublicationStatus.pickedUp), 'author');
+
+      final exchange = _publication(
+        mode: PublicationMode.exchange,
+        deliveryType: null,
+      );
+      expect(exchange.milestoneActorId(PublicationStatus.published), 'author');
+      expect(exchange.milestoneActorId(PublicationStatus.committed), isNull);
+    });
+  });
+
   group('recorrido', () {
     final published = DateTime.utc(2026, 10, 1);
     final delivered = DateTime.utc(2026, 10, 3);

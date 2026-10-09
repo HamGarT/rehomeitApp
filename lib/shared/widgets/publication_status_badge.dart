@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 
-import '../../../../app/theme.dart';
-import '../../../../core/constants/app_colors.dart';
-import '../../../../shared/domain/publication.dart';
-import '../../../../shared/widgets/app_badge.dart';
+import '../../app/theme.dart';
+import '../../core/constants/app_colors.dart';
+import '../domain/publication.dart';
+import 'app_badge.dart';
 
 /// Distintivo con el estado de una publicación en la lista del perfil.
 ///

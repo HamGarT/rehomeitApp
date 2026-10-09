@@ -14,7 +14,7 @@ import '../../../shared/widgets/publication_image.dart';
 import '../domain/explore_filters.dart';
 import 'explore_controller.dart';
 import 'publication_detail_page.dart';
-import 'widgets/publication_mode_badge.dart';
+import '../../../shared/widgets/publication_mode_badge.dart';
 
 OutlineInputBorder _searchBorder(Color color, double width) {
   return OutlineInputBorder(

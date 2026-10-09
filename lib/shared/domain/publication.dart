@@ -150,6 +150,42 @@ class Publication {
   String? conversationCounterpart(String userId) =>
       isAuthor(userId) ? volunteerId : authorId;
 
+  /// Hitos que recorre el bien según su ruta (HU14-2 y HU14-8).
+  List<PublicationStatus> get expectedPath => switch ((mode, deliveryType)) {
+    (PublicationMode.exchange, _) => const [
+      PublicationStatus.published,
+      PublicationStatus.committed,
+      PublicationStatus.delivered,
+      PublicationStatus.confirmed,
+    ],
+    (_, DeliveryType.owner) => const [
+      PublicationStatus.published,
+      PublicationStatus.confirmed,
+    ],
+    _ => const [
+      PublicationStatus.published,
+      PublicationStatus.committed,
+      PublicationStatus.pickedUp,
+      PublicationStatus.delivered,
+      PublicationStatus.confirmed,
+    ],
+  };
+
+  /// Quién generó cada hito. En intercambio solo se expone el autor de la
+  /// publicación (HU07-13).
+  String? milestoneActorId(PublicationStatus milestone) {
+    if (!isDonation) {
+      return milestone == PublicationStatus.published ? authorId : null;
+    }
+    return switch (milestone) {
+      PublicationStatus.published ||
+      PublicationStatus.pickedUp ||
+      PublicationStatus.confirmed => authorId,
+      PublicationStatus.committed || PublicationStatus.delivered => volunteerId,
+      _ => null,
+    };
+  }
+
   /// Hitos alcanzados; los de vencimiento se derivan de la entrega (D02).
   List<PublicationMilestone> milestones(DateTime now) {
     final reached = <PublicationMilestone>[

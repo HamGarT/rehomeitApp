@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 
-import '../../../../core/constants/app_colors.dart';
-import '../../../../shared/domain/publication.dart';
-import '../../../../shared/widgets/app_badge.dart';
+import '../../core/constants/app_colors.dart';
+import '../domain/publication.dart';
+import 'app_badge.dart';
 
 class PublicationModeBadge extends StatelessWidget {
   const PublicationModeBadge({super.key, required this.mode});

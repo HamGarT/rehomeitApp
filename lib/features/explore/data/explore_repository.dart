@@ -8,6 +8,8 @@ final exploreRepositoryProvider = Provider<ExploreRepository>((ref) {
   return ExploreRepository(FirebaseFirestore.instance);
 });
 
+typedef PublicationSnapshot = ({Publication? publication, bool isFromCache});
+
 class ExploreFeed {
   const ExploreFeed({required this.publications, required this.isFromCache});
 
@@ -49,14 +51,22 @@ class ExploreRepository {
   }
 
   Stream<Publication?> watchPublication(String publicationId) {
+    return watchPublicationSource(publicationId)
+        .map((snapshot) => snapshot.publication);
+  }
+
+  Stream<PublicationSnapshot> watchPublicationSource(String publicationId) {
     return _firestore
         .collection('publicaciones')
         .doc(publicationId)
         .snapshots(includeMetadataChanges: true)
         .map(
-          (document) => document.exists
-              ? Publication.fromMap(document.id, document.data()!)
-              : null,
+          (document) => (
+            publication: document.exists
+                ? Publication.fromMap(document.id, document.data()!)
+                : null,
+            isFromCache: document.metadata.isFromCache,
+          ),
         );
   }
 
