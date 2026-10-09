@@ -156,7 +156,7 @@ Como usuario, quiero explorar las publicaciones y filtrarlas por distrito, para 
 
 ### Criterios de aceptación
 
-1. La pantalla principal muestra las publicaciones disponibles en una cuadrícula, con su fotografía, título y distrito.
+1. La pantalla de inicio muestra las publicaciones disponibles en un listado, con sus fotografías, título, descripción, distrito y quién la publicó.
 2. Cada publicación indica visualmente su modalidad, donación o intercambio.
 3. Las publicaciones se ordenan de la más reciente a la más antigua.
 4. Solo se muestran las publicaciones en estado "Publicada"; las comprometidas, entregadas o anuladas no aparecen en el listado, sin perjuicio de que sigan siendo consultables según lo previsto en HU14.
@@ -177,7 +177,7 @@ Como usuario interesado en una publicación, quiero comunicarme con la otra part
 
 ### Criterios de aceptación
 
-1. Desde el detalle de una publicación, el usuario puede iniciar una conversación privada con su propietario.
+1. Desde el detalle de una publicación con la que tiene un compromiso, es decir, un recojo asumido o un intercambio aceptado, el usuario puede abrir la conversación privada con la otra parte. Sin compromiso no hay conversación: la mensajería existe para coordinar, no para consultar.
 2. La conversación queda asociada a la publicación que la originó y muestra su título, fotografía y modalidad en la parte superior.
 3. Desde la conversación se puede acceder al detalle de la publicación vinculada.
 4. La conversación es privada entre ambas partes; ningún otro usuario puede acceder a su contenido.

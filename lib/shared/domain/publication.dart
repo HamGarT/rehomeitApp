@@ -146,9 +146,18 @@ class Publication {
   bool canProposeExchange(String userId) =>
       mode == PublicationMode.exchange && isAvailable && !isAuthor(userId);
 
-  /// Con quién conversa [userId]: el autor, o su voluntario si es el autor.
-  String? conversationCounterpart(String userId) =>
-      isAuthor(userId) ? volunteerId : authorId;
+  /// Con quién conversa [userId], o `null` si no le corresponde conversar.
+  /// La mensajería existe para coordinar un compromiso (HU09-12, HU07-7): en
+  /// una donación hablan el autor y su voluntario; en un intercambio, el autor
+  /// y quien aceptó. Un tercero no tiene con quién hablar hasta asumir el
+  /// recojo o ver aceptada su propuesta.
+  String? conversationCounterpart(String userId) {
+    final other = isDonation ? volunteerId : counterpartUserId;
+    if (other == null) return null;
+    if (isAuthor(userId)) return other;
+    if (userId == other) return authorId;
+    return null;
+  }
 
   /// Hitos que recorre el bien según su ruta (HU14-2 y HU14-8).
   List<PublicationStatus> get expectedPath => switch ((mode, deliveryType)) {

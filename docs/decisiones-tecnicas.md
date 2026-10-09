@@ -112,7 +112,8 @@ El rol permanece en el documento privado y las reglas pueden consultarlo igual, 
 | Carpeta | Historias |
 |---------|-----------|
 | `auth` | HU01, HU02 |
-| `explore` | HU08 |
+| `home` | HU08: el feed con buscador y filtros |
+| `explore` | Detalle de publicación, perfil público, repositorio y filtros que el feed consume (HU08-10, HU20-12) |
 | `publishing` | HU03, HU04, HU05, HU06 |
 | `exchange` | HU07 |
 | `delivery` | HU10, HU11, HU12, HU13, HU14 |

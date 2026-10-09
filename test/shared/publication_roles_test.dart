@@ -6,6 +6,7 @@ Publication _publication({
   DeliveryType? deliveryType = DeliveryType.volunteer,
   PublicationStatus status = PublicationStatus.published,
   String? volunteerId,
+  String? counterpartUserId,
   Map<PublicationStatus, DateTime> statusDates = const {},
 }) {
   return Publication(
@@ -24,6 +25,7 @@ Publication _publication({
     publishedAt: DateTime.utc(2026, 10, 1),
     statusDates: statusDates,
     volunteerId: volunteerId,
+    counterpartUserId: counterpartUserId,
   );
 }
 
@@ -81,18 +83,34 @@ void main() {
       expect(exchange.canAssumePickup('other'), isFalse);
     });
 
-    test(
-      'la conversación es con el autor, o con el voluntario si eres el autor',
-      () {
-        final publication = _publication(
-          status: PublicationStatus.committed,
-          volunteerId: 'vol',
-        );
-        expect(publication.conversationCounterpart('other'), 'author');
-        expect(publication.conversationCounterpart('author'), 'vol');
-        expect(_publication().conversationCounterpart('author'), isNull);
-      },
-    );
+    test('donación: conversan el autor y su voluntario, nadie más', () {
+      final publication = _publication(
+        status: PublicationStatus.committed,
+        volunteerId: 'vol',
+      );
+      expect(publication.conversationCounterpart('author'), 'vol');
+      expect(publication.conversationCounterpart('vol'), 'author');
+      expect(publication.conversationCounterpart('other'), isNull);
+      // Sin voluntario no hay con quién hablar, ni siquiera para el autor.
+      expect(_publication().conversationCounterpart('author'), isNull);
+      expect(_publication().conversationCounterpart('other'), isNull);
+    });
+
+    test('intercambio: conversan el autor y quien aceptó, nadie más', () {
+      final accepted = _publication(
+        mode: PublicationMode.exchange,
+        deliveryType: null,
+        status: PublicationStatus.committed,
+        counterpartUserId: 'partner',
+      );
+      expect(accepted.conversationCounterpart('author'), 'partner');
+      expect(accepted.conversationCounterpart('partner'), 'author');
+      expect(accepted.conversationCounterpart('other'), isNull);
+
+      final open = _publication(mode: PublicationMode.exchange);
+      expect(open.conversationCounterpart('other'), isNull);
+      expect(open.conversationCounterpart('author'), isNull);
+    });
   });
 
   group('ruta esperada', () {

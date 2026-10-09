@@ -58,7 +58,13 @@ Widget _host(List<Publication> posts, {String authorName = 'Ana T.'}) {
 }
 
 void main() {
-  testWidgets('el mazo cicla las fotos al tocarlo', (tester) async {
+  const deck = Key('stacked-cards');
+  const swipeLeft = Offset(-160, 0);
+  const swipeRight = Offset(160, 0);
+
+  testWidgets('el mazo avanza al deslizar a la izquierda y es cíclico', (
+    tester,
+  ) async {
     await tester.pumpWidget(
       _host([
         _post('a', [
@@ -69,16 +75,58 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.byKey(const Key('stacked-cards')), findsOneWidget);
+    expect(find.byKey(deck), findsOneWidget);
     expect(find.bySemanticsLabel('Foto 1 de 2'), findsOneWidget);
 
-    // Un toque lleva a la segunda foto y da la vuelta al mazo.
-    await tester.tap(find.byKey(const Key('stacked-cards')));
+    await tester.drag(find.byKey(deck), swipeLeft);
     await tester.pumpAndSettle();
     expect(find.bySemanticsLabel('Foto 2 de 2'), findsOneWidget);
 
-    // El segundo toque vuelve a la primera: el mazo es cíclico.
-    await tester.tap(find.byKey(const Key('stacked-cards')));
+    // Desde la última vuelve a la primera.
+    await tester.drag(find.byKey(deck), swipeLeft);
+    await tester.pumpAndSettle();
+    expect(find.bySemanticsLabel('Foto 1 de 2'), findsOneWidget);
+  });
+
+  testWidgets('deslizar a la derecha retrocede', (tester) async {
+    await tester.pumpWidget(
+      _host([
+        _post('a', [
+          'https://example.test/1.jpg',
+          'https://example.test/2.jpg',
+          'https://example.test/3.jpg',
+        ]),
+      ]),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.drag(find.byKey(deck), swipeLeft);
+    await tester.pumpAndSettle();
+    expect(find.bySemanticsLabel('Foto 2 de 3'), findsOneWidget);
+
+    await tester.drag(find.byKey(deck), swipeRight);
+    await tester.pumpAndSettle();
+    expect(find.bySemanticsLabel('Foto 1 de 3'), findsOneWidget);
+
+    // Desde la primera, retroceder lleva a la última.
+    await tester.drag(find.byKey(deck), swipeRight);
+    await tester.pumpAndSettle();
+    expect(find.bySemanticsLabel('Foto 3 de 3'), findsOneWidget);
+  });
+
+  testWidgets('un arrastre corto no pasa de foto', (tester) async {
+    await tester.pumpWidget(
+      _host([
+        _post('a', [
+          'https://example.test/1.jpg',
+          'https://example.test/2.jpg',
+        ]),
+      ]),
+    );
+    await tester.pumpAndSettle();
+
+    // Por debajo del umbral se toma como un dedo que se movió al tocar.
+    await tester.drag(find.byKey(deck), const Offset(-30, 0));
     await tester.pumpAndSettle();
     expect(find.bySemanticsLabel('Foto 1 de 2'), findsOneWidget);
   });
@@ -93,9 +141,48 @@ void main() {
 
     expect(find.byKey(const Key('photo-dots')), findsNothing);
 
-    await tester.tap(find.byKey(const Key('stacked-cards')));
+    await tester.drag(find.byKey(deck), swipeLeft);
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('photo-dots')), findsNothing);
+  });
+
+  testWidgets('la lupa despliega el buscador y la X lo cierra', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _host([
+        _post('a', ['https://example.test/1.jpg']),
+      ]),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('feed-search-field')), findsNothing);
+
+    await tester.tap(find.byKey(const Key('feed-search-toggle')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('feed-search-field')), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('feed-search-toggle')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('feed-search-field')), findsNothing);
+  });
+
+  testWidgets('los filtros rápidos y el distintivo de modalidad están en el feed', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _host([
+        _post('a', ['https://example.test/1.jpg']),
+      ]),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Todo'), findsOneWidget);
+    expect(find.text('Intercambio'), findsOneWidget);
+    expect(find.text('Distrito'), findsOneWidget);
+    // "Donación" aparece dos veces: el chip del filtro y el distintivo de la
+    // publicación de prueba, que es una donación.
+    expect(find.text('Donación'), findsNWidgets(2));
   });
 
   testWidgets('el cta de publicar se oculta al tener publicaciones propias', (
@@ -114,7 +201,7 @@ void main() {
   });
 
   testWidgets(
-    'la tarjeta muestra modalidad, categoría, estado y distrito como hashtags',
+    'la tarjeta muestra categoría, estado y distrito como hashtags',
     (tester) async {
       await tester.pumpWidget(
         _host([
@@ -129,11 +216,13 @@ void main() {
       await tester.pumpAndSettle();
 
       // Sin tildes, minúsculas y sin espacios: los hashtags no pueden llevar
-      // espacios, y la categoría de prueba los trae.
+      // espacios, y la categoría de prueba los trae. La modalidad no va como
+      // hashtag: la muestra el distintivo junto al título.
       expect(
-        find.text('#intercambio  #ropadecamayabrigo  #comonuevo  #laencanada'),
+        find.text('#ropadecamayabrigo  #comonuevo  #laencanada'),
         findsOne,
       );
+      expect(find.text('Intercambio'), findsNWidgets(2));
     },
   );
   testWidgets(
@@ -240,50 +329,6 @@ void main() {
     expect(find.text('otra-persona'), findsNothing);
     expect(find.text('Usuario de ReHomeIt'), findsOneWidget);
   });
-
-  testWidgets(
-    'la barra de acciones solo trae "me encanta" y en lo propio está inactiva',
-    (tester) async {
-      await tester.pumpWidget(
-        _host([
-          _post('a', [
-            'https://example.test/1.jpg',
-          ]).copyWithHashtags(authorId: 'otra-persona'),
-        ]),
-      );
-      await tester.pumpAndSettle();
-
-      // El botón está presente en la publicación de otra persona y responde.
-      expect(find.bySemanticsLabel('Me encanta'), findsOneWidget);
-      await tester.ensureVisible(find.bySemanticsLabel('Me encanta'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.bySemanticsLabel('Me encanta'));
-      await tester.pumpAndSettle();
-      expect(
-        tester
-            .widget<Semantics>(find.bySemanticsLabel('Me encanta'))
-            .properties
-            .selected,
-        isTrue,
-      );
-
-      // En una publicación propia el mismo botón no responde.
-      await tester.pumpWidget(
-        _host([
-          _post('propia', ['https://example.test/1.jpg']),
-        ]),
-      );
-      await tester.pumpAndSettle();
-
-      final own = tester.widget<Semantics>(find.bySemanticsLabel('Me encanta'));
-      expect(own.properties.enabled, isFalse);
-      await tester.ensureVisible(find.bySemanticsLabel('Me encanta'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.bySemanticsLabel('Me encanta'));
-      await tester.pumpAndSettle();
-      expect(own.properties.selected, isFalse);
-    },
-  );
 
   testWidgets('una descripción de dos líneas justas no se recorta', (
     tester,

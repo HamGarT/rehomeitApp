@@ -6,16 +6,18 @@ import '../../../core/constants/app_colors.dart';
 import '../../../core/utils/date_format.dart';
 import '../../../shared/domain/publication.dart';
 import '../../../shared/widgets/mascot.dart';
+import '../../../shared/widgets/publication_mode_badge.dart';
 import '../../auth/presentation/auth_controller.dart';
+import '../../explore/domain/explore_filters.dart';
 import '../../explore/domain/public_profile.dart';
 import '../../explore/presentation/explore_controller.dart';
-import '../../explore/presentation/explore_page.dart';
 import '../../explore/presentation/publication_detail_page.dart';
 import '../../moderation/presentation/report_publication_sheet.dart';
 import '../../profile/presentation/public_profile_page.dart';
 import '../../publishing/presentation/photos_step.dart';
 import '../../publishing/presentation/publish_draft_notifier.dart';
-import 'post_actions_notifier.dart';
+import 'widgets/feed_filters.dart';
+import 'widgets/feed_states.dart';
 import 'widgets/post_description.dart';
 import 'widgets/stacked_cards.dart';
 
@@ -46,12 +48,12 @@ String _hashtagify(String value) {
   return buffer.toString();
 }
 
-/// Hashtags de la tarjeta: modalidad, categoría, estado del bien y distrito.
-/// Salen de la publicación y no de una lista propia, así el feed no puede
-/// desincronizarse de lo que la persona publicó.
+/// Hashtags de la tarjeta: categoría, estado del bien y distrito. Salen de la
+/// publicación y no de una lista propia, así el feed no puede desincronizarse
+/// de lo que la persona publicó. La modalidad no va: la muestra el distintivo
+/// junto al título.
 List<String> _postHashtags(Publication publication) {
   final raw = [
-    publication.mode.wireValue,
     publication.category,
     publication.condition,
     publication.district,
@@ -84,90 +86,180 @@ String _initial(String? shortName) {
   return name[0].toUpperCase();
 }
 
-class HomePage extends ConsumerWidget {
+/// Inicio: el feed de publicaciones disponibles con el buscador y los filtros
+/// de HU08. Es la única pantalla de listado; el detalle se abre desde cada
+/// publicación.
+class HomePage extends ConsumerStatefulWidget {
   const HomePage({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<HomePage> createState() => _HomePageState();
+}
+
+class _HomePageState extends ConsumerState<HomePage> {
+  final _searchController = TextEditingController();
+  bool _searchOpen = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Los filtros viven en un provider y sobreviven al cambio de pestaña; el
+    // campo arranca con lo que ya había para no mostrar un feed filtrado con
+    // el buscador vacío.
+    final search = ref.read(exploreFiltersProvider).search;
+    _searchController.text = search;
+    _searchOpen = search.trim().isNotEmpty;
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  ExploreFiltersController get _filters =>
+      ref.read(exploreFiltersProvider.notifier);
+
+  /// Cerrar el buscador también limpia la búsqueda: un filtro que no se ve no
+  /// debería seguir actuando.
+  void _toggleSearch() {
+    setState(() => _searchOpen = !_searchOpen);
+    if (_searchOpen) return;
+    _searchController.clear();
+    _filters.updateSearch('');
+  }
+
+  void _clearFilters() {
+    _searchController.clear();
+    _filters.updateSearch('');
+    _filters.selectMode(null);
+    _filters.selectDistrict(null);
+  }
+
+  Future<void> _refresh(ExploreFilters filters) async {
+    ref.invalidate(remoteExploreFeedProvider);
+    await ref.read(
+      remoteExploreFeedProvider((
+        mode: filters.mode,
+        district: filters.district,
+      )).future,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final filters = ref.watch(exploreFiltersProvider);
     final feed = ref.watch(exploreFeedProvider);
     final userId = ref.watch(authStateProvider).value?.uid;
     void startPublishing() => _startPublishing(ref);
 
-    return CustomScrollView(
-      slivers: [
-        SliverAppBar(
-          title: const Text(
-            'Rehomeit',
-            style: TextStyle(fontWeight: FontWeight.w700, fontSize: 22),
+    return RefreshIndicator(
+      onRefresh: () => _refresh(filters),
+      child: CustomScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        slivers: [
+          SliverAppBar(
+            title: const Text(
+              'Rehomeit',
+              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 22),
+            ),
+            actions: [
+              IconButton(
+                key: const Key('feed-search-toggle'),
+                tooltip: _searchOpen ? 'Cerrar búsqueda' : 'Buscar',
+                icon: Icon(_searchOpen ? Icons.close : Icons.search),
+                onPressed: _toggleSearch,
+              ),
+            ],
           ),
-          actions: [
-            IconButton(
-              icon: const Icon(Icons.search),
-              onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute(
-                  // `ExplorePage` no trae `Scaffold`: como pestaña lo sostiene
-                  // el shell. Como ruta propia hay que dárselo, o las hojas de
-                  // filtro fallan por falta de un `Material` ancestro.
-                  builder: (_) => Scaffold(
-                    appBar: AppBar(title: const Text('Explorar')),
-                    body: const ExplorePage(),
+          SliverToBoxAdapter(
+            child: AnimatedSize(
+              duration: const Duration(milliseconds: 200),
+              curve: Curves.easeOut,
+              alignment: Alignment.topCenter,
+              child: _searchOpen
+                  ? FeedSearchField(
+                      controller: _searchController,
+                      onChanged: _filters.updateSearch,
+                    )
+                  : const SizedBox(width: double.infinity),
+            ),
+          ),
+          feed.when(
+            data: (data) {
+              // El CTA dice "todavía no has publicado nada", así que solo tiene
+              // sentido mientras la persona no tenga ninguna publicación propia.
+              final hasOwn = data.publications.any(
+                (p) => p.authorId == userId,
+              );
+              if (!hasOwn) {
+                return SliverToBoxAdapter(
+                  child: _PublishCta(onPublish: startPublishing),
+                );
+              }
+              return const SliverToBoxAdapter(child: SizedBox.shrink());
+            },
+            // Mientras carga no se sabe si tiene publicaciones: se muestra para
+            // que el contenido no salte al llegar los datos.
+            loading: () => SliverToBoxAdapter(
+              child: _PublishCta(onPublish: startPublishing),
+            ),
+            error: (_, _) =>
+                const SliverToBoxAdapter(child: SizedBox.shrink()),
+          ),
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.only(top: 12),
+              child: FeedFilterChips(
+                filters: filters,
+                onModeSelected: _filters.selectMode,
+                onDistrictSelected: _filters.selectDistrict,
+              ),
+            ),
+          ),
+          const SliverToBoxAdapter(child: _SectionHeader()),
+          ...feed.when(
+            data: (data) => [
+              if (data.isFromCache)
+                const SliverToBoxAdapter(child: FeedOfflineNotice()),
+              // Sin filtros y sin publicaciones no hay mensaje: la tarjeta de
+              // arriba ya invita a publicar.
+              if (data.publications.isEmpty && filters.isActive)
+                SliverFillRemaining(
+                  hasScrollBody: false,
+                  child: FeedEmptyResults(onClearFilters: _clearFilters),
+                )
+              else
+                SliverList.builder(
+                  itemCount: data.publications.length,
+                  itemBuilder: (context, index) => _FeedPost(
+                    publication: data.publications[index],
+                    currentUserId: userId,
+                  ),
+                ),
+            ],
+            error: (error, _) => [
+              SliverFillRemaining(
+                hasScrollBody: false,
+                child: FeedLoadError(
+                  onRetry: () => ref.invalidate(remoteExploreFeedProvider),
+                ),
+              ),
+            ],
+            loading: () => const [
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: EdgeInsets.all(24),
+                  child: Center(
+                    child: CircularProgressIndicator(strokeWidth: 2),
                   ),
                 ),
               ),
-            ),
-          ],
-        ),
-        feed.when(
-          data: (data) {
-            // El CTA dice "todavía no has publicado nada", así que solo tiene
-            // sentido mientras la persona no tenga ninguna publicación propia.
-            final hasOwn = data.publications.any((p) => p.authorId == userId);
-            if (!hasOwn) {
-              return SliverToBoxAdapter(
-                child: _PublishCta(onPublish: startPublishing),
-              );
-            }
-            return const SliverToBoxAdapter(child: SizedBox.shrink());
-          },
-          // Mientras carga no se sabe si tiene publicaciones: se muestra para
-          // que el contenido no salte al llegar los datos.
-          loading: () => SliverToBoxAdapter(
-            child: _PublishCta(onPublish: startPublishing),
+            ],
           ),
-          error: (_, _) => const SliverToBoxAdapter(child: SizedBox.shrink()),
-        ),
-        const SliverToBoxAdapter(child: _SectionHeader()),
-        feed.when(
-          data: (data) {
-            if (data.publications.isEmpty) {
-              return const SliverToBoxAdapter(child: SizedBox.shrink());
-            }
-            return SliverList.builder(
-              itemCount: data.publications.length,
-              itemBuilder: (context, index) => _FeedPost(
-                publication: data.publications[index],
-                currentUserId: userId,
-              ),
-            );
-          },
-          error: (error, _) => SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Text(
-                'No se pudo cargar el feed.',
-                style: TextStyle(color: context.appColors.textSecondary),
-              ),
-            ),
-          ),
-          loading: () => const SliverToBoxAdapter(
-            child: Padding(
-              padding: EdgeInsets.all(24),
-              child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
-            ),
-          ),
-        ),
-        const SliverToBoxAdapter(child: SizedBox(height: 24)),
-      ],
+          const SliverToBoxAdapter(child: SizedBox(height: 24)),
+        ],
+      ),
     );
   }
 }
@@ -244,8 +336,8 @@ class _SectionHeader extends StatelessWidget {
   }
 }
 
-/// Una publicación del feed: cabecera con autor, fotos, reacción, título,
-/// hashtags, descripción y antigüedad.
+/// Una publicación del feed: cabecera con autor, fotos, título con el
+/// distintivo de modalidad, hashtags, descripción y antigüedad.
 ///
 /// Los toques van con `GestureDetector` y no con `InkWell`: la página vive en
 /// el `Scaffold` del shell sin `Material` propio, y un `InkWell` sin `Material`
@@ -255,6 +347,14 @@ class _FeedPost extends StatelessWidget {
 
   final Publication publication;
   final String? currentUserId;
+
+  void _openDetail(BuildContext context) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => PublicationDetailPage(initial: publication),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -268,27 +368,35 @@ class _FeedPost extends StatelessWidget {
         _PostHeader(publication: publication, isOwn: isOwn),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20),
-          // El toque sobre las fotos recorre la galería; abrir el detalle se
-          // hace desde el título, para no competir por el mismo gesto.
-          child: StackedCards(images: publication.images),
+          // Las fotos se recorren deslizando; el toque, tanto en la foto como
+          // en el título, abre el detalle.
+          child: StackedCards(
+            images: publication.images,
+            onTap: () => _openDetail(context),
+          ),
         ),
-        _PostActions(publicationId: publication.id, isOwn: isOwn),
+        const SizedBox(height: 14),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20),
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: () => Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (_) => PublicationDetailPage(initial: publication),
+          child: Row(
+            children: [
+              Expanded(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => _openDetail(context),
+                  child: Text(
+                    publication.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.titleSmall
+                        ?.copyWith(fontWeight: FontWeight.w700),
+                  ),
+                ),
               ),
-            ),
-            child: Text(
-              publication.title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.titleSmall
-                  ?.copyWith(fontWeight: FontWeight.w700),
-            ),
+              const SizedBox(width: 10),
+              // La modalidad se ve sin abrir la publicación (HU06-6, HU07-9).
+              PublicationModeBadge(mode: publication.mode),
+            ],
           ),
         ),
         if (hashtags.isNotEmpty)
@@ -420,89 +528,6 @@ class _ReportButton extends StatelessWidget {
             Icons.flag_outlined,
             size: 20,
             color: context.appColors.textSecondary,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Barra de acciones bajo las fotos: solo "me encanta", a la derecha.
-///
-/// El estado es local de la sesión, vive en [postReactionsProvider] y no se
-/// guarda. En las publicaciones propias el botón se ve atenuado y no responde:
-/// nadie marca su propia publicación.
-class _PostActions extends ConsumerWidget {
-  const _PostActions({required this.publicationId, required this.isOwn});
-
-  final String publicationId;
-  final bool isOwn;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final reaction = ref.watch(postReactionsProvider)[publicationId];
-    final notifier = ref.read(postReactionsProvider.notifier);
-
-    final bar = Padding(
-      padding: const EdgeInsets.fromLTRB(12, 4, 12, 0),
-      child: Align(
-        alignment: Alignment.centerRight,
-        child: _ActionButton(
-          icon: Icons.favorite,
-          semanticLabel: 'Me encanta',
-          active: reaction?.loved ?? false,
-          enabled: !isOwn,
-          onTap: () => notifier.toggleLoved(publicationId),
-        ),
-      ),
-    );
-
-    // Se atenúa la barra entera para que el botón no se lea como disponible.
-    return isOwn ? Opacity(opacity: 0.4, child: bar) : bar;
-  }
-}
-
-class _ActionButton extends StatelessWidget {
-  const _ActionButton({
-    required this.icon,
-    required this.semanticLabel,
-    required this.active,
-    required this.enabled,
-    required this.onTap,
-  });
-
-  final IconData icon;
-  final String semanticLabel;
-  final bool active;
-  final bool enabled;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    // El activo va en el mismo azul que los hashtags de la tarjeta.
-    final color = active ? AppColors.hashtag : context.appColors.textSecondary;
-
-    return Semantics(
-      button: true,
-      enabled: enabled,
-      selected: active,
-      label: semanticLabel,
-      excludeSemantics: true,
-      // Nodo propio: sin esto el botón se fusiona con el bloque de texto y su
-      // acción de "tocar" pasa a cubrir el post entero.
-      container: true,
-      child: GestureDetector(
-        onTap: enabled ? onTap : null,
-        behavior: HitTestBehavior.opaque,
-        child: Padding(
-          // El icono mide 22 px; por debajo de unos 48 px el táctil no lo
-          // registra bien.
-          padding: const EdgeInsets.all(12),
-          child: AnimatedScale(
-            scale: active ? 1.12 : 1,
-            duration: const Duration(milliseconds: 180),
-            curve: Curves.easeOut,
-            child: Icon(icon, size: 22, color: color),
           ),
         ),
       ),

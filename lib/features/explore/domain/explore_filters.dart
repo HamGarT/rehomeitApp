@@ -7,6 +7,9 @@ class ExploreFilters {
   final String? district;
   final String search;
 
+  bool get isActive =>
+      mode != null || district != null || search.trim().isNotEmpty;
+
   ExploreFilters copyWith({
     PublicationMode? mode,
     bool clearMode = false,

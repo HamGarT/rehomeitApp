@@ -10,10 +10,12 @@ import {
   initializeTestEnvironment,
 } from '@firebase/rules-unit-testing';
 import {
+  collection,
   deleteDoc,
   doc,
   deleteField,
   getDoc,
+  getDocs,
   serverTimestamp,
   setDoc,
   updateDoc,
@@ -813,6 +815,21 @@ test('HU09: solo participantes leen la conversación', async () => {
   ));
   await assertFails(getDoc(
     doc(firestoreFor('third-user'), 'conversaciones', conversationId),
+  ));
+});
+
+test('HU09: leer una conversación que no existe no se deniega', async () => {
+  // La app consulta la conversación dentro de una transacción antes de
+  // crearla. Con `resource` nulo la regla de participantes fallaba y la
+  // creación nunca llegaba a ejecutarse.
+  await createVolunteerDonation();
+  const snapshot = await assertSucceeds(getDoc(
+    doc(firestoreFor(volunteerId), 'conversaciones', 'not-created-yet'),
+  ));
+  assert.equal(snapshot.exists(), false);
+  // Listar sigue limitado a participantes: sin filtro no hay garantía.
+  await assertFails(getDocs(
+    collection(firestoreFor('third-user'), 'conversaciones'),
   ));
 });
 

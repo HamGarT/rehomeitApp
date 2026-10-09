@@ -813,7 +813,13 @@ service cloud.firestore {
     }
 
     match /conversaciones/{conversationId} {
-      allow read: if signedIn()
+      // La app lee la conversación antes de crearla para no pisar una que ya
+      // exista; si el documento no existe, `resource` es nulo y la lectura
+      // debe pasar. El id no revela nada: se deriva de ids que ya se conocen.
+      allow get: if signedIn()
+        && (resource == null
+          || request.auth.uid in resource.data.participantIds);
+      allow list: if signedIn()
         && request.auth.uid in resource.data.participantIds;
       allow create: if signedIn() && validConversationCreate();
       allow update: if signedIn()

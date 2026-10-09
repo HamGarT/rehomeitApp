@@ -102,6 +102,13 @@ class SelectableRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // El relleno de la fila elegida es el amarillo suave, igual en los dos
+    // modos, así que su texto va siempre oscuro; en oscuro el texto del tema
+    // es blanco y no se leería.
+    final foreground = selected
+        ? AppColors.onAccent
+        : context.appColors.textPrimary;
+
     return Material(
       color: selected ? AppColors.accentSoft : Colors.transparent,
       borderRadius: BorderRadius.circular(14),
@@ -118,7 +125,7 @@ class SelectableRow extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 15,
                     fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                    color: context.appColors.textPrimary,
+                    color: foreground,
                   ),
                 ),
               ),

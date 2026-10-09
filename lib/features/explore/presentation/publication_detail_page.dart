@@ -427,7 +427,11 @@ class _PublicationActions extends ConsumerWidget {
           onPressed: () => _openConversation(context, ref, userId),
           icon: const Icon(Icons.chat_bubble_outline),
           label: Text(
-            isAuthor ? 'Coordinar con el voluntario' : 'Enviar mensaje',
+            !publication.isDonation
+                ? 'Coordinar por mensaje'
+                : isAuthor
+                ? 'Coordinar con el voluntario'
+                : 'Enviar mensaje',
           ),
         ),
       ..._notices(isAuthor),
@@ -621,14 +625,14 @@ class _PublicationActions extends ConsumerWidget {
     String userId,
   ) async {
     try {
-      // El autor solo llega aquí con un voluntario asignado; para cualquier
-      // otro usuario la otra parte es el autor y el repositorio lo resuelve.
+      // El botón solo se muestra con una contraparte definida; para quien no
+      // es el autor el repositorio la resuelve igual al autor.
       final conversation = await ref
           .read(messagingRepositoryProvider)
           .startConversation(
             publication: publication,
             userId: userId,
-            counterpartId: publication.volunteerId,
+            counterpartId: publication.conversationCounterpart(userId),
           );
       if (!context.mounted) return;
       await Navigator.of(context).push(

@@ -67,8 +67,8 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Empecemos'));
     await tester.pumpAndSettle();
-    // La pestaña de inicio es el feed; Explorar ya no está en la barra, se
-    // llega desde el icono de búsqueda de la cabecera.
+    // La pestaña de inicio es el feed, con el buscador tras la lupa de la
+    // cabecera y los filtros en una fila de chips.
     expect(find.text('Rehomeit'), findsOneWidget);
     expect(find.text('Inicio'), findsOneWidget);
     expect(find.text('¡Hola de nuevo!'), findsNothing);

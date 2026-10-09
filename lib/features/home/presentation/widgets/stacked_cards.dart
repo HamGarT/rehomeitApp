@@ -5,12 +5,15 @@ import 'package:flutter/material.dart';
 import '../../../../shared/widgets/publication_image.dart';
 
 /// Mazo de fotos: la de encima muestra la actual y la de atrás asoma por
-/// debajo a la derecha. Al tocarla la de atrás pasa al frente con un
-/// deslizamiento, así también se ven las que quedan tapadas.
+/// debajo a la derecha. Deslizar a la izquierda trae la de atrás al frente;
+/// deslizar a la derecha devuelve la anterior. El toque queda libre para
+/// [onTap], que abre la publicación: pasar de foto y abrir no compiten por el
+/// mismo gesto.
 class StackedCards extends StatefulWidget {
-  const StackedCards({super.key, required this.images});
+  const StackedCards({super.key, required this.images, this.onTap});
 
   final List<String> images;
+  final VoidCallback? onTap;
 
   @override
   State<StackedCards> createState() => _StackedCardsState();
@@ -56,8 +59,13 @@ class _StackedCardsState extends State<StackedCards>
   /// Sombra de la tarjeta del fondo respecto de la del frente.
   static const double _backElevation = 0.6;
 
+  /// Recorrido horizontal mínimo para que un arrastre cuente como pasar de
+  /// foto. Por debajo se descarta: es un dedo que se movió al tocar.
+  static const double _swipeThreshold = 40;
+
   late final AnimationController _slide;
   int _index = 0;
+  double _dragDistance = 0;
 
   @override
   void initState() {
@@ -65,11 +73,6 @@ class _StackedCardsState extends State<StackedCards>
     // En reposo vale 0: así la tarjeta de atrás solo se ve asomando, y con
     // una sola foto no se ve nada.
     _slide = AnimationController(vsync: this, duration: _slideDuration);
-    _slide.addStatusListener((status) {
-      if (status != AnimationStatus.completed || !mounted) return;
-      setState(() => _index = (_index + 1) % widget.images.length);
-      _slide.value = 0;
-    });
   }
 
   @override
@@ -80,7 +83,37 @@ class _StackedCardsState extends State<StackedCards>
 
   void _advance() {
     if (_slide.isAnimating) return;
-    _slide.forward();
+    // `then` solo corre si la animación llega al final; si el widget se
+    // desmonta a medio camino no hay nada que actualizar.
+    _slide.forward().then((_) {
+      if (!mounted) return;
+      setState(() => _index = (_index + 1) % widget.images.length);
+      _slide.value = 0;
+    });
+  }
+
+  /// Retrocede con la misma animación al revés: la foto anterior arranca en
+  /// el fondo, donde quedó al salir, y vuelve al frente.
+  void _retreat() {
+    if (_slide.isAnimating) return;
+    final count = widget.images.length;
+    setState(() => _index = (_index - 1 + count) % count);
+    _slide.value = 1;
+    _slide.reverse();
+  }
+
+  void _onDragUpdate(DragUpdateDetails details) {
+    _dragDistance += details.delta.dx;
+  }
+
+  void _onDragEnd(DragEndDetails details) {
+    final distance = _dragDistance;
+    _dragDistance = 0;
+    if (distance <= -_swipeThreshold) {
+      _advance();
+    } else if (distance >= _swipeThreshold) {
+      _retreat();
+    }
   }
 
   double _lerp(double a, double b, double p) => a + (b - a) * p;
@@ -215,7 +248,12 @@ class _StackedCardsState extends State<StackedCards>
             height: cardHeight + _verticalSlack,
             child: GestureDetector(
               key: const Key('stacked-cards'),
-              onTap: canCycle ? _advance : null,
+              behavior: HitTestBehavior.opaque,
+              onTap: widget.onTap,
+              // Con una sola foto no se reclama el arrastre horizontal, para
+              // no quitárselo a quien lo necesite por encima.
+              onHorizontalDragUpdate: canCycle ? _onDragUpdate : null,
+              onHorizontalDragEnd: canCycle ? _onDragEnd : null,
               child: TweenAnimationBuilder<double>(
                 tween: Tween(begin: 0, end: 1),
                 duration: _slideDuration,
