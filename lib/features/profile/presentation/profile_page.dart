@@ -16,7 +16,7 @@ import '../../explore/presentation/explore_controller.dart';
 import '../domain/profile_summary.dart';
 import 'profile_controller.dart';
 import 'widgets/profile_header.dart';
-import 'widgets/profile_publication_tile.dart';
+import 'widgets/profile_sections.dart';
 import 'widgets/profile_stats.dart';
 
 /// Perfil propio: la actividad de la persona y sus ajustes (HU20, criterios 1 a
@@ -172,50 +172,35 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
     AsyncValue<List<Publication>> publications,
   ) {
     return publications.when(
-      loading: () => [
-        const SliverToBoxAdapter(
-          child: Padding(
-            padding: EdgeInsets.symmetric(vertical: 40),
-            child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
-          ),
-        ),
-      ],
+      loading: () => const [ProfileLoadingSliver()],
       error: (_, _) => [
         SliverToBoxAdapter(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: _InlineError(onRetry: _refresh),
+          child: ProfileLoadError(
+            message: 'No se pudo cargar tus publicaciones.',
+            onRetry: _refresh,
           ),
         ),
       ],
-      data: (items) {
-        if (items.isEmpty) {
-          return const [SliverToBoxAdapter(child: _NoPublicationsYet())];
-        }
-        return [
-          SliverToBoxAdapter(
-            child: ProfileSectionHeader(
+      data: (items) => items.isEmpty
+          // En lugar de dejar un hueco se invita a empezar, que es la única
+          // acción posible aquí.
+          ? const [
+              SliverToBoxAdapter(
+                child: ProfileEmptyState(
+                  pose: MascotPose.sleeping,
+                  mascotHeight: 170,
+                  title: 'Todavía no has publicado nada',
+                  message:
+                      'Publica algo que ya no uses y dale un nuevo hogar. '
+                      'Aquí verás todo lo que vas donando.',
+                ),
+              ),
+            ]
+          : profilePublicationSlivers(
               title: 'Mis publicaciones',
-              trailing: '${items.length}',
+              items: items,
+              isOwn: true,
             ),
-          ),
-          SliverPadding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            sliver: SliverList.separated(
-              itemCount: items.length,
-              separatorBuilder: (_, _) => const SizedBox(height: 10),
-              itemBuilder: (context, index) {
-                final item = items[index];
-                return ProfilePublicationTile(
-                  publication: item,
-                  status: item.effectiveStatus(DateTime.now()),
-                  isOwn: true,
-                );
-              },
-            ),
-          ),
-        ];
-      },
     );
   }
 
@@ -227,28 +212,10 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
         ref.watch(volunteerCommitmentsProvider(userId)).value ??
         const <Publication>[];
     if (items.isEmpty) return const [];
-    return [
-      SliverToBoxAdapter(
-        child: ProfileSectionHeader(
-          title: 'Mis compromisos de recojo',
-          trailing: '${items.length}',
-        ),
-      ),
-      SliverPadding(
-        padding: const EdgeInsets.symmetric(horizontal: 20),
-        sliver: SliverList.separated(
-          itemCount: items.length,
-          separatorBuilder: (_, _) => const SizedBox(height: 10),
-          itemBuilder: (context, index) {
-            final item = items[index];
-            return ProfilePublicationTile(
-              publication: item,
-              status: item.effectiveStatus(DateTime.now()),
-            );
-          },
-        ),
-      ),
-    ];
+    return profilePublicationSlivers(
+      title: 'Mis compromisos de recojo',
+      items: items,
+    );
   }
 }
 
@@ -320,79 +287,3 @@ class _AppearanceSection extends ConsumerWidget {
   }
 }
 
-/// Estado vacío del historial: en lugar de dejar un hueco se ofrece empezar,
-/// que es la única acción posible aquí.
-class _NoPublicationsYet extends StatelessWidget {
-  const _NoPublicationsYet();
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(32, 28, 32, 8),
-      child: Column(
-        children: [
-          // El GIF es vertical (136x220), así que se le da más alto que a una pose
-          // horizontal para que no quede con un ancho desproporcionado.
-          const Mascot(pose: MascotPose.sleeping, height: 170),
-          const SizedBox(height: 16),
-          Text(
-            'Todavía no has publicado nada',
-            textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-              fontFamily: 'FreckleFace',
-              fontSize: 24,
-              fontWeight: FontWeight.w400,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Publica algo que ya no uses y dale un nuevo hogar. '
-            'Aquí verás todo lo que vas donando.',
-            textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.bodyLarge
-                ?.copyWith(color: context.appColors.textSecondary, height: 1.4),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Fallo al leer el historial. Va en línea y no en pantalla completa porque el
-/// resto del perfil sí se leyó: el nombre, el distrito y los contadores no
-/// dependen de esta consulta.
-class _InlineError extends StatelessWidget {
-  const _InlineError({required this.onRetry});
-
-  final VoidCallback onRetry;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: context.appColors.surface,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: context.appColors.border),
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.cloud_off_outlined, color: AppColors.warning),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              'No se pudo cargar tus publicaciones.',
-              style: Theme.of(context).textTheme.bodyMedium
-                  ?.copyWith(color: context.appColors.textSecondary),
-            ),
-          ),
-          TextButton(
-            onPressed: onRetry,
-            style: TextButton.styleFrom(minimumSize: const Size(0, 40)),
-            child: const Text('Reintentar'),
-          ),
-        ],
-      ),
-    );
-  }
-}

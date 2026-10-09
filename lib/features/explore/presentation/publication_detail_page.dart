@@ -166,41 +166,7 @@ class _PublicationTimeline extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final effectiveStatus = publication.effectiveStatus(now);
-    final entries = <(PublicationStatus, DateTime)>[
-      (
-        PublicationStatus.published,
-        publication.statusDates[PublicationStatus.published] ??
-            publication.publishedAt,
-      ),
-      for (final status in const [
-        PublicationStatus.committed,
-        PublicationStatus.pickedUp,
-        PublicationStatus.delivered,
-        PublicationStatus.confirmed,
-      ])
-        if (publication.statusDates[status] case final date?)
-          if (status != PublicationStatus.committed ||
-              publication.status != PublicationStatus.published)
-            (status, date),
-    ];
-    // Los hitos por vencimiento no están en statusDates (D02): se calculan a
-    // partir de la entrega.
-    final deliveredAt = publication.statusDates[PublicationStatus.delivered];
-    if (deliveredAt != null &&
-        (effectiveStatus == PublicationStatus.pendingConfirmation ||
-            effectiveStatus == PublicationStatus.closedWithoutConfirmation)) {
-      entries.add((
-        PublicationStatus.pendingConfirmation,
-        deliveredAt.add(Publication.pendingConfirmationAfter),
-      ));
-      if (effectiveStatus == PublicationStatus.closedWithoutConfirmation) {
-        entries.add((
-          PublicationStatus.closedWithoutConfirmation,
-          deliveredAt.add(Publication.closeWithoutConfirmationAfter),
-        ));
-      }
-    }
+    final entries = publication.milestones(now);
 
     return Container(
       width: double.infinity,
@@ -232,9 +198,9 @@ class _PublicationTimeline extends StatelessWidget {
                     color: context.appColors.primary,
                   ),
                   const SizedBox(width: 8),
-                  Expanded(child: Text(entries[index].$1.label)),
+                  Expanded(child: Text(entries[index].status.label)),
                   Text(
-                    formatDateTime(entries[index].$2),
+                    formatDateTime(entries[index].at),
                     style: Theme.of(context).textTheme.bodySmall
                         ?.copyWith(color: context.appColors.textSecondary),
                   ),
@@ -373,155 +339,122 @@ class _PublicationActions extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final userId = currentUserId;
     if (userId == null) return const SizedBox.shrink();
-    final isOwner = userId == publication.authorId;
-    final isVolunteer = userId == publication.volunteerId;
     final busy = ref.watch(deliveryControllerProvider).isLoading;
+    final isAuthor = publication.isAuthor(userId);
 
-    if (publication.mode == PublicationMode.donation) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          if (publication.status == PublicationStatus.published &&
-              publication.deliveryType == DeliveryType.volunteer &&
-              !isOwner)
-            FilledButton.icon(
-              onPressed: busy
-                  ? null
-                  : () => _assumePickup(context, ref, userId),
-              icon: const Icon(Icons.volunteer_activism_outlined),
-              label: const Text('Asumir recojo'),
-            ),
-          if (publication.status == PublicationStatus.published &&
-              publication.deliveryType == DeliveryType.owner &&
-              isOwner)
-            FilledButton.icon(
-              onPressed: () => _openDeliveryForm(context),
-              icon: const Icon(Icons.redeem_outlined),
-              label: const Text('Registrar entrega al destinatario'),
-            ),
-          if (publication.status == PublicationStatus.committed && isOwner)
-            FilledButton.icon(
-              onPressed: busy ? null : () => _confirmHandoff(context, ref),
-              icon: const Icon(Icons.inventory_2_outlined),
-              label: const Text('Confirmar entrega al voluntario'),
-            ),
-          if (publication.status == PublicationStatus.pickedUp && isVolunteer)
-            FilledButton.icon(
-              onPressed: () => _openDeliveryForm(context),
-              icon: const Icon(Icons.add_a_photo_outlined),
-              label: const Text('Registrar entrega al destinatario'),
-            ),
-          if (publication.status == PublicationStatus.committed &&
-              (isOwner || isVolunteer)) ...[
-            const SizedBox(height: 10),
-            OutlinedButton.icon(
-              onPressed: busy ? null : () => _release(context, ref, userId),
-              icon: const Icon(Icons.undo),
-              label: Text(
-                isOwner ? 'Cancelar compromiso' : 'Desistir del recojo',
-              ),
-            ),
-          ],
-          if (publication.status == PublicationStatus.pickedUp && isOwner)
-            const _ActionNotice(
-              icon: Icons.local_shipping_outlined,
-              text: 'Entrega en curso. El voluntario trasladará el bien al destinatario.',
-            ),
-          if (publication.status == PublicationStatus.published && isOwner) ...[
-            const SizedBox(height: 10),
-            _withdrawButton(context, ref),
-          ],
-          if (!isOwner) ...[
-            const SizedBox(height: 10),
-            OutlinedButton.icon(
-              onPressed: () => _openConversation(context, ref, userId),
-              icon: const Icon(Icons.chat_bubble_outline),
-              label: const Text('Enviar mensaje'),
-            ),
-          ] else if (publication.volunteerId != null) ...[
-            const SizedBox(height: 10),
-            OutlinedButton.icon(
-              onPressed: () => _openConversation(context, ref, userId),
-              icon: const Icon(Icons.chat_bubble_outline),
-              label: const Text('Coordinar con el voluntario'),
-            ),
-          ],
-          if (publication.status == PublicationStatus.delivered)
-            const _ActionNotice(
-              icon: Icons.check_circle_outline,
-              text: 'La entrega al destinatario fue registrada.',
-            ),
-          if (publication.status == PublicationStatus.confirmed)
-            const _ActionNotice(
-              icon: Icons.verified_outlined,
-              text: 'Donación confirmada.',
-            ),
-          if (!isOwner) ...[
-            const SizedBox(height: 10),
-            _ReportAction(publication: publication),
-          ],
-        ],
-      );
-    }
-
-    if (isOwner) {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          if (publication.status == PublicationStatus.published) ...[
-            FilledButton.icon(
-              onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const ExchangeActivityPage()),
-              ),
-              icon: const Icon(Icons.swap_horiz),
-              label: const Text('Ver propuestas de intercambio'),
-            ),
-            const SizedBox(height: 10),
-            _withdrawButton(context, ref),
-          ] else
-            const _ActionNotice(
-              icon: Icons.person_outline,
-              text: 'Consulta el avance en Mis intercambios.',
-            ),
-        ],
-      );
-    }
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        if (publication.isAvailable)
-          FilledButton.icon(
-            onPressed: () async {
-              final proposed = await showProposeExchangeSheet(
-                context,
-                requestedPublication: publication,
-              );
-              if (proposed == true && context.mounted) {
-                showAppSnackBar(
-                  context,
-                  'Propuesta enviada',
-                  kind: AppSnackBarKind.success,
-                );
-              }
-            },
-            icon: const Icon(Icons.swap_horiz),
-            label: const Text('Proponer intercambio'),
-          )
-        else
-          const _ActionNotice(
-            icon: Icons.lock_clock_outlined,
-            text: 'Esta publicación ya no está disponible.',
+    // Cada botón entra por un predicado de `Publication`; aquí solo se decide
+    // el orden y el separador entre ellos.
+    final actions = <Widget>[
+      if (publication.canAssumePickup(userId))
+        FilledButton.icon(
+          onPressed: busy ? null : () => _assumePickup(context, ref, userId),
+          icon: const Icon(Icons.volunteer_activism_outlined),
+          label: const Text('Asumir recojo'),
+        ),
+      if (publication.canConfirmHandoff(userId))
+        FilledButton.icon(
+          onPressed: busy ? null : () => _confirmHandoff(context, ref),
+          icon: const Icon(Icons.inventory_2_outlined),
+          label: const Text('Confirmar entrega al voluntario'),
+        ),
+      if (publication.canRegisterDelivery(userId))
+        FilledButton.icon(
+          onPressed: () => _openDeliveryForm(context),
+          icon: Icon(
+            isAuthor ? Icons.redeem_outlined : Icons.add_a_photo_outlined,
           ),
-        const SizedBox(height: 10),
+          label: const Text('Registrar entrega al destinatario'),
+        ),
+      if (publication.canProposeExchange(userId))
+        FilledButton.icon(
+          onPressed: () => _proposeExchange(context),
+          icon: const Icon(Icons.swap_horiz),
+          label: const Text('Proponer intercambio'),
+        ),
+      if (!publication.isDonation && isAuthor && publication.isAvailable)
+        FilledButton.icon(
+          onPressed: () => Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => const ExchangeActivityPage()),
+          ),
+          icon: const Icon(Icons.swap_horiz),
+          label: const Text('Ver propuestas de intercambio'),
+        ),
+      if (publication.canReleaseCommitment(userId))
+        OutlinedButton.icon(
+          onPressed: busy ? null : () => _release(context, ref, userId),
+          icon: const Icon(Icons.undo),
+          label: Text(isAuthor ? 'Cancelar compromiso' : 'Desistir del recojo'),
+        ),
+      if (publication.canWithdraw(userId)) _withdrawButton(context, ref),
+      if (publication.conversationCounterpart(userId) != null)
         OutlinedButton.icon(
           onPressed: () => _openConversation(context, ref, userId),
           icon: const Icon(Icons.chat_bubble_outline),
-          label: const Text('Enviar mensaje'),
+          label: Text(
+            isAuthor ? 'Coordinar con el voluntario' : 'Enviar mensaje',
+          ),
         ),
-        const SizedBox(height: 10),
-        _ReportAction(publication: publication),
+      ..._notices(isAuthor),
+      if (!isAuthor) _ReportAction(publication: publication),
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (var index = 0; index < actions.length; index++) ...[
+          if (index > 0) const SizedBox(height: 10),
+          actions[index],
+        ],
       ],
     );
+  }
+
+  /// Avisos de estado que no van con botón. Un intercambio ajeno que ya no
+  /// está libre y uno propio ya comprometido se explican en vez de quedar
+  /// sin acciones.
+  List<Widget> _notices(bool isAuthor) {
+    if (publication.isDonation) {
+      return [
+        if (publication.status == PublicationStatus.pickedUp && isAuthor)
+          const _ActionNotice(
+            icon: Icons.local_shipping_outlined,
+            text: 'Entrega en curso. El voluntario trasladará el bien al destinatario.',
+          ),
+        if (publication.status == PublicationStatus.delivered)
+          const _ActionNotice(
+            icon: Icons.check_circle_outline,
+            text: 'La entrega al destinatario fue registrada.',
+          ),
+        if (publication.status == PublicationStatus.confirmed)
+          const _ActionNotice(
+            icon: Icons.verified_outlined,
+            text: 'Donación confirmada.',
+          ),
+      ];
+    }
+    if (publication.isAvailable) return const [];
+    return [
+      _ActionNotice(
+        icon: isAuthor ? Icons.person_outline : Icons.lock_clock_outlined,
+        text: isAuthor
+            ? 'Consulta el avance en Mis intercambios.'
+            : 'Esta publicación ya no está disponible.',
+      ),
+    ];
+  }
+
+  Future<void> _proposeExchange(BuildContext context) async {
+    final proposed = await showProposeExchangeSheet(
+      context,
+      requestedPublication: publication,
+    );
+    if (proposed == true && context.mounted) {
+      showAppSnackBar(
+        context,
+        'Propuesta enviada',
+        kind: AppSnackBarKind.success,
+      );
+    }
   }
 
   Widget _withdrawButton(BuildContext context, WidgetRef ref) {

@@ -47,6 +47,9 @@ class ItemDetail {
   }
 }
 
+/// Un estado alcanzado y cuándo.
+typedef PublicationMilestone = ({PublicationStatus status, DateTime at});
+
 class Publication {
   const Publication({
     required this.id,
@@ -104,6 +107,96 @@ class Publication {
   static const closeWithoutConfirmationAfter = Duration(hours: 72);
 
   bool get isAvailable => status == PublicationStatus.published;
+
+  bool get isDonation => mode == PublicationMode.donation;
+
+  bool isAuthor(String userId) => userId == authorId;
+
+  bool isVolunteer(String userId) =>
+      volunteerId != null && userId == volunteerId;
+
+  /// Quién puede hacer qué, según modalidad, estado y rol. Las pantallas leen
+  /// estos predicados en vez de combinar campos, y las reglas de Firestore
+  /// aplican las mismas condiciones del lado del servidor.
+
+  /// HU10: un tercero asume el recojo de una donación que espera voluntario.
+  bool canAssumePickup(String userId) =>
+      isDonation &&
+      deliveryType == DeliveryType.volunteer &&
+      isAvailable &&
+      !isAuthor(userId);
+
+  /// HU10: donante o voluntario deshacen el compromiso mientras no hubo recojo.
+  bool canReleaseCommitment(String userId) =>
+      isDonation &&
+      status == PublicationStatus.committed &&
+      (isAuthor(userId) || isVolunteer(userId));
+
+  /// HU11: el donante confirma que el voluntario ya recogió el bien.
+  bool canConfirmHandoff(String userId) =>
+      isDonation && status == PublicationStatus.committed && isAuthor(userId);
+
+  /// HU12: registra la entrega al destinatario el voluntario tras recoger, o el
+  /// donante cuando entrega él mismo.
+  bool canRegisterDelivery(String userId) =>
+      isDonation &&
+      ((status == PublicationStatus.pickedUp && isVolunteer(userId)) ||
+          (deliveryType == DeliveryType.owner &&
+              isAvailable &&
+              isAuthor(userId)));
+
+  /// HU03-18: solo el autor y solo mientras nadie se comprometió.
+  bool canWithdraw(String userId) => isAvailable && isAuthor(userId);
+
+  /// HU07-3: proponer canje exige que la publicación sea ajena y esté libre.
+  bool canProposeExchange(String userId) =>
+      mode == PublicationMode.exchange && isAvailable && !isAuthor(userId);
+
+  /// HU09: con quién conversa [userId] desde el detalle. Para un tercero es
+  /// el autor; para el autor de una donación, su voluntario. `null` si no hay
+  /// con quién hablar todavía.
+  String? conversationCounterpart(String userId) =>
+      isAuthor(userId) ? volunteerId : authorId;
+
+  /// Hitos alcanzados con su fecha, para el recorrido (HU07-13, HU14). Los de
+  /// vencimiento no están en [statusDates] (D02): se derivan de la entrega.
+  List<PublicationMilestone> milestones(DateTime now) {
+    final reached = <PublicationMilestone>[
+      (
+        status: PublicationStatus.published,
+        at: statusDates[PublicationStatus.published] ?? publishedAt,
+      ),
+      for (final step in const [
+        PublicationStatus.committed,
+        PublicationStatus.pickedUp,
+        PublicationStatus.delivered,
+        PublicationStatus.confirmed,
+      ])
+        if (statusDates[step] case final date?)
+          // Un compromiso deshecho deja su fecha en el documento; si la
+          // publicación volvió a estar disponible, ese hito ya no cuenta.
+          if (step != PublicationStatus.committed || !isAvailable)
+            (status: step, at: date),
+    ];
+    final deliveredAt = statusDates[PublicationStatus.delivered];
+    final derived = effectiveStatus(now);
+    if (deliveredAt != null && derived != PublicationStatus.delivered) {
+      if (derived == PublicationStatus.pendingConfirmation ||
+          derived == PublicationStatus.closedWithoutConfirmation) {
+        reached.add((
+          status: PublicationStatus.pendingConfirmation,
+          at: deliveredAt.add(pendingConfirmationAfter),
+        ));
+      }
+      if (derived == PublicationStatus.closedWithoutConfirmation) {
+        reached.add((
+          status: PublicationStatus.closedWithoutConfirmation,
+          at: deliveredAt.add(closeWithoutConfirmationAfter),
+        ));
+      }
+    }
+    return reached;
+  }
 
   PublicationStatus effectiveStatus(DateTime now) {
     if (status != PublicationStatus.delivered) return status;

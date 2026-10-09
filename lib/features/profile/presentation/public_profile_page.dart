@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/theme.dart';
-import '../../../core/constants/app_colors.dart';
 import '../../../shared/domain/publication.dart';
 import '../../../shared/widgets/mascot.dart';
 import '../../auth/presentation/auth_controller.dart';
@@ -10,7 +9,7 @@ import '../../explore/presentation/explore_controller.dart';
 import '../domain/profile_summary.dart';
 import 'profile_controller.dart';
 import 'widgets/profile_header.dart';
-import 'widgets/profile_publication_tile.dart';
+import 'widgets/profile_sections.dart';
 import 'widgets/profile_stats.dart';
 
 /// Perfil público de otra persona (HU20, criterios 12 a 20).
@@ -82,19 +81,19 @@ class PublicProfilePage extends ConsumerWidget {
     return publications.when(
       loading: () => const [
         SliverToBoxAdapter(child: _StatsSkeleton()),
-        SliverToBoxAdapter(
-          child: Padding(
-            padding: EdgeInsets.symmetric(vertical: 40),
-            child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
-          ),
-        ),
+        ProfileLoadingSliver(),
       ],
       // `perfiles/{uid}` exige sesión iniciada, así que un fallo aquí casi
       // siempre es una sesión vencida: se avisa en línea y se deja el resto del
       // perfil, que sí se pudo leer.
       error: (_, _) => const [
         SliverToBoxAdapter(child: _StatsSkeleton()),
-        SliverToBoxAdapter(child: _PublicationsUnavailable()),
+        SliverToBoxAdapter(child: SizedBox(height: 24)),
+        SliverToBoxAdapter(
+          child: ProfileLoadError(
+            message: 'No se pudieron cargar las publicaciones.',
+          ),
+        ),
       ],
       data: (items) {
         // Anuladas y retiradas no salen ni de la lista ni de los contadores: el
@@ -131,29 +130,21 @@ class PublicProfilePage extends ConsumerWidget {
             ),
           ),
           if (visible.isEmpty)
-            const SliverToBoxAdapter(child: _NothingPublished())
-          else ...[
-            SliverToBoxAdapter(
-              child: ProfileSectionHeader(
-                title: 'Publicaciones',
-                trailing: '${visible.length}',
+            // El texto no distingue entre "nunca publicó" y "retiró todo" a
+            // propósito: desde aquí no se puede saber.
+            const SliverToBoxAdapter(
+              child: ProfileEmptyState(
+                pose: MascotPose.wave,
+                title: 'Nada por aquí',
+                message:
+                    'Esta persona todavía no tiene publicaciones disponibles.',
               ),
+            )
+          else
+            ...profilePublicationSlivers(
+              title: 'Publicaciones',
+              items: visible,
             ),
-            SliverPadding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              sliver: SliverList.separated(
-                itemCount: visible.length,
-                separatorBuilder: (_, _) => const SizedBox(height: 10),
-                itemBuilder: (context, index) {
-                  final item = visible[index];
-                  return ProfilePublicationTile(
-                    publication: item,
-                    status: item.effectiveStatus(DateTime.now()),
-                  );
-                },
-              ),
-            ),
-          ],
         ];
       },
     );
@@ -250,70 +241,3 @@ class _SessionRequired extends StatelessWidget {
   }
 }
 
-/// Esta persona todavía no tiene nada publicado, o todo lo que publicó ya no
-/// está disponible. El texto no distingue los dos casos a propósito: desde aquí
-/// no se puede saber si retiró algo o nunca publicó.
-class _NothingPublished extends StatelessWidget {
-  const _NothingPublished();
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(32, 28, 32, 8),
-      child: Column(
-        children: [
-          const Mascot(pose: MascotPose.wave, height: 130),
-          const SizedBox(height: 16),
-          Text(
-            'Nada por aquí',
-            textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-              fontFamily: 'FreckleFace',
-              fontSize: 24,
-              fontWeight: FontWeight.w400,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Esta persona todavía no tiene publicaciones disponibles.',
-            textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.bodyLarge
-                ?.copyWith(color: context.appColors.textSecondary, height: 1.4),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _PublicationsUnavailable extends StatelessWidget {
-  const _PublicationsUnavailable();
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: context.appColors.surface,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: context.appColors.border),
-        ),
-        child: Row(
-          children: [
-            const Icon(Icons.cloud_off_outlined, color: AppColors.warning),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                'No se pudieron cargar las publicaciones.',
-                style: Theme.of(context).textTheme.bodyMedium
-                    ?.copyWith(color: context.appColors.textSecondary),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
