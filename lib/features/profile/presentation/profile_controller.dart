@@ -18,16 +18,29 @@ final profilePublicationsProvider =
           .watchPublicationsByAuthor(userId);
     });
 
+/// Publicaciones ajenas en las que [userId] participó como voluntario. No se
+/// listan en el perfil; solo suman a los contadores y al impacto.
+final volunteerPublicationsProvider =
+    StreamProvider.family<List<Publication>, String>((ref, userId) {
+      return ref
+          .watch(profileRepositoryProvider)
+          .watchPublicationsAsVolunteer(userId);
+    });
+
 /// Resumen de la actividad de [userId]: contadores y residuos evitados.
 ///
-/// Sale del mismo stream que la lista, así que los números y las filas que los
-/// justifican nunca pueden contradecirse.
+/// Sale de los mismos streams que la lista y los compromisos, así que los
+/// números y las filas que los justifican nunca pueden contradecirse.
 final profileSummaryProvider = Provider.family<ProfileSummary, String>((
   ref,
   userId,
 ) {
   final publications = ref.watch(profilePublicationsProvider(userId)).value;
+  final volunteered = ref.watch(volunteerPublicationsProvider(userId)).value;
   // Sin datos todavía se devuelve el resumen vacío, no `null`: la pantalla
   // muestra ceros mientras carga y no necesita un estado aparte para eso.
-  return ProfileSummary.fromPublications(publications ?? const []);
+  return ProfileSummary.fromPublications(
+    publications ?? const [],
+    volunteered: volunteered ?? const [],
+  );
 });

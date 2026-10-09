@@ -139,6 +139,9 @@ class _RegisterDeliveryPageState extends ConsumerState<RegisterDeliveryPage> {
   }
 
   Future<void> _submit() async {
+    // El campo de iniciales conserva el foco al pulsar el botón, y cualquier
+    // snackbar de error volvía a levantar el teclado sobre él.
+    FocusScope.of(context).unfocus();
     final userId = ref.read(authStateProvider).value?.uid;
     if (userId == null) {
       showAppSnackBar(

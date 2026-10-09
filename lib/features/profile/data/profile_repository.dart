@@ -35,4 +35,24 @@ class ProfileRepository {
               .toList(growable: false),
         );
   }
+
+  /// Publicaciones ajenas en las que [userId] es o fue el voluntario, en
+  /// cualquier estado. Alimentan los contadores de entregas y el impacto: una
+  /// entrega la registra el voluntario, y es a él a quien el donante se la
+  /// confirma (HU20, criterios 3 y 6).
+  ///
+  /// Sin `orderBy`: el perfil solo cuenta, no lista, y así basta el índice
+  /// simple de `volunteerId`. Se diferencia de `watchCommitments`, que filtra
+  /// los compromisos vivos para la sección "Mis compromisos de recojo".
+  Stream<List<Publication>> watchPublicationsAsVolunteer(String userId) {
+    return _firestore
+        .collection('publicaciones')
+        .where('volunteerId', isEqualTo: userId)
+        .snapshots()
+        .map(
+          (snapshot) => snapshot.docs
+              .map((doc) => Publication.fromMap(doc.id, doc.data()))
+              .toList(growable: false),
+        );
+  }
 }

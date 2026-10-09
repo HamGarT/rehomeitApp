@@ -13,7 +13,8 @@ import 'item_categories.dart';
 ///
 /// ## Fuente de los valores (HU18, criterio 7)
 ///
-/// Cada valor redondea el rango habitual que dan las caracterizaciones de
+/// La tabla y su fuente están también en D15 de `docs/decisiones-tecnicas.md`;
+/// si cambia un peso aquí, cambia allá. Cada valor redondea el rango habitual que dan las caracterizaciones de
 /// composición de residuos sólidos domésticos publicadas por organismos de
 /// gestión de residuos (EPA WARM en Estados Unidos y los Global Waste
 /// Management Outlook del PNUE) al separar ropa, mobiliario y electrodomésticos

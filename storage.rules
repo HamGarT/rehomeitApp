@@ -44,6 +44,11 @@ service firebase.storage {
         );
     }
 
+    // Consulta Firestore desde Storage: la cuenta de servicio de Storage
+    // necesita el rol firebaserules.firestoreServiceAgent. La CLI solo lo
+    // comprueba y concede al subir una versión nueva de este archivo y con un
+    // TTY (o `--interactive`). Sin él, toda subida de evidencia se deniega
+    // aunque la regla sea correcta.
     function canUploadEvidence(publicationId, actorId) {
       let publication = firestore.get(
         /databases/(default)/documents/publicaciones/$(publicationId)

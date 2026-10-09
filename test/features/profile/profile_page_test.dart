@@ -90,6 +90,7 @@ class _FakePreferences implements SharedPreferences {
 Publication _pub({
   String id = 'a',
   String authorId = _uid,
+  String? volunteerId,
   PublicationStatus status = PublicationStatus.published,
   String category = 'Juguetes',
   DateTime? deliveredAt,
@@ -97,6 +98,7 @@ Publication _pub({
   return Publication(
     id: id,
     authorId: authorId,
+    volunteerId: volunteerId,
     title: 'Juguete $id',
     category: category,
     condition: 'Nuevo',
@@ -120,6 +122,7 @@ Publication _pub({
 /// de modo oscuro lee de ahí al construirse.
 Widget _hostOwn(
   List<Publication> items, {
+  List<Publication> volunteered = const [],
   String name = 'Ana Torres',
   String district = 'Cajamarca',
 }) {
@@ -131,6 +134,9 @@ Widget _hostOwn(
       sharedPreferencesProvider.overrideWithValue(_FakePreferences()),
       profilePublicationsProvider.overrideWith(
         (ref, userId) => Stream.value(items),
+      ),
+      volunteerPublicationsProvider.overrideWith(
+        (ref, userId) => Stream.value(volunteered),
       ),
       publicProfileProvider.overrideWith(
         (ref, userId) => Stream.value(
@@ -155,11 +161,18 @@ Widget _hostOwn(
   );
 }
 
-Widget _hostPublic(List<Publication> items, {String shortName = 'Luis Q.'}) {
+Widget _hostPublic(
+  List<Publication> items, {
+  List<Publication> volunteered = const [],
+  String shortName = 'Luis Q.',
+}) {
   return ProviderScope(
     overrides: [
       profilePublicationsProvider.overrideWith(
         (ref, userId) => Stream.value(items),
+      ),
+      volunteerPublicationsProvider.overrideWith(
+        (ref, userId) => Stream.value(volunteered),
       ),
       publicProfileProvider.overrideWith(
         (ref, userId) => Stream.value(
@@ -204,6 +217,39 @@ void main() {
       expect(summary.deliveriesRegistered, 2);
       expect(summary.deliveriesConfirmed, 1);
       expect(summary.pendingConfirmation, 1);
+    });
+
+    test('lo entregado como voluntario suma a entregas, confirmadas e '
+        'impacto, pero no a publicadas', () {
+      final summary = ProfileSummary.fromPublications(
+        const [],
+        volunteered: [
+          _pub(
+            id: 'a',
+            authorId: 'donante',
+            volunteerId: _uid,
+            status: PublicationStatus.confirmed,
+            category: 'Muebles',
+          ),
+          _pub(
+            id: 'b',
+            authorId: 'donante',
+            volunteerId: _uid,
+            status: PublicationStatus.delivered,
+            deliveredAt: DateTime.now().toUtc().subtract(
+              const Duration(hours: 2),
+            ),
+          ),
+        ],
+      );
+
+      // El bien no es suyo (HU20, criterio 3), pero la entrega sí.
+      expect(summary.publishedCount, 0);
+      expect(summary.deliveriesRegistered, 2);
+      expect(summary.deliveriesConfirmed, 1);
+      expect(summary.pendingConfirmation, 1);
+      // Solo la confirmada cierra el ciclo (HU18, criterio 5).
+      expect(summary.avoidedKg, ItemWeights.weightFor('Muebles'));
     });
 
     test('anuladas y retiradas no cuentan como publicaciones', () {
@@ -361,6 +407,32 @@ void main() {
         find.bySemanticsLabel(RegExp('Entregas registradas')),
         findsNothing,
       );
+    });
+
+    testWidgets('cuenta como confirmadas las entregas hechas como voluntario '
+        'sin listarlas', (tester) async {
+      await tester.pumpWidget(
+        _hostPublic(
+          const [],
+          volunteered: [
+            _pub(
+              id: 'v',
+              authorId: 'donante',
+              volunteerId: 'otra',
+              status: PublicationStatus.confirmed,
+            ),
+          ],
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.bySemanticsLabel('Entregas confirmadas: 1'), findsOneWidget);
+      expect(
+        find.bySemanticsLabel('Publicaciones realizadas: 0'),
+        findsOneWidget,
+      );
+      // El bien es del donante: no aparece en la lista del voluntario.
+      expect(find.bySemanticsLabel(RegExp('Juguete v')), findsNothing);
     });
 
     testWidgets('no lista anuladas ni retiradas', (tester) async {

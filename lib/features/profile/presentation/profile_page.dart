@@ -61,7 +61,10 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
     }
   }
 
-  void _refresh() => ref.invalidate(profilePublicationsProvider);
+  void _refresh() {
+    ref.invalidate(profilePublicationsProvider);
+    ref.invalidate(volunteerPublicationsProvider);
+  }
 
   @override
   Widget build(BuildContext context) {

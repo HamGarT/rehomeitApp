@@ -44,12 +44,19 @@ class PublicProfilePage extends ConsumerWidget {
 
     final profile = ref.watch(publicProfileProvider(userId));
     final publications = ref.watch(profilePublicationsProvider(userId));
+    // Lo entregado como voluntario solo aporta al contador de confirmadas
+    // (HU20, criterio 18); si aún no llegó se cuenta sin él y se corrige solo.
+    final volunteered =
+        ref.watch(volunteerPublicationsProvider(userId)).value ??
+        const <Publication>[];
 
     return Scaffold(
       appBar: const _PublicProfileAppBar(),
       body: RefreshIndicator(
-        onRefresh: () async =>
-            ref.invalidate(profilePublicationsProvider(userId)),
+        onRefresh: () async {
+          ref.invalidate(profilePublicationsProvider(userId));
+          ref.invalidate(volunteerPublicationsProvider(userId));
+        },
         child: CustomScrollView(
           // Sin esto el indicador de recarga no aparece nunca: un perfil con dos
           // publicaciones no da para desplazarse.
@@ -69,7 +76,7 @@ class PublicProfilePage extends ConsumerWidget {
             // `when`: calcular los contadores aparte los haría parpadear en cero
             // mientras cargan, y además podrían contar filas que la lista no
             // muestra.
-            ..._publicationSlivers(publications),
+            ..._publicationSlivers(publications, volunteered),
             const SliverToBoxAdapter(child: SizedBox(height: 32)),
           ],
         ),
@@ -77,7 +84,10 @@ class PublicProfilePage extends ConsumerWidget {
     );
   }
 
-  List<Widget> _publicationSlivers(AsyncValue<List<Publication>> publications) {
+  List<Widget> _publicationSlivers(
+    AsyncValue<List<Publication>> publications,
+    List<Publication> volunteered,
+  ) {
     return publications.when(
       loading: () => const [
         SliverToBoxAdapter(child: _StatsSkeleton()),
@@ -100,7 +110,10 @@ class PublicProfilePage extends ConsumerWidget {
         // criterio 7 de HU19 las saca del listado, la búsqueda y el detalle, y
         // contarlas aquí las volvería visibles por la puerta de atrás.
         final visible = ProfileSummary.publicPublications(items);
-        final summary = ProfileSummary.fromPublications(visible);
+        final summary = ProfileSummary.fromPublications(
+          visible,
+          volunteered: volunteered,
+        );
 
         // Con la lista vacía los contadores se muestran en cero, no como
         // esqueleto: "0 publicaciones" ya es el dato real y el esqueleto se

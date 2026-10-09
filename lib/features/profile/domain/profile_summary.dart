@@ -47,10 +47,19 @@ class ProfileSummary {
   /// la pantalla no tenga que restar (HU20, criterio 6).
   int get pendingConfirmation => deliveriesRegistered - deliveriesConfirmed;
 
-  /// Resumen a partir de [items]. [now] se recibe en vez de llamar a
-  /// [DateTime.now] dentro para que sea determinista en pruebas.
+  /// Resumen a partir de [items], lo que la persona publicó, y [volunteered],
+  /// lo ajeno que entregó como voluntario. Lo segundo suma a entregas,
+  /// confirmadas e impacto, pero no a "Publicadas": el bien no es suyo.
+  ///
+  /// Un mismo bien cuenta para el donante y para el voluntario; son métricas
+  /// por persona, no un inventario. No hay doble conteo dentro de un perfil
+  /// porque las reglas impiden que el autor sea su propio voluntario.
+  ///
+  /// [now] se recibe en vez de llamar a [DateTime.now] dentro para que sea
+  /// determinista en pruebas.
   factory ProfileSummary.fromPublications(
     List<Publication> items, {
+    List<Publication> volunteered = const [],
     DateTime? now,
   }) {
     final clock = now ?? DateTime.now();
@@ -60,6 +69,16 @@ class ProfileSummary {
     var confirmed = 0;
     var kg = 0.0;
 
+    void countDelivery(PublicationStatus status, String category) {
+      if (countsAsDelivery(status)) registered++;
+      if (status == PublicationStatus.confirmed) confirmed++;
+      // Solo el ciclo cerrado suma residuos evitados (HU18, criterio 5): las
+      // publicadas, comprometidas, anuladas y retiradas no cuentan.
+      if (countsAsAvoidedWaste(status)) {
+        kg += ItemWeights.weightFor(category);
+      }
+    }
+
     for (final item in items) {
       // `effectiveStatus` porque "entregada" avanza sola a pendiente de
       // confirmación y luego a cerrada sin confirmación: el estado guardado en
@@ -68,14 +87,11 @@ class ProfileSummary {
 
       if (!isCountedAsPublished(status)) continue;
       published++;
+      countDelivery(status, item.category);
+    }
 
-      if (countsAsDelivery(status)) registered++;
-      if (status == PublicationStatus.confirmed) confirmed++;
-      // Solo el ciclo cerrado suma residuos evitados (HU18, criterio 5): las
-      // publicadas, comprometidas, anuladas y retiradas no cuentan.
-      if (countsAsAvoidedWaste(status)) {
-        kg += ItemWeights.weightFor(item.category);
-      }
+    for (final item in volunteered) {
+      countDelivery(item.effectiveStatus(clock), item.category);
     }
 
     return ProfileSummary(

@@ -2,7 +2,7 @@
 
 Decisiones que condicionan la implementación y que no se deducen leyendo las historias de usuario. Cada una registra el problema que resuelve y lo que implica asumirla.
 
-Última actualización: 8 de octubre de 2026.
+Última actualización: 10 de octubre de 2026.
 
 ---
 
@@ -180,4 +180,29 @@ Esta paleta reemplaza desde el 8 de octubre de 2026 a la de marrón y crema del 
 **Decisión.** El documento del reporte se identifica con la persona que reporta y la publicación, en ese orden, y las reglas solo admiten la creación con ese id y niegan toda actualización. Quien reporta deja el reporte en "Pendiente", con la fecha y sin resolución: el resultado lo determina el equipo administrador (HU19-09 a HU19-12), nunca la aplicación. El id determinista hace que el segundo reporte de la misma publicación llegue como `update` sobre algo ya escrito y la regla lo rechace, sin que el cliente tenga que consultar nada.
 
 **Consecuencias.** La aplicación necesita una regla por cada motivo y estado que escriba: agregar un valor en `ReportReason` o `ReportStatus` sin abrir `validInitialReport` deja el documento rechazado por el servidor. Como la publicación no se toca al reportarla, sigue visible mientras el reporte no se resuelva (HU19-07). Los criterios de listado, resolución y avisos al autor y a quien reportó (HU19-08 a HU19-16) pertenecen a la consola de moderación: es el reverso de este mismo esquema, con reglas propias.
+
+---
+
+## D15 – El impacto ambiental se estima con pesos referenciales por categoría, fijos en el código
+
+**Problema.** HU18 pide un acumulado de residuos evitados en kilogramos, pero la aplicación no pesa nada: solo conoce la categoría del bien. Pedir el peso a quien publica alarga el formulario con un dato que casi nadie sabe, y guardar una tabla en Firestore obliga a una lectura más por perfil y abre la puerta a que alguien la edite sin pasar por revisión. HU18-7 exige además que los valores queden documentados con su fuente.
+
+**Decisión.** Cada categoría de `ItemCategories.all` tiene un peso referencial en kilogramos, declarado como constante en `lib/core/constants/item_weights.dart`. Solo suman las operaciones con ciclo cerrado: confirmadas y cerradas sin confirmación (HU18-5). El acumulado se calcula en el cliente a partir de las publicaciones, en el mismo recorrido que los contadores del perfil, y se muestra siempre junto al aviso de que es una estimación (HU18-6). La fuente se documenta aquí y en el comentario de clase de ese archivo; no se muestra en la aplicación, porque el criterio pide trazabilidad para quien revise el proyecto, no una tabla para quien dona.
+
+| Categoría | kg |
+|-----------|----|
+| Ropa infantil | 0,6 |
+| Ropa de adulto | 1,8 |
+| Calzado | 0,9 |
+| Muebles | 30 |
+| Electrodomésticos | 18 |
+| Enseres de cocina | 2,5 |
+| Ropa de cama y abrigo | 3,5 |
+| Libros y útiles escolares | 3 |
+| Juguetes | 1,2 |
+| Tecnología | 2,5 |
+
+**Fuente.** Los valores redondean el rango habitual de las caracterizaciones de residuos sólidos domésticos que publican los organismos de gestión de residuos al separar ropa, mobiliario, electrodomésticos y otros bienes reutilizables: el modelo WARM de la EPA de Estados Unidos y los informes Global Waste Management Outlook del PNUMA. Esas caracterizaciones trabajan con rangos por flujo de material, no con un peso por producto, así que se toma un valor representativo por categoría y no el extremo del rango. Las categorías de ropa se entienden como lote, no como prenda, porque quien publica suele donar varias a la vez.
+
+**Consecuencias.** Son órdenes de magnitud, no mediciones, y el indicador lo dice en pantalla. Cambiar un peso es un cambio de código con revisión, no una edición en la consola. Una categoría nueva que no esté en la tabla cuenta con el valor de reserva de 1 kg en vez de romper el cálculo, pero debe añadirse a la tabla con su justificación. Lo entregado como voluntario suma igual que lo donado, porque la operación completada es la misma (HU18-4).
 
