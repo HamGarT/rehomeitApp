@@ -82,6 +82,20 @@ service firebase.storage {
         && fileName.matches('foto_[0-3]\\.(jpg|jpeg|png|webp|heic|heif)');
     }
 
+    // Foto de perfil (HU20-9). Siempre JPEG porque la app la recomprime antes
+    // de subirla; se admite sobrescribir para cambiarla sin acumular archivos.
+    match /perfiles/{userId}/{fileName} {
+      allow read: if request.auth != null;
+      allow create, update: if request.auth != null
+        && request.auth.uid == userId
+        && fileName == 'avatar.jpg'
+        && request.resource.contentType == 'image/jpeg'
+        && request.resource.size < 5 * 1024 * 1024;
+      allow delete: if request.auth != null
+        && request.auth.uid == userId
+        && fileName == 'avatar.jpg';
+    }
+
     match /entregas/{publicationId}/{actorId}/{fileName} {
       allow read: if request.auth != null;
       allow create: if request.auth != null

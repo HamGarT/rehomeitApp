@@ -3,8 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/theme.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../core/navigation/app_routes.dart';
 import '../../../core/utils/date_format.dart';
 import '../../../shared/domain/publication.dart';
+import '../../../shared/widgets/user_avatar.dart';
 import '../../../shared/widgets/mascot.dart';
 import '../../../shared/widgets/publication_mode_badge.dart';
 import '../../auth/presentation/auth_controller.dart';
@@ -76,14 +78,6 @@ String _authorName(AsyncValue<PublicProfile?> profile) {
   final shortName = profile.value?.shortName ?? '';
   if (shortName.trim().isEmpty) return 'Usuario de ReHomeIt';
   return shortName;
-}
-
-/// Inicial del avatar. Con el nombre vacío cae en "U" en vez de dejar el
-/// icono de persona.
-String _initial(String? shortName) {
-  final name = (shortName ?? '').trim();
-  if (name.isEmpty) return 'U';
-  return name[0].toUpperCase();
 }
 
 /// Inicio: el feed de publicaciones disponibles con el buscador y los filtros
@@ -349,10 +343,10 @@ class _FeedPost extends StatelessWidget {
   final String? currentUserId;
 
   void _openDetail(BuildContext context) {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => PublicationDetailPage(initial: publication),
-      ),
+    pushUnique(
+      context,
+      name: AppRoutes.publication(publication.id),
+      builder: (_) => PublicationDetailPage(initial: publication),
     );
   }
 
@@ -463,22 +457,20 @@ class _PostHeader extends ConsumerWidget {
           Expanded(
             child: GestureDetector(
               behavior: HitTestBehavior.opaque,
-              onTap: () => Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) =>
-                      PublicProfilePage(userId: publication.authorId),
-                ),
+              onTap: () => pushUnique(
+                context,
+                name: AppRoutes.profile(publication.authorId),
+                builder: (_) => PublicProfilePage(userId: publication.authorId),
               ),
               child: Row(
                 children: [
-                  CircleAvatar(
+                  UserAvatar(
+                    name: profile.value?.shortName ?? '',
                     radius: 16,
+                    photoUrl: profile.value?.photoUrl,
                     backgroundColor: palette.surface,
-                    child: Text(
-                      _initial(profile.value?.shortName),
-                      style: Theme.of(context).textTheme.titleSmall
-                          ?.copyWith(color: palette.textSecondary),
-                    ),
+                    foregroundColor: palette.textSecondary,
+                    textStyle: Theme.of(context).textTheme.titleSmall,
                   ),
                   const SizedBox(width: 10),
                   Expanded(

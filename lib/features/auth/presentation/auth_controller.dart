@@ -34,12 +34,18 @@ class AuthController extends Notifier<AsyncValue<AppUser?>> {
   }
 
   Future<String?> signUp({
-    required String name,
+    required String firstNames,
+    required String lastNames,
     required String email,
     required String password,
   }) {
     return _run(
-      () => _repository.signUp(name: name, email: email, password: password),
+      () => _repository.signUp(
+        firstNames: firstNames,
+        lastNames: lastNames,
+        email: email,
+        password: password,
+      ),
     );
   }
 

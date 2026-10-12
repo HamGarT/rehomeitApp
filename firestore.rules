@@ -6,21 +6,63 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    function isCajamarcaDistrict(value) {
+      return value in [
+        'Cajamarca',
+        'Asunción',
+        'Chetilla',
+        'Cospán',
+        'La Encañada',
+        'Jesús',
+        'Llacanora',
+        'Los Baños del Inca',
+        'Magdalena',
+        'Matara',
+        'Namora',
+        'San Juan'
+      ];
+    }
+
+    // Nombres y apellidos van separados para derivar el nombre abreviado
+    // (nombre de pila e inicial del primer apellido, HU20-13) sin adivinar
+    // dónde termina el nombre. nombreCompleto se conserva para mostrarlo.
+    // Los apellidos pueden faltar: Google entrega el nombre en una cadena y
+    // puede traer una sola palabra.
+    function validUserNames(user) {
+      return user.nombres is string
+        && user.nombres.size() > 0
+        && user.nombres.size() <= 60
+        && user.apellidos is string
+        && user.apellidos.size() <= 60
+        && user.nombreCompleto == (
+          user.apellidos == ''
+            ? user.nombres
+            : user.nombres + ' ' + user.apellidos
+        );
+    }
+
     function validInitialUser() {
-      return request.resource.data.keys().hasAll([
+      return validInitialUserData(request.resource.data);
+    }
+
+    function validInitialUserData(user) {
+      return user.keys().hasAll([
           'nombreCompleto',
           'correo',
-          'rol'
+          'rol',
+          'nombres',
+          'apellidos'
         ])
-        && request.resource.data.keys().hasOnly([
+        && user.keys().hasOnly([
           'nombreCompleto',
           'correo',
-          'rol'
+          'rol',
+          'nombres',
+          'apellidos'
         ])
-        && request.resource.data.nombreCompleto is string
-        && request.resource.data.nombreCompleto.size() > 0
-        && request.resource.data.correo is string
-        && request.resource.data.rol == 'usuario';
+        && validUserNames(user)
+        && user.correo is string
+        && user.rol == 'usuario';
     }
 
     function validInitialUserAfter(userId) {
@@ -30,12 +72,61 @@ service cloud.firestore {
       return !exists(
           /databases/$(database)/documents/usuarios/$(userId)
         )
-        && user.keys().hasAll(['nombreCompleto', 'correo', 'rol'])
-        && user.keys().hasOnly(['nombreCompleto', 'correo', 'rol'])
-        && user.nombreCompleto is string
-        && user.nombreCompleto.size() > 0
-        && user.correo is string
-        && user.rol == 'usuario';
+        && validInitialUserData(user);
+    }
+
+    // El dueño edita solo su nombre (HU20-9); correo y rol quedan fijos
+    // (HU20-10, D06).
+    function validUserEdit() {
+      let after = request.resource.data;
+      return after.keys().hasAll([
+          'nombreCompleto',
+          'correo',
+          'rol',
+          'nombres',
+          'apellidos'
+        ])
+        && after.keys().hasOnly([
+          'nombreCompleto',
+          'correo',
+          'rol',
+          'nombres',
+          'apellidos'
+        ])
+        && validUserNames(after)
+        && after.correo == resource.data.correo
+        && after.rol == resource.data.rol;
+    }
+
+    // El dueño edita nombre corto, distrito y foto (HU20-9); la fecha de
+    // ingreso y los contadores no se tocan.
+    function validProfileEdit() {
+      let after = request.resource.data;
+      return after.keys().hasAll([
+          'nombreCorto',
+          'distrito',
+          'fechaIngreso',
+          'contadores'
+        ])
+        && after.keys().hasOnly([
+          'nombreCorto',
+          'distrito',
+          'fechaIngreso',
+          'contadores',
+          'fotoUrl'
+        ])
+        && after.nombreCorto is string
+        && after.nombreCorto.size() > 0
+        && after.nombreCorto.size() <= 60
+        && after.distrito is string
+        && (after.distrito == '' || isCajamarcaDistrict(after.distrito))
+        && after.fechaIngreso == resource.data.fechaIngreso
+        && after.contadores == resource.data.contadores
+        && (
+          !('fotoUrl' in after)
+          || after.fotoUrl == null
+          || (after.fotoUrl is string && after.fotoUrl.size() > 0)
+        );
     }
 
     function validInitialProfile() {
@@ -173,20 +264,7 @@ service cloud.firestore {
         && evidence.recipientInitials is string
         && evidence.recipientInitials.size() > 0
         && evidence.recipientInitials.size() <= 12
-        && evidence.district in [
-          'Cajamarca',
-          'Asunción',
-          'Chetilla',
-          'Cospán',
-          'La Encañada',
-          'Jesús',
-          'Llacanora',
-          'Los Baños del Inca',
-          'Magdalena',
-          'Matara',
-          'Namora',
-          'San Juan'
-        ]
+        && isCajamarcaDistrict(evidence.district)
         && evidence.storagePath.matches(
           'entregas/' + publicationId + '/' + actorId
             + '/evidencia\\.(jpg|jpeg|png|webp|heic|heif)'
@@ -773,9 +851,11 @@ service cloud.firestore {
       allow create: if signedIn()
         && request.auth.uid == userId
         && validInitialUser();
-      // AuthRepository no modifica documentos existentes. Mantener cerrado
-      // evita tanto cambios de rol como campos de privilegio nuevos.
-      allow update, delete: if false;
+      // Solo el nombre es editable; el rol se asigna desde el backend (D06).
+      allow update: if signedIn()
+        && request.auth.uid == userId
+        && validUserEdit();
+      allow delete: if false;
     }
 
     match /perfiles/{userId} {
@@ -783,12 +863,14 @@ service cloud.firestore {
       allow create: if signedIn()
         && request.auth.uid == userId
         && validInitialProfile();
-      // Conserva la reparación atómica de AuthRepository cuando falta el
-      // documento de usuario pero ya existe el perfil.
+      // Edición del dueño, o la reparación atómica de AuthRepository cuando
+      // falta el documento de usuario pero ya existe el perfil.
       allow update: if signedIn()
         && request.auth.uid == userId
-        && validInitialUserAfter(userId)
-        && validInitialProfile();
+        && (
+          validProfileEdit()
+          || (validInitialUserAfter(userId) && validInitialProfile())
+        );
       allow delete: if false;
     }
 

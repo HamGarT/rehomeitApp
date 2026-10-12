@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
+import '../../../shared/domain/person_name.dart';
 import '../domain/app_user.dart';
 import 'auth_exception.dart';
 
@@ -42,7 +43,8 @@ class AuthRepository {
   }
 
   Future<AppUser> signUp({
-    required String name,
+    required String firstNames,
+    required String lastNames,
     required String email,
     required String password,
   }) async {
@@ -52,8 +54,12 @@ class AuthRepository {
         password: password,
       );
       final user = credential.user!;
-      await user.updateDisplayName(name.trim());
-      await _createUserDocuments(user, fullName: name.trim());
+      final names = PersonName(
+        firstNames: firstNames.trim(),
+        lastNames: lastNames.trim(),
+      );
+      await user.updateDisplayName(names.full);
+      await _createUserDocuments(user, names: names);
       return AppUser.fromFirebase(user);
     } on FirebaseAuthException catch (error) {
       throw AuthFailure(friendlyAuthError(error));
@@ -105,16 +111,16 @@ class AuthRepository {
   /// Crea `usuarios/{uid}` y `perfiles/{uid}` en una sola operación (D07).
   Future<void> _createUserDocuments(
     User user, {
-    required String fullName,
+    required PersonName names,
   }) async {
     final batch = _firestore.batch();
     batch.set(_firestore.collection('usuarios').doc(user.uid), {
-      'nombreCompleto': fullName,
+      ...names.toUserFields(),
       'correo': user.email ?? '',
       'rol': 'usuario',
     });
     batch.set(_firestore.collection('perfiles').doc(user.uid), {
-      'nombreCorto': _shortName(fullName),
+      'nombreCorto': names.short,
       'distrito': '',
       'fechaIngreso': FieldValue.serverTimestamp(),
       'contadores': {'donaciones': 0, 'intercambios': 0, 'voluntariados': 0},
@@ -129,26 +135,15 @@ class AuthRepository {
     try {
       final doc = await _firestore.collection('usuarios').doc(user.uid).get();
       if (doc.exists) return;
-      final name = user.displayName?.trim().isNotEmpty == true
-          ? user.displayName!.trim()
-          : 'Usuario';
-      await _createUserDocuments(user, fullName: name);
+      // Google solo entrega el nombre en una cadena; el usuario lo corrige
+      // desde Editar perfil si la separación no acertó.
+      await _createUserDocuments(
+        user,
+        names: PersonName.split(user.displayName ?? ''),
+      );
     } catch (_) {
       // La sesión ya quedó iniciada; los documentos se reparan en el próximo
       // inicio de sesión.
     }
-  }
-
-  /// Nombre de pila e inicial del primer apellido (D07), p. ej. "Ana T.".
-  String _shortName(String fullName) {
-    final parts = fullName
-        .trim()
-        .split(RegExp(r'\s+'))
-        .where((p) => p.isNotEmpty)
-        .toList();
-    if (parts.isEmpty) return '';
-    final first = parts.first;
-    final initial = parts.length > 1 ? parts[1][0].toUpperCase() : '';
-    return initial.isEmpty ? first : '$first $initial.';
   }
 }

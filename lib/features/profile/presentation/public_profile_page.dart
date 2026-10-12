@@ -69,6 +69,7 @@ class PublicProfilePage extends ConsumerWidget {
                 district: profile.value?.district ?? '',
                 joinedAt: profile.value?.joinedAt,
                 isOwn: false,
+                photoUrl: profile.value?.photoUrl,
               ),
             ),
             const SliverToBoxAdapter(child: SizedBox(height: 16)),

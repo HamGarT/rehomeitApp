@@ -1,8 +1,18 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../shared/domain/person_name.dart';
 import '../../../shared/domain/publication.dart';
 import '../data/profile_repository.dart';
 import '../domain/profile_summary.dart';
+
+/// Nombres y apellidos del dueño de la sesión (solo él puede leerlos, D07).
+/// Lo usan la cabecera del perfil propio y el formulario de edición.
+final ownNameProvider = StreamProvider.family<PersonName?, String>((
+  ref,
+  userId,
+) {
+  return ref.watch(profileRepositoryProvider).watchOwnName(userId);
+});
 
 /// Publicaciones de [userId] en cualquier estado, de la más reciente a la más
 /// antigua.

@@ -4,6 +4,7 @@ import 'package:share_plus/share_plus.dart';
 
 import '../../../app/theme.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../core/navigation/app_routes.dart';
 import '../../../core/utils/date_format.dart';
 import '../../../shared/domain/publication.dart';
 import '../../../shared/widgets/publication_mode_badge.dart';
@@ -11,6 +12,7 @@ import '../../../shared/widgets/publication_status_badge.dart';
 import '../../delivery/presentation/widgets/evidence_card.dart';
 import '../../exchange/presentation/exchange_controller.dart';
 import '../../explore/presentation/explore_controller.dart';
+import '../../profile/presentation/public_profile_page.dart';
 import 'journey_controller.dart';
 
 /// Recorrido del bien (HU14): hitos alcanzados y pendientes, quién generó
@@ -236,16 +238,43 @@ class _MilestoneTile extends ConsumerWidget {
                     ),
                   ),
                   const SizedBox(height: 2),
-                  Text(
-                    _reached
-                        ? [
-                            formatDateTime(at!),
-                            if (actor != null && actor.isNotEmpty) 'por $actor',
-                          ].join('  ·  ')
-                        : 'Pendiente',
-                    style: Theme.of(context).textTheme.bodySmall
-                        ?.copyWith(color: palette.textSecondary),
-                  ),
+                  if (!_reached)
+                    Text(
+                      'Pendiente',
+                      style: Theme.of(context).textTheme.bodySmall
+                          ?.copyWith(color: palette.textSecondary),
+                    )
+                  else
+                    // Quien generó el hito enlaza a su perfil público
+                    // (HU20-12); la fecha se queda como texto.
+                    Wrap(
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        Text(
+                          formatDateTime(at!),
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(color: palette.textSecondary),
+                        ),
+                        if (actorId != null && actor != null && actor.isNotEmpty)
+                          InkWell(
+                            onTap: () => pushUnique(
+                              context,
+                              name: AppRoutes.profile(actorId),
+                              builder: (_) =>
+                                  PublicProfilePage(userId: actorId),
+                            ),
+                            borderRadius: BorderRadius.circular(4),
+                            child: Text(
+                              '  ·  por $actor',
+                              style: Theme.of(context).textTheme.bodySmall
+                                  ?.copyWith(
+                                    color: palette.textSecondary,
+                                    decoration: TextDecoration.underline,
+                                  ),
+                            ),
+                          ),
+                      ],
+                    ),
                   if (showsEvidence) ...[
                     const SizedBox(height: 10),
                     EvidenceCard(

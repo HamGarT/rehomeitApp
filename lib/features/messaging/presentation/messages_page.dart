@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/theme.dart';
+import '../../../core/navigation/app_routes.dart';
 import '../../../core/utils/date_format.dart';
 import '../../../shared/widgets/publication_image.dart';
 import '../../auth/presentation/auth_controller.dart';
+import '../../explore/presentation/explore_controller.dart';
 import '../domain/conversation.dart';
 import 'conversation_page.dart';
 import 'messaging_controller.dart';
@@ -42,20 +44,31 @@ class MessagesPage extends ConsumerWidget {
                   padding: const EdgeInsets.all(16),
                   itemCount: conversations.length,
                   separatorBuilder: (_, _) => const SizedBox(height: 10),
-                  itemBuilder: (context, index) =>
-                      _ConversationTile(conversation: conversations[index]),
+                  itemBuilder: (context, index) => _ConversationTile(
+                    conversation: conversations[index],
+                    userId: userId,
+                  ),
                 ),
         );
   }
 }
 
-class _ConversationTile extends StatelessWidget {
-  const _ConversationTile({required this.conversation});
+class _ConversationTile extends ConsumerWidget {
+  const _ConversationTile({required this.conversation, required this.userId});
 
   final Conversation conversation;
+  final String userId;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final counterpartId = conversation.counterpartOf(userId);
+    final counterpart = counterpartId == null
+        ? null
+        : ref.watch(publicProfileProvider(counterpartId)).value?.shortName;
+    final lastMessage = conversation.lastMessage.isEmpty
+        ? 'Conversación iniciada'
+        : conversation.lastMessage;
+
     return Card(
       margin: EdgeInsets.zero,
       child: ListTile(
@@ -73,10 +86,12 @@ class _ConversationTile extends StatelessWidget {
           overflow: TextOverflow.ellipsis,
           style: const TextStyle(fontWeight: FontWeight.w700),
         ),
+        // La otra parte va con su nombre abreviado (HU20-14), nunca con el
+        // nombre completo ni con datos de contacto.
         subtitle: Text(
-          conversation.lastMessage.isEmpty
-              ? 'Conversación iniciada'
-              : conversation.lastMessage,
+          counterpart == null || counterpart.isEmpty
+              ? lastMessage
+              : '$counterpart · $lastMessage',
           maxLines: 2,
           overflow: TextOverflow.ellipsis,
         ),
@@ -85,10 +100,10 @@ class _ConversationTile extends StatelessWidget {
           style: Theme.of(context).textTheme.labelSmall
               ?.copyWith(color: context.appColors.textSecondary),
         ),
-        onTap: () => Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (_) => ConversationPage(conversation: conversation),
-          ),
+        onTap: () => pushUnique(
+          context,
+          name: AppRoutes.conversation(conversation.id),
+          builder: (_) => ConversationPage(conversation: conversation),
         ),
       ),
     );

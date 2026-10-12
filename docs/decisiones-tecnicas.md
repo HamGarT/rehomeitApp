@@ -48,7 +48,7 @@ Decisiones que condicionan la implementación y que no se deducen leyendo las hi
 
 ## D05 – HU04 y HU05 se resuelven con una única llamada al servicio de IA
 
-**Problema.** Ambas historias analizan exactamente las mismas fotografías: HU04 pide título, categoría, estado y descripción; HU05 pide hasta cuatro detalles con su nombre y su valor. Resolverlas por separado implica enviar las imágenes dos veces, pagar el doble de tokens de entrada y sumar dos latencias, contra un presupuesto total de 10 segundos (HU04-06).
+**Problema.** Ambas historias analizan exactamente las mismas fotografías: HU04 pide título, categoría, estado y descripción; HU05 pide hasta cuatro detalles con su nombre y su valor. Resolverlas por separado implica enviar las imágenes dos veces, pagar el doble de tokens de entrada y sumar dos latencias, contra un presupuesto total de 30 segundos (HU04-06, que partió de 10 y se amplió el 23 de setiembre de 2026 porque la subida de las fotografías y la conexión en frío de la primera llamada del día quedan fuera de la latencia que mide el servicio).
 
 **Decisión.** Una sola llamada a Gemini devuelve la ficha principal y los detalles en una respuesta estructurada. Las imágenes se reducen de tamaño antes de enviarse.
 
@@ -70,7 +70,7 @@ Decisiones que condicionan la implementación y que no se deducen leyendo las hi
 
 **Problema.** El perfil público sostiene la consulta del recorrido de los bienes (HU14-11), de modo que cualquiera puede llegar a él. El diseño mostraba el nombre completo en el perfil y un formato abreviado en el detalle de la publicación, dos criterios distintos para el mismo dato. Resultaba incoherente proteger la identidad del destinatario hasta sus iniciales (HU12-05) y exponer en cambio el nombre completo de quien dona.
 
-**Decisión.** Ante terceros, todo usuario se identifica con su nombre de pila y la inicial de su primer apellido. El nombre completo solo se muestra en el perfil propio.
+**Decisión.** Ante terceros, todo usuario se identifica con su nombre de pila y la inicial de su primer apellido. El nombre completo solo se muestra en el perfil propio. Para derivar ese formato sin adivinar dónde termina el nombre, el registro y la edición del perfil piden nombres y apellidos por separado (`usuarios.nombres` y `usuarios.apellidos`, desde el 12 de octubre de 2026); `nombreCompleto` se conserva como lo que se muestra. Con Google, que entrega una sola cadena, se toma la primera palabra como nombre y el usuario corrige desde su perfil.
 
 **Consecuencias.** Un mismo criterio de identificación en el detalle de la publicación, el recorrido, las conversaciones y el perfil público. Las reglas de seguridad de Firestore autorizan o deniegan documentos completos y no permiten ocultar campos concretos, de modo que no basta con guardar el nombre completo y no mostrarlo: viajaría igual al cliente. Los datos del usuario se reparten por eso en dos documentos:
 

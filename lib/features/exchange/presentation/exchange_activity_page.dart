@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/theme.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../core/navigation/app_routes.dart';
 import '../../../core/utils/date_format.dart';
 import '../../../shared/domain/publication.dart';
 import '../../../shared/widgets/app_badge.dart';
@@ -10,7 +11,6 @@ import '../../../shared/widgets/app_dialog.dart';
 import '../../../shared/widgets/app_snack_bar.dart';
 import '../../../shared/widgets/publication_image.dart';
 import '../../auth/presentation/auth_controller.dart';
-import '../../explore/data/explore_repository.dart';
 import '../../messaging/data/messaging_repository.dart';
 import '../../messaging/presentation/conversation_page.dart';
 import '../domain/exchange_proposal.dart';
@@ -194,39 +194,16 @@ class _ProposalCard extends ConsumerWidget {
     );
   }
 
-  /// La conversación se ancla a la publicación solicitada, igual que la que
-  /// nace desde su detalle, para que ambas partes lleguen al mismo hilo.
   Future<void> _coordinate(BuildContext context, WidgetRef ref) async {
-    final incoming = proposal.requestedOwnerId == userId;
-    final counterpartId = incoming
-        ? proposal.offeredOwnerId
-        : proposal.requestedOwnerId;
     try {
-      final publication = await ref
-          .read(exploreRepositoryProvider)
-          .watchPublication(proposal.requestedPublicationId)
-          .first;
-      if (!context.mounted) return;
-      if (publication == null) {
-        showAppSnackBar(
-          context,
-          'La publicación ya no está disponible.',
-          kind: AppSnackBarKind.error,
-        );
-        return;
-      }
       final conversation = await ref
           .read(messagingRepositoryProvider)
-          .startConversation(
-            publication: publication,
-            userId: userId,
-            counterpartId: counterpartId,
-          );
+          .startExchangeConversation(proposalId: proposal.id, userId: userId);
       if (!context.mounted) return;
-      await Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => ConversationPage(conversation: conversation),
-        ),
+      await pushUnique(
+        context,
+        name: AppRoutes.conversation(conversation.id),
+        builder: (_) => ConversationPage(conversation: conversation),
       );
     } on MessagingFailure catch (error) {
       if (context.mounted) {

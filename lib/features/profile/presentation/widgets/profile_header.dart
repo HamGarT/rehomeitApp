@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../../core/constants/app_colors.dart';
+import '../../../../shared/widgets/user_avatar.dart';
 
 /// Cabecera de perfil: quién es la persona, de dónde es y desde cuándo está.
 ///
@@ -20,6 +21,8 @@ class ProfileHeader extends StatelessWidget {
     required this.joinedAt,
     required this.isOwn,
     this.email,
+    this.photoUrl,
+    this.onEdit,
   });
 
   final String name;
@@ -33,6 +36,11 @@ class ProfileHeader extends StatelessWidget {
 
   /// Solo se pinta en el perfil propio. El perfil público no lo recibe.
   final String? email;
+
+  final String? photoUrl;
+
+  /// Abre la edición del perfil (HU20-9). Solo el perfil propio lo pasa.
+  final VoidCallback? onEdit;
 
   @override
   Widget build(BuildContext context) {
@@ -53,21 +61,15 @@ class ProfileHeader extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              Container(
-                width: 64,
-                height: 64,
-                decoration: const BoxDecoration(
-                  color: Colors.white,
-                  shape: BoxShape.circle,
-                ),
-                alignment: Alignment.center,
-                child: Text(
-                  initial(name),
-                  style: const TextStyle(
-                    fontSize: 28,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.black,
-                  ),
+              UserAvatar(
+                name: name,
+                radius: 32,
+                photoUrl: photoUrl,
+                backgroundColor: Colors.white,
+                foregroundColor: Colors.black,
+                textStyle: const TextStyle(
+                  fontSize: 28,
+                  fontWeight: FontWeight.w700,
                 ),
               ),
               const SizedBox(width: 16),
@@ -83,6 +85,13 @@ class ProfileHeader extends StatelessWidget {
                   ),
                 ),
               ),
+              if (onEdit != null)
+                IconButton(
+                  onPressed: onEdit,
+                  tooltip: 'Editar perfil',
+                  color: Colors.black,
+                  icon: const Icon(Icons.edit_outlined),
+                ),
             ],
           ),
           const SizedBox(height: 20),
@@ -103,13 +112,8 @@ class ProfileHeader extends StatelessWidget {
   }
 }
 
-/// Inicial del avatar. Con el nombre vacío cae en "U", igual que en el inicio:
-/// mejor una letra genérica que el ícono de persona, que parece un error.
-String initial(String name) {
-  final trimmed = name.trim();
-  if (trimmed.isEmpty) return 'U';
-  return trimmed[0].toUpperCase();
-}
+/// Inicial del avatar; la misma regla que el resto de avatares.
+String initial(String name) => avatarInitial(name);
 
 const _months = <String>[
   'enero',

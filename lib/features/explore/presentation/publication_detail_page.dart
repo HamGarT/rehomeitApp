@@ -3,12 +3,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/theme.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../core/navigation/app_routes.dart';
 import '../../../core/utils/date_format.dart';
 import '../../../shared/domain/publication.dart';
 import '../../../shared/widgets/app_dialog.dart';
 import '../../../shared/widgets/app_snack_bar.dart';
 import '../../../shared/widgets/button_spinner.dart';
 import '../../../shared/widgets/publication_image.dart';
+import '../../../shared/widgets/user_avatar.dart';
 import '../../auth/presentation/auth_controller.dart';
 import '../../exchange/presentation/exchange_activity_page.dart';
 import '../../exchange/presentation/exchange_controller.dart';
@@ -137,11 +139,11 @@ class PublicationDetailPage extends ConsumerWidget {
                     // lleva al perfil.
                     onTap: owner == null
                         ? null
-                        : () => Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (_) => PublicProfilePage(
-                                userId: publication.authorId,
-                              ),
+                        : () => pushUnique(
+                            context,
+                            name: AppRoutes.profile(publication.authorId),
+                            builder: (_) => PublicProfilePage(
+                              userId: publication.authorId,
                             ),
                           ),
                   ),
@@ -214,10 +216,10 @@ class _PublicationTimeline extends StatelessWidget {
           Align(
             alignment: Alignment.centerRight,
             child: TextButton.icon(
-              onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => PublicationJourneyPage(initial: publication),
-                ),
+              onPressed: () => pushUnique(
+                context,
+                name: AppRoutes.journey(publication.id),
+                builder: (_) => PublicationJourneyPage(initial: publication),
               ),
               icon: const Icon(Icons.timeline, size: 18),
               label: const Text('Ver recorrido completo'),
@@ -260,12 +262,12 @@ class _AuthorRow extends StatelessWidget {
           padding: const EdgeInsets.symmetric(vertical: 4),
           child: Row(
             children: [
-              CircleAvatar(
+              UserAvatar(
+                name: shortName,
+                radius: 20,
+                photoUrl: owner?.photoUrl,
                 backgroundColor: palette.primary,
                 foregroundColor: palette.onPrimary,
-                child: Text(
-                  shortName.isEmpty ? '?' : shortName[0].toUpperCase(),
-                ),
               ),
               const SizedBox(width: 14),
               Expanded(
@@ -407,13 +409,19 @@ class _PublicationActions extends ConsumerWidget {
           icon: const Icon(Icons.swap_horiz),
           label: const Text('Proponer intercambio'),
         ),
-      if (!publication.isDonation && isAuthor && publication.isAvailable)
+      if (publication.canViewExchangeActivity(userId))
         FilledButton.icon(
-          onPressed: () => Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => const ExchangeActivityPage()),
+          onPressed: () => pushUnique(
+            context,
+            name: AppRoutes.exchanges,
+            builder: (_) => const ExchangeActivityPage(),
           ),
           icon: const Icon(Icons.swap_horiz),
-          label: const Text('Ver propuestas de intercambio'),
+          label: Text(
+            publication.isAvailable
+                ? 'Ver propuestas de intercambio'
+                : 'Ver mis intercambios',
+          ),
         ),
       if (publication.canReleaseCommitment(userId))
         OutlinedButton.icon(
@@ -434,7 +442,7 @@ class _PublicationActions extends ConsumerWidget {
                 : 'Enviar mensaje',
           ),
         ),
-      ..._notices(isAuthor),
+      ..._notices(isAuthor, publication.canViewExchangeActivity(userId)),
       if (!isAuthor) _ReportAction(publication: publication),
     ];
 
@@ -450,9 +458,9 @@ class _PublicationActions extends ConsumerWidget {
   }
 
   /// Avisos de estado que no van con botón. Un intercambio ajeno que ya no
-  /// está libre y uno propio ya comprometido se explican en vez de quedar
-  /// sin acciones.
-  List<Widget> _notices(bool isAuthor) {
+  /// está libre se explica en vez de quedar sin acciones; para las partes del
+  /// acuerdo el botón "Ver mis intercambios" ya dice dónde seguir.
+  List<Widget> _notices(bool isAuthor, bool isExchangeParty) {
     if (publication.isDonation) {
       return [
         if (publication.status == PublicationStatus.pickedUp && isAuthor)
@@ -472,13 +480,11 @@ class _PublicationActions extends ConsumerWidget {
           ),
       ];
     }
-    if (publication.isAvailable) return const [];
-    return [
+    if (publication.isAvailable || isExchangeParty) return const [];
+    return const [
       _ActionNotice(
-        icon: isAuthor ? Icons.person_outline : Icons.lock_clock_outlined,
-        text: isAuthor
-            ? 'Consulta el avance en Mis intercambios.'
-            : 'Esta publicación ya no está disponible.',
+        icon: Icons.lock_clock_outlined,
+        text: 'Esta publicación ya no está disponible.',
       ),
     ];
   }
@@ -625,20 +631,26 @@ class _PublicationActions extends ConsumerWidget {
     String userId,
   ) async {
     try {
+      final messaging = ref.read(messagingRepositoryProvider);
+      final proposalId = publication.exchangeProposalId;
       // El botón solo se muestra con una contraparte definida; para quien no
-      // es el autor el repositorio la resuelve igual al autor.
-      final conversation = await ref
-          .read(messagingRepositoryProvider)
-          .startConversation(
-            publication: publication,
-            userId: userId,
-            counterpartId: publication.conversationCounterpart(userId),
-          );
+      // es el autor el repositorio la resuelve igual al autor. En intercambio
+      // el hilo se ancla a la publicación solicitada, que puede no ser esta.
+      final conversation = proposalId != null && !publication.isDonation
+          ? await messaging.startExchangeConversation(
+              proposalId: proposalId,
+              userId: userId,
+            )
+          : await messaging.startConversation(
+              publication: publication,
+              userId: userId,
+              counterpartId: publication.conversationCounterpart(userId),
+            );
       if (!context.mounted) return;
-      await Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => ConversationPage(conversation: conversation),
-        ),
+      await pushUnique(
+        context,
+        name: AppRoutes.conversation(conversation.id),
+        builder: (_) => ConversationPage(conversation: conversation),
       );
     } on MessagingFailure catch (error) {
       if (context.mounted) {

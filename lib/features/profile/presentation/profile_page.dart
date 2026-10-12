@@ -14,6 +14,7 @@ import '../../auth/presentation/auth_controller.dart';
 import '../../delivery/presentation/delivery_controller.dart';
 import '../../explore/presentation/explore_controller.dart';
 import '../domain/profile_summary.dart';
+import 'edit_profile_page.dart';
 import 'profile_controller.dart';
 import 'widgets/profile_header.dart';
 import 'widgets/profile_sections.dart';
@@ -66,6 +67,15 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
     ref.invalidate(volunteerPublicationsProvider);
   }
 
+  Future<void> _edit(String userId) async {
+    final saved = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(builder: (_) => EditProfilePage(userId: userId)),
+    );
+    if (saved == true && mounted) {
+      showAppSnackBar(context, 'Perfil actualizado');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final user = ref.watch(authStateProvider).value;
@@ -76,6 +86,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
     // incluso sin publicaciones: el nombre corto, el distrito y la fecha de
     // ingreso son lo único que se puede mostrar antes de publicar nada.
     final profile = ref.watch(publicProfileProvider(userId));
+    final ownName = ref.watch(ownNameProvider(userId)).value;
 
     return RefreshIndicator(
       onRefresh: () async => _refresh(),
@@ -86,11 +97,15 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
         slivers: [
           SliverToBoxAdapter(
             child: ProfileHeader(
-              name: _fullName(user?.displayName),
+              // El nombre sale de `usuarios`, que es lo que edita la persona;
+              // el displayName de Auth solo cubre mientras llega.
+              name: _fullName(ownName?.full ?? user?.displayName),
               district: profile.value?.district ?? '',
               joinedAt: profile.value?.joinedAt,
               isOwn: true,
               email: user?.email ?? '',
+              photoUrl: profile.value?.photoUrl,
+              onEdit: () => _edit(userId),
             ),
           ),
           const SliverToBoxAdapter(child: SizedBox(height: 16)),

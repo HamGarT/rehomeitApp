@@ -247,6 +247,8 @@ test('permite crear un usuario y perfil legítimos con el esquema real', async (
   const batch = writeBatch(db);
   batch.set(doc(db, 'usuarios', 'legitimate-user'), {
     nombreCompleto: 'Ana Torres',
+    nombres: 'Ana',
+    apellidos: 'Torres',
     correo: 'ana@example.test',
     rol: 'usuario',
   });
@@ -272,6 +274,8 @@ test('conserva la reparación segura si existe perfil pero falta usuario', async
   const batch = writeBatch(db);
   batch.set(doc(db, 'usuarios', 'repaired-user'), {
     nombreCompleto: 'Cuenta Reparada',
+    nombres: 'Cuenta',
+    apellidos: 'Reparada',
     correo: 'repair@example.test',
     rol: 'usuario',
   });
@@ -289,15 +293,99 @@ test('deniega crear un usuario administrador y cambiar el rol', async () => {
   const userRef = doc(db, 'usuarios', 'regular-user');
   await assertFails(setDoc(userRef, {
     nombreCompleto: 'Usuario malicioso',
+    nombres: 'Usuario',
+    apellidos: 'malicioso',
     correo: 'user@example.test',
     rol: 'administrador',
   }));
   await assertSucceeds(setDoc(userRef, {
     nombreCompleto: 'Usuario regular',
+    nombres: 'Usuario',
+    apellidos: 'regular',
     correo: 'user@example.test',
     rol: 'usuario',
   }));
   await assertFails(updateDoc(userRef, { rol: 'administrador' }));
+});
+
+test('permite al dueño editar su nombre y bloquea correo, rol y a terceros', async () => {
+  const db = firestoreFor('editing-user');
+  const userRef = doc(db, 'usuarios', 'editing-user');
+  await assertSucceeds(setDoc(userRef, {
+    nombreCompleto: 'Ana María Torres',
+    nombres: 'Ana María',
+    apellidos: 'Torres',
+    correo: 'ana@example.test',
+    rol: 'usuario',
+  }));
+  await assertSucceeds(updateDoc(userRef, {
+    nombres: 'Ana',
+    apellidos: 'Quispe',
+    nombreCompleto: 'Ana Quispe',
+  }));
+  // El nombre completo debe derivar de los dos campos.
+  await assertFails(updateDoc(userRef, {
+    nombres: 'Ana',
+    apellidos: 'Quispe',
+    nombreCompleto: 'Otra Persona',
+  }));
+  await assertFails(updateDoc(userRef, { correo: 'otro@example.test' }));
+  await assertFails(updateDoc(userRef, { rol: 'administrador' }));
+  await assertFails(updateDoc(
+    doc(firestoreFor('intruder'), 'usuarios', 'editing-user'),
+    { nombres: 'Intruso', apellidos: 'X', nombreCompleto: 'Intruso X' },
+  ));
+});
+
+test('permite al dueño editar nombre corto, distrito y foto del perfil', async () => {
+  const db = firestoreFor('editing-profile');
+  const profileRef = doc(db, 'perfiles', 'editing-profile');
+  await assertSucceeds(setDoc(profileRef, {
+    nombreCorto: 'Ana T.',
+    distrito: '',
+    fechaIngreso: serverTimestamp(),
+    contadores: { donaciones: 0, intercambios: 0, voluntariados: 0 },
+  }));
+  await assertSucceeds(updateDoc(profileRef, {
+    nombreCorto: 'Ana Q.',
+    distrito: 'Los Baños del Inca',
+    fotoUrl: 'https://example.test/avatar.jpg',
+  }));
+  await assertSucceeds(updateDoc(profileRef, { fotoUrl: null, distrito: '' }));
+  await assertFails(updateDoc(profileRef, { distrito: 'Lima' }));
+  await assertFails(updateDoc(profileRef, { nombreCorto: '' }));
+  await assertFails(updateDoc(profileRef, {
+    distrito: 'Cajamarca',
+    'contadores.donaciones': 5,
+  }));
+  await assertFails(updateDoc(profileRef, {
+    distrito: 'Cajamarca',
+    fechaIngreso: serverTimestamp(),
+  }));
+  await assertFails(updateDoc(
+    doc(firestoreFor('intruder'), 'perfiles', 'editing-profile'),
+    { distrito: 'Cajamarca' },
+  ));
+});
+
+test('Storage permite la foto de perfil solo a su dueño y con el nombre fijo', async () => {
+  const bytes = new Uint8Array([0xff, 0xd8, 0xff, 0xd9]);
+  const ownRef = ref(storageFor('avatar-owner'), 'perfiles/avatar-owner/avatar.jpg');
+  await assertSucceeds(uploadBytes(ownRef, bytes, { contentType: 'image/jpeg' }));
+  // Cambiar la foto sobrescribe el mismo archivo.
+  await assertSucceeds(uploadBytes(ownRef, bytes, { contentType: 'image/jpeg' }));
+  await assertFails(uploadBytes(ownRef, bytes, { contentType: 'image/png' }));
+  await assertFails(uploadBytes(
+    ref(storageFor('avatar-owner'), 'perfiles/avatar-owner/otra.jpg'),
+    bytes,
+    { contentType: 'image/jpeg' },
+  ));
+  await assertFails(uploadBytes(
+    ref(storageFor('intruder'), 'perfiles/avatar-owner/avatar.jpg'),
+    bytes,
+    { contentType: 'image/jpeg' },
+  ));
+  await assertSucceeds(deleteObject(ownRef));
 });
 
 test('deniega leer el documento privado de otro usuario', async () => {

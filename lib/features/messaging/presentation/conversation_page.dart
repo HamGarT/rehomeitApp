@@ -3,11 +3,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/theme.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../core/navigation/app_routes.dart';
 import '../../../core/utils/date_format.dart';
 import '../../../shared/domain/publication.dart';
 import '../../../shared/widgets/publication_image.dart';
 import '../../auth/presentation/auth_controller.dart';
 import '../../explore/data/explore_repository.dart';
+import '../../explore/presentation/explore_controller.dart';
 import '../../explore/presentation/publication_detail_page.dart';
 import '../domain/conversation.dart';
 import 'messaging_controller.dart';
@@ -37,9 +39,22 @@ class _ConversationPageState extends ConsumerState<ConversationPage> {
       conversationMessagesProvider(widget.conversation.id),
     );
     final sending = ref.watch(messagingControllerProvider).isLoading;
+    // La otra parte se identifica con el nombre abreviado (HU20-14).
+    final counterpartId = userId == null
+        ? null
+        : widget.conversation.counterpartOf(userId);
+    final counterpart = counterpartId == null
+        ? null
+        : ref.watch(publicProfileProvider(counterpartId)).value?.shortName;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Conversación')),
+      appBar: AppBar(
+        title: Text(
+          counterpart == null || counterpart.isEmpty
+              ? 'Conversación'
+              : 'Conversación con $counterpart',
+        ),
+      ),
       body: SafeArea(
         child: Column(
           children: [
@@ -104,10 +119,10 @@ class _ConversationPageState extends ConsumerState<ConversationPage> {
         );
         return;
       }
-      await Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => PublicationDetailPage(initial: publication),
-        ),
+      await pushUnique(
+        context,
+        name: AppRoutes.publication(publication.id),
+        builder: (_) => PublicationDetailPage(initial: publication),
       );
     } catch (_) {
       if (mounted) {

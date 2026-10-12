@@ -26,6 +26,15 @@ class Conversation {
   final DateTime createdAt;
   final DateTime updatedAt;
 
+  /// La otra parte de la conversación. Una conversación siempre es entre dos
+  /// personas (HU09-4), así que es el participante que no es [userId].
+  String? counterpartOf(String userId) {
+    for (final id in participantIds) {
+      if (id != userId) return id;
+    }
+    return null;
+  }
+
   factory Conversation.fromMap(String id, Map<String, Object?> map) {
     final createdAt = readFirestoreDate(map['createdAt']);
     return Conversation(

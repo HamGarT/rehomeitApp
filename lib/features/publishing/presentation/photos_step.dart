@@ -5,7 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../../app/theme.dart';
-import '../../../shared/widgets/sheet_handle.dart';
+import '../../../shared/widgets/image_source_sheet.dart';
 import '../../../shared/widgets/step_app_bar.dart';
 import '../domain/publish_draft.dart';
 import 'analyzing_step.dart';
@@ -125,9 +125,9 @@ class _PhotosStepState extends ConsumerState<PhotosStep> {
       PublishDraft.maxPhotos - ref.read(publishDraftProvider).photos.length;
 
   Future<void> _chooseSource() async {
-    final source = await showModalBottomSheet<ImageSource>(
-      context: context,
-      builder: (_) => const _SourceSheet(),
+    final source = await showImageSourceSheet(
+      context,
+      gallerySubtitle: 'Puedes seleccionar varias a la vez',
     );
     if (source == null) return;
 
@@ -330,38 +330,3 @@ class _EmptySlot extends StatelessWidget {
   }
 }
 
-class _SourceSheet extends StatelessWidget {
-  const _SourceSheet();
-
-  @override
-  Widget build(BuildContext context) {
-    return SafeArea(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const SizedBox(height: 12),
-          const SheetHandle(),
-          const SizedBox(height: 16),
-          ListTile(
-            leading: Icon(
-              Icons.photo_camera_outlined,
-              color: context.appColors.primary,
-            ),
-            title: const Text('Tomar fotografía'),
-            onTap: () => Navigator.of(context).pop(ImageSource.camera),
-          ),
-          ListTile(
-            leading: Icon(
-              Icons.photo_library_outlined,
-              color: context.appColors.primary,
-            ),
-            title: const Text('Elegir de la galería'),
-            subtitle: const Text('Puedes seleccionar varias a la vez'),
-            onTap: () => Navigator.of(context).pop(ImageSource.gallery),
-          ),
-          const SizedBox(height: 12),
-        ],
-      ),
-    );
-  }
-}

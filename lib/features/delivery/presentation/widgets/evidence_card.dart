@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../../app/theme.dart';
+import '../../../../core/navigation/app_routes.dart';
 import '../../../../core/utils/date_format.dart';
 import '../../../../shared/domain/publication.dart';
 import '../../../../shared/widgets/publication_image.dart';
 import '../../../explore/presentation/explore_controller.dart';
+import '../../../profile/presentation/public_profile_page.dart';
 import '../delivery_controller.dart';
 
 /// Fotografía de evidencia y datos de la entrega al destinatario.
@@ -78,6 +80,12 @@ class EvidenceCard extends ConsumerWidget {
                 _Fact(
                   icon: Icons.volunteer_activism_outlined,
                   text: 'Entregó ${deliverer.value?.shortName ?? 'un usuario'}',
+                  // Quien entregó se puede consultar en su perfil (HU20-12).
+                  onTap: () => pushUnique(
+                    context,
+                    name: AppRoutes.profile(deliveredById),
+                    builder: (_) => PublicProfilePage(userId: deliveredById),
+                  ),
                 ),
                 const SizedBox(height: 6),
                 Text(
@@ -95,21 +103,36 @@ class EvidenceCard extends ConsumerWidget {
 }
 
 class _Fact extends StatelessWidget {
-  const _Fact({required this.icon, required this.text});
+  const _Fact({required this.icon, required this.text, this.onTap});
 
   final IconData icon;
   final String text;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
+    final palette = context.appColors;
     return Padding(
       padding: const EdgeInsets.only(bottom: 6),
-      child: Row(
-        children: [
-          Icon(icon, size: 18, color: context.appColors.textSecondary),
-          const SizedBox(width: 8),
-          Expanded(child: Text(text)),
-        ],
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(6),
+        child: Row(
+          children: [
+            Icon(icon, size: 18, color: palette.textSecondary),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                text,
+                style: onTap == null
+                    ? null
+                    : const TextStyle(decoration: TextDecoration.underline),
+              ),
+            ),
+            if (onTap != null)
+              Icon(Icons.chevron_right, size: 18, color: palette.textSecondary),
+          ],
+        ),
       ),
     );
   }

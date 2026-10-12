@@ -16,7 +16,8 @@ class RegisterPage extends ConsumerStatefulWidget {
 
 class _RegisterPageState extends ConsumerState<RegisterPage> {
   final _formKey = GlobalKey<FormState>();
-  final _nameController = TextEditingController();
+  final _firstNamesController = TextEditingController();
+  final _lastNamesController = TextEditingController();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
@@ -27,7 +28,8 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
 
   @override
   void dispose() {
-    _nameController.dispose();
+    _firstNamesController.dispose();
+    _lastNamesController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
@@ -42,7 +44,8 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
     final error = await ref
         .read(authControllerProvider.notifier)
         .signUp(
-          name: _nameController.text,
+          firstNames: _firstNamesController.text,
+          lastNames: _lastNamesController.text,
           email: _emailController.text,
           password: _passwordController.text,
         );
@@ -92,15 +95,28 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
                         subtitle: 'Únete a la comunidad y dale una segunda vida a las cosas que ya no usas.',
                       ),
                       const SizedBox(height: 26),
+                      // Nombres y apellidos van separados para derivar el
+                      // nombre abreviado con el que te ven los demás (HU20-13).
                       AuthTextField(
-                        controller: _nameController,
-                        label: 'Nombre completo',
+                        controller: _firstNamesController,
+                        label: 'Nombres',
                         validator: (value) =>
-                            validateRequired(value, 'Nombre completo'),
+                            validateRequired(value, 'El nombre'),
                         textCapitalization: TextCapitalization.words,
                         textInputAction: TextInputAction.next,
-                        autofillHints: const [AutofillHints.name],
+                        autofillHints: const [AutofillHints.givenName],
                         prefixIcon: const Icon(Icons.person_outline, size: 20),
+                      ),
+                      const SizedBox(height: 14),
+                      AuthTextField(
+                        controller: _lastNamesController,
+                        label: 'Apellidos',
+                        validator: (value) =>
+                            validateRequired(value, 'El apellido'),
+                        textCapitalization: TextCapitalization.words,
+                        textInputAction: TextInputAction.next,
+                        autofillHints: const [AutofillHints.familyName],
+                        prefixIcon: const Icon(Icons.badge_outlined, size: 20),
                       ),
                       const SizedBox(height: 14),
                       AuthTextField(

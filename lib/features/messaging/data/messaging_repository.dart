@@ -148,6 +148,43 @@ class MessagingRepository {
     }
   }
 
+  /// Un intercambio tiene un solo hilo, anclado a la publicación solicitada
+  /// (HU09-2). Sin esta regla, abrir el chat desde el detalle de la ofrecida
+  /// creaba una segunda conversación para el mismo acuerdo.
+  Future<Conversation> startExchangeConversation({
+    required String proposalId,
+    required String userId,
+  }) async {
+    final Map<String, Object?>? proposal;
+    final Map<String, Object?>? requested;
+    final String requestedId;
+    try {
+      proposal = (await _firestore
+              .collection('propuestasIntercambio')
+              .doc(proposalId)
+              .get())
+          .data();
+      requestedId = proposal?['requestedPublicationId'] as String? ?? '';
+      requested = requestedId.isEmpty
+          ? null
+          : (await _firestore
+                  .collection('publicaciones')
+                  .doc(requestedId)
+                  .get())
+              .data();
+    } on FirebaseException catch (error) {
+      throw MessagingFailure(_friendlyMessage(error));
+    }
+    if (proposal == null || requested == null) {
+      throw const MessagingFailure('La publicación ya no está disponible.');
+    }
+    return startConversation(
+      publication: Publication.fromMap(requestedId, requested),
+      userId: userId,
+      counterpartId: proposal['offeredOwnerId'] as String?,
+    );
+  }
+
   Future<void> sendMessage({
     required Conversation conversation,
     required String senderId,

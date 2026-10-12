@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../../app/theme.dart';
+import '../../../../core/navigation/app_routes.dart';
 import '../../../../shared/domain/publication.dart';
 import '../../../../shared/widgets/publication_image.dart';
 import '../../../explore/presentation/publication_detail_page.dart';
@@ -33,10 +34,10 @@ class ProfilePublicationTile extends StatelessWidget {
   static const double _thumb = 64;
 
   void _open(BuildContext context) {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => PublicationDetailPage(initial: publication),
-      ),
+    pushUnique(
+      context,
+      name: AppRoutes.publication(publication.id),
+      builder: (_) => PublicationDetailPage(initial: publication),
     );
   }
 

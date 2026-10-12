@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/constants/app_colors.dart';
+import '../core/navigation/app_routes.dart';
 import '../features/auth/presentation/auth_controller.dart';
 import '../features/auth/presentation/pages/login_page.dart';
 import '../features/auth/presentation/widgets/auth_widgets.dart';
@@ -36,6 +37,7 @@ class RehomeitApp extends ConsumerWidget {
       darkTheme: buildAppTheme(brightness: Brightness.dark),
       themeMode: isDark ? ThemeMode.dark : ThemeMode.light,
       debugShowCheckedModeBanner: false,
+      navigatorObservers: [routeStackObserver],
       home: AnimatedSwitcher(
         duration: const Duration(milliseconds: 450),
         switchInCurve: Curves.easeOutCubic,
