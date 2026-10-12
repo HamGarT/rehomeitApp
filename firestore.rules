@@ -6,6 +6,17 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    // El administrador se reconoce por el campo `rol` de su documento de
+    // usuario, que se asigna desde el backend (D06, D16). Cuesta una lectura
+    // por evaluación, así que va siempre como última rama de cada regla: las
+    // de usuario se resuelven antes y nunca la pagan.
+    function isAdmin() {
+      return signedIn()
+        && get(
+          /databases/$(database)/documents/usuarios/$(request.auth.uid)
+        ).data.rol == 'administrador';
+    }
+
     function isCajamarcaDistrict(value) {
       return value in [
         'Cajamarca',
@@ -347,6 +358,63 @@ service cloud.firestore {
           || directDelivery);
     }
 
+    // Retiro por moderación (HU19-10). Solo desde publicada o comprometida:
+    // una vez que el bien cambió de manos el retiro ya no evita nada y dejaría
+    // una entrega sin forma de cerrarse. Se conservan voluntario y contraparte
+    // como historial; `retirada` saca la publicación del feed y del detalle.
+    function validAdminRemoval() {
+      let changed = request.resource.data.diff(resource.data).affectedKeys();
+      let datesChanged = request.resource.data.statusDates
+        .diff(resource.data.statusDates).affectedKeys();
+      return resource.data.status in ['publicada', 'comprometida']
+        && request.resource.data.status == 'retirada'
+        && request.resource.data.statusDates.retirada == request.time
+        && datesChanged.hasOnly(['retirada'])
+        && changed.hasOnly(['status', 'statusDates']);
+    }
+
+    // La contraparte de un intercambio retirado vuelve a estar disponible
+    // (HU19-16): su bien no es el reportado. Es el espejo de `release` en
+    // las donaciones, y exige que la propuesta quede cancelada en el mismo
+    // lote.
+    function validAdminExchangeRelease() {
+      let changed = request.resource.data.diff(resource.data).affectedKeys();
+      let proposal = proposalAfter(resource.data.exchangeProposalId);
+      return resource.data.mode == 'intercambio'
+        && resource.data.status == 'comprometida'
+        && request.resource.data.status == 'publicada'
+        && !('exchangeProposalId' in request.resource.data)
+        && !('counterpartPublicationId' in request.resource.data)
+        && !('counterpartUserId' in request.resource.data)
+        && !('committedAt' in request.resource.data)
+        && request.resource.data.statusDates == resource.data.statusDates
+        && proposal.status == 'cancelada'
+        && changed.hasOnly([
+          'status',
+          'exchangeProposalId',
+          'counterpartPublicationId',
+          'counterpartUserId',
+          'committedAt'
+        ]);
+    }
+
+    // Una propuesta pendiente o aceptada se cancela solo cuando una de sus
+    // publicaciones quedó retirada, en este lote o antes: la limpieza de las
+    // propuestas pendientes corre después del retiro (D16).
+    function validAdminProposalCancellation() {
+      let changed = request.resource.data.diff(resource.data).affectedKeys();
+      return resource.data.status in ['pendiente', 'aceptada']
+        && request.resource.data.status == 'cancelada'
+        && request.resource.data.cancelledAt == request.time
+        && changed.hasOnly(['status', 'cancelledAt'])
+        && (
+          publicationAfter(resource.data.requestedPublicationId).status
+            == 'retirada'
+          || publicationAfter(resource.data.offeredPublicationId).status
+            == 'retirada'
+        );
+    }
+
     function validConversationCreate() {
       let publication = publicationAfter(request.resource.data.publicationId);
       let participants = request.resource.data.participantIds;
@@ -646,6 +714,23 @@ service cloud.firestore {
         && request.resource.data.resolvedBy == null;
     }
 
+    // Resolución del administrador (HU19-10 a 12). "Retirada" solo vale si la
+    // publicación queda retirada en el mismo lote o ya lo estaba; así reporte y
+    // publicación no pueden contradecirse. "Desestimado" no toca nada más.
+    function validReportResolution() {
+      let after = request.resource.data;
+      return resource.data.status == 'pendiente'
+        && after.status in ['desestimado', 'retirada']
+        && after.resolvedAt == request.time
+        && after.resolvedBy == request.auth.uid
+        && after.diff(resource.data).affectedKeys()
+          .hasOnly(['status', 'resolvedAt', 'resolvedBy'])
+        && (
+          after.status == 'desestimado'
+          || publicationAfter(resource.data.publicationId).status == 'retirada'
+        );
+    }
+
     function validNotificationSchema() {
       return request.resource.data.keys().hasAll([
           'recipientId',
@@ -663,6 +748,7 @@ service cloud.firestore {
           'publicationId',
           'conversationId',
           'messageId',
+          'reportId',
           'actorId',
           'createdAt',
           'read'
@@ -680,7 +766,10 @@ service cloud.firestore {
           'compromiso_liberado',
           'entrega_a_voluntario',
           'entrega_destinatario',
-          'cierre_confirmado'
+          'cierre_confirmado',
+          'publicacion_retirada',
+          'reporte_resuelto',
+          'compromiso_cancelado'
         ]
         && request.resource.data.message is string
         && request.resource.data.message.size() > 0
@@ -831,6 +920,53 @@ service cloud.firestore {
         && (assumed || released || pickedUp || delivered || closed);
     }
 
+    // Avisos de moderación (HU19-13, 14 y 16). Cada uno se ata al documento
+    // que lo motiva con `getAfter`, así ni un administrador escribe un aviso
+    // sin la resolución detrás.
+    function validModerationNotification() {
+      let data = request.resource.data;
+      let publication = publicationAfter(data.publicationId);
+      let withdrawn = data.type == 'publicacion_retirada'
+        && publication.status == 'retirada'
+        && data.recipientId == publication.authorId;
+      let resolved = data.type == 'reporte_resuelto'
+        && validResolvedReportNotification(data);
+      let cancelled = data.type == 'compromiso_cancelado'
+        && publication.status == 'retirada'
+        && data.recipientId != publication.authorId
+        && (
+          'proposalId' in data
+            ? validCancelledProposalNotification(data)
+            : data.recipientId in [
+                publication.get('volunteerId', ''),
+                publication.get('counterpartUserId', '')
+              ]
+        );
+      return isAdmin()
+        && data.actorId == request.auth.uid
+        && (withdrawn || resolved || cancelled);
+    }
+
+    function validResolvedReportNotification(data) {
+      let report = getAfter(
+        /databases/$(database)/documents/reportes/$(data.reportId)
+      ).data;
+      return report.status != 'pendiente'
+        && report.resolvedBy == request.auth.uid
+        && report.publicationId == data.publicationId
+        && data.recipientId == report.reporterId;
+    }
+
+    function validCancelledProposalNotification(data) {
+      let proposal = proposalAfter(data.proposalId);
+      return proposal.status == 'cancelada'
+        && data.recipientId in proposal.participantIds
+        && data.publicationId in [
+          proposal.requestedPublicationId,
+          proposal.offeredPublicationId
+        ];
+    }
+
     function validNotificationOrigin() {
       return request.resource.data.type in [
           'propuesta_intercambio',
@@ -842,7 +978,13 @@ service cloud.firestore {
         ? validNotificationForProposal()
         : request.resource.data.type == 'nuevo_mensaje'
           ? validMessageNotification()
-          : validDeliveryNotification();
+          : request.resource.data.type in [
+              'publicacion_retirada',
+              'reporte_resuelto',
+              'compromiso_cancelado'
+            ]
+            ? validModerationNotification()
+            : validDeliveryNotification();
     }
 
     match /usuarios/{userId} {
@@ -890,6 +1032,10 @@ service cloud.firestore {
           && validExchangePublicationTransition(publicationId)
         )
         || validDonationPublicationTransition(publicationId)
+        || (
+          isAdmin()
+          && (validAdminRemoval() || validAdminExchangeRelease())
+        )
       );
       allow delete: if false;
     }
@@ -920,8 +1066,10 @@ service cloud.firestore {
     }
 
     match /propuestasIntercambio/{proposalId} {
+      // El administrador lee las propuestas de una publicación retirada para
+      // cancelarlas (HU19-16).
       allow read: if signedIn()
-        && request.auth.uid in resource.data.participantIds;
+        && (request.auth.uid in resource.data.participantIds || isAdmin());
       allow create: if signedIn()
         && validInitialProposal()
         && get(
@@ -993,12 +1141,16 @@ service cloud.firestore {
               : 'confirmada'
           )
         )
+        || (isAdmin() && validAdminProposalCancellation())
       );
       allow delete: if false;
     }
 
     match /reportes/{reportId} {
-      allow read: if signedIn() && resource.data.reporterId == request.auth.uid;
+      allow get: if signedIn()
+        && (resource.data.reporterId == request.auth.uid || isAdmin());
+      // El listado de pendientes es de la consola de moderación (HU19-8).
+      allow list: if isAdmin();
       allow create: if signedIn()
         && validInitialReport()
         && reportId == request.resource.data.reporterId + '_' + request.resource.data.publicationId
@@ -1006,7 +1158,8 @@ service cloud.firestore {
         && get(
           /databases/$(database)/documents/publicaciones/$(request.resource.data.publicationId)
         ).data.authorId != request.auth.uid;
-      allow update, delete: if false;
+      allow update: if isAdmin() && validReportResolution();
+      allow delete: if false;
     }
 
     match /notificaciones/{notificationId} {

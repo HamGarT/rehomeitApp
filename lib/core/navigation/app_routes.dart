@@ -11,6 +11,7 @@ abstract final class AppRoutes {
   static String conversation(String id) => 'conversation/$id';
   static String journey(String publicationId) => 'journey/$publicationId';
   static const exchanges = 'exchanges';
+  static const moderation = 'moderation';
 }
 
 /// Lleva la cuenta de los nombres de ruta abiertos. Hay que registrarlo en

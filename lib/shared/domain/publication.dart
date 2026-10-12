@@ -143,6 +143,13 @@ class Publication {
 
   bool canWithdraw(String userId) => isAvailable && isAuthor(userId);
 
+  /// La moderación retira solo lo que no cambió de manos (HU19-10): desde
+  /// recogida en adelante el retiro no evita nada y dejaría la entrega sin
+  /// cierre. Replica `validAdminRemoval` de las reglas.
+  bool get isRemovableByModeration =>
+      status == PublicationStatus.published ||
+      status == PublicationStatus.committed;
+
   bool canProposeExchange(String userId) =>
       mode == PublicationMode.exchange && isAvailable && !isAuthor(userId);
 

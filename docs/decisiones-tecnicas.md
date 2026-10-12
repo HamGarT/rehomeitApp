@@ -2,7 +2,7 @@
 
 Decisiones que condicionan la implementación y que no se deducen leyendo las historias de usuario. Cada una registra el problema que resuelve y lo que implica asumirla.
 
-Última actualización: 10 de octubre de 2026.
+Última actualización: 12 de octubre de 2026.
 
 ---
 
@@ -63,6 +63,8 @@ Decisiones que condicionan la implementación y que no se deducen leyendo las hi
 **Decisión.** Existen tres niveles acumulativos: usuario, organización y administrador. El usuario puede donar, intercambiar y actuar como voluntario. La organización suma la creación y administración de campañas. El administrador accede a todas las funciones, incluida la moderación de publicaciones reportadas. El nivel se guarda en un único campo del documento del usuario. "Donante" y "voluntaria" no son roles: son actividades que se derivan de lo que la persona hizo.
 
 **Consecuencias.** Las reglas de seguridad deben impedir que un usuario modifique su propio nivel. Sin esa restricción, cualquiera puede ascenderse a administrador escribiendo directamente contra Firestore, sin pasar por la aplicación. Organización y administrador se habilitan manualmente desde el backend (HU01-10, HU15-15).
+
+El nivel se guarda en el campo `rol` del documento de `usuarios` y no en un custom claim de Authentication (12 de octubre de 2026). Un claim exige el Admin SDK o una Cloud Function para asignarlo; el campo se edita desde la consola de Firestore. A cambio, las reglas lo leen con `get()` en cada evaluación de administrador, lo que cuesta una lectura; por eso esa comprobación va siempre como última rama de cada regla, para que las rutas de usuario nunca la paguen. En la aplicación, la sección de moderación aparece cuando el documento propio dice `administrador`, pero la protección real es la regla.
 
 ---
 
@@ -179,7 +181,7 @@ Esta paleta reemplaza desde el 8 de octubre de 2026 a la de marrón y crema del 
 
 **Decisión.** El documento del reporte se identifica con la persona que reporta y la publicación, en ese orden, y las reglas solo admiten la creación con ese id y niegan toda actualización. Quien reporta deja el reporte en "Pendiente", con la fecha y sin resolución: el resultado lo determina el equipo administrador (HU19-09 a HU19-12), nunca la aplicación. El id determinista hace que el segundo reporte de la misma publicación llegue como `update` sobre algo ya escrito y la regla lo rechace, sin que el cliente tenga que consultar nada.
 
-**Consecuencias.** La aplicación necesita una regla por cada motivo y estado que escriba: agregar un valor en `ReportReason` o `ReportStatus` sin abrir `validInitialReport` deja el documento rechazado por el servidor. Como la publicación no se toca al reportarla, sigue visible mientras el reporte no se resuelva (HU19-07). Los criterios de listado, resolución y avisos al autor y a quien reportó (HU19-08 a HU19-16) pertenecen a la consola de moderación: es el reverso de este mismo esquema, con reglas propias.
+**Consecuencias.** La aplicación necesita una regla por cada motivo y estado que escriba: agregar un valor en `ReportReason` o `ReportStatus` sin abrir `validInitialReport` deja el documento rechazado por el servidor. Como la publicación no se toca al reportarla, sigue visible mientras el reporte no se resuelva (HU19-07). Los criterios de listado, resolución y avisos al autor y a quien reportó (HU19-08 a HU19-16) pertenecen a la consola de moderación: es el reverso de este mismo esquema, con reglas propias (D16).
 
 ---
 
@@ -205,4 +207,14 @@ Esta paleta reemplaza desde el 8 de octubre de 2026 a la de marrón y crema del 
 **Fuente.** Los valores redondean el rango habitual de las caracterizaciones de residuos sólidos domésticos que publican los organismos de gestión de residuos al separar ropa, mobiliario, electrodomésticos y otros bienes reutilizables: el modelo WARM de la EPA de Estados Unidos y los informes Global Waste Management Outlook del PNUMA. Esas caracterizaciones trabajan con rangos por flujo de material, no con un peso por producto, así que se toma un valor representativo por categoría y no el extremo del rango. Las categorías de ropa se entienden como lote, no como prenda, porque quien publica suele donar varias a la vez.
 
 **Consecuencias.** Son órdenes de magnitud, no mediciones, y el indicador lo dice en pantalla. Cambiar un peso es un cambio de código con revisión, no una edición en la consola. Una categoría nueva que no esté en la tabla cuenta con el valor de reserva de 1 kg en vez de romper el cálculo, pero debe añadirse a la tabla con su justificación. Lo entregado como voluntario suma igual que lo donado, porque la operación completada es la misma (HU18-4).
+
+---
+
+## D16 – La moderación se ejecuta desde la aplicación, en un lote acotado más una limpieza posterior
+
+**Problema.** Resolver un reporte (HU19-10 a HU19-16) toca varios documentos a la vez: el reporte, la publicación, el compromiso o la propuesta aceptada, la publicación de la contraparte y un aviso por cada persona afectada. Lo natural sería una Cloud Function que lo haga en servidor, pero el proyecto no las usa (D01, D02). Hacerlo todo en un único lote desde el cliente tampoco sirve: las reglas de Firestore admiten como máximo 20 accesos a documentos por lote y 10 por operación, y cada escritura de moderación gasta varios (leer el rol del administrador, comprobar con `getAfter` que la publicación quedó retirada o la propuesta cancelada). Con varios reportes o propuestas pendientes sobre la misma publicación el lote supera el límite y el servidor lo rechaza entero.
+
+**Decisión.** El administrador resuelve desde la aplicación, con el rol de D06. El retiro escribe un lote atómico con lo que no puede quedar a medias: la publicación pasa a `retirada`, el reporte revisado se resuelve, la propuesta aceptada se cancela y la contraparte del intercambio vuelve a `publicada`, y se avisa al autor, a quien reportó y a la otra parte del compromiso. Después, un lote por documento cierra los demás reportes pendientes de esa publicación y cancela las propuestas pendientes que la involucran. Las reglas validan cada escritura contra el estado posterior del lote: un reporte solo pasa a `retirada` si la publicación queda retirada, la contraparte solo se libera si la propuesta queda cancelada, y una propuesta solo se cancela si una de sus publicaciones está retirada, en ese lote o antes. El retiro solo procede desde `publicada` o `comprometida`; desde `recogida` en adelante el bien ya cambió de manos y la consola solo ofrece desestimar.
+
+**Consecuencias.** El lote atómico tiene un tamaño fijo y conocido, así que nunca choca con el límite. La limpieza posterior puede interrumpirse (sin red, cierre de la aplicación); si eso pasa, los reportes pendientes siguen en la consola con la publicación ya retirada y al abrirlos la aplicación los cierra y reintenta la limpieza. Cada aviso de moderación lleva el `actorId` del administrador y se ata al documento que lo motiva, de modo que ni un administrador puede escribir un aviso sin la resolución detrás. Las notificaciones son las de D01: internas, sin push.
 

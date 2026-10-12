@@ -122,4 +122,42 @@ void main() {
   test('el límite del comentario es el que comparte la hoja y la regla', () {
     expect(PublicationReport.maxCommentLength, 500);
   });
+
+  test('un reporte resuelto vuelve de Firestore con su resolución', () {
+    // La consola lee lo que escribió el administrador: estado, fecha y quién
+    // resolvió tienen que sobrevivir el viaje de ida y vuelta.
+    final resolvedAt = DateTime.utc(2026, 10, 12, 9, 30);
+    final map = PublicationReport(
+      id: 'reporter_publication',
+      publicationId: 'publication',
+      reporterId: 'reporter',
+      reason: ReportReason.moneyRequest,
+      status: ReportStatus.withdrawn,
+      createdAt: DateTime.utc(2026, 10, 11),
+      comment: 'Pide un adelanto por Yape',
+      resolvedAt: resolvedAt,
+      resolvedBy: 'admin',
+    ).toMap();
+
+    final report = PublicationReport.fromMap('reporter_publication', map);
+
+    expect(report.id, 'reporter_publication');
+    expect(report.publicationId, 'publication');
+    expect(report.reporterId, 'reporter');
+    expect(report.reason, ReportReason.moneyRequest);
+    expect(report.status, ReportStatus.withdrawn);
+    expect(report.comment, 'Pide un adelanto por Yape');
+    // `Timestamp.toDate` devuelve hora local; se compara el instante.
+    expect(report.resolvedAt?.toUtc(), resolvedAt);
+    expect(report.resolvedBy, 'admin');
+  });
+
+  test('un reporte pendiente se lee sin resolución', () {
+    final report = PublicationReport.fromMap('id', _report().toMap());
+
+    expect(report.status, ReportStatus.pending);
+    expect(report.resolvedAt, isNull);
+    expect(report.resolvedBy, isNull);
+    expect(report.comment, isNull);
+  });
 }

@@ -16,9 +16,12 @@ import {
   deleteField,
   getDoc,
   getDocs,
+  orderBy,
+  query,
   serverTimestamp,
   setDoc,
   updateDoc,
+  where,
   writeBatch,
 } from 'firebase/firestore';
 import { deleteObject, ref, uploadBytes } from 'firebase/storage';
@@ -1328,4 +1331,298 @@ test('notificaciones HU09-HU12 no pueden fabricarse sin operación legítima', a
       read: false,
     },
   ));
+});
+
+const adminId = 'admin-user';
+
+// El rol lo asigna el backend (D06): se siembra sin reglas, como haría la
+// consola de Firebase.
+async function seedAdmin() {
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), 'usuarios', adminId), {
+      nombreCompleto: 'Equipo ReHomeIt',
+      nombres: 'Equipo',
+      apellidos: 'ReHomeIt',
+      correo: 'equipo@example.test',
+      rol: 'administrador',
+    });
+  });
+}
+
+async function seedReport(reporterId, publicationId) {
+  const reportId = reportIdFor(reporterId, publicationId);
+  await assertSucceeds(setDoc(
+    doc(firestoreFor(reporterId), 'reportes', reportId),
+    initialReport({ reporterId, publicationId }),
+  ));
+  return reportId;
+}
+
+function resolution(status, resolvedBy = adminId) {
+  return { status, resolvedAt: serverTimestamp(), resolvedBy };
+}
+
+function removal() {
+  return { status: 'retirada', 'statusDates.retirada': serverTimestamp() };
+}
+
+function moderationNotification({
+  recipientId,
+  type,
+  publicationId,
+  reportId,
+  proposalId,
+  actorId = adminId,
+}) {
+  return {
+    recipientId,
+    type,
+    message: 'Aviso de moderación.',
+    publicationId,
+    ...(reportId ? { reportId } : {}),
+    ...(proposalId ? { proposalId } : {}),
+    actorId,
+    createdAt: serverTimestamp(),
+    read: false,
+  };
+}
+
+test('HU19: solo el administrador lista y lee los reportes pendientes', async () => {
+  await createVolunteerDonation();
+  const reportId = await seedReport('reporter', donationPublicationId);
+  await seedAdmin();
+  const pendingOf = (userId) => getDocs(query(
+    collection(firestoreFor(userId), 'reportes'),
+    where('status', '==', 'pendiente'),
+    orderBy('createdAt'),
+  ));
+  await assertFails(pendingOf(donorId));
+  await assertFails(pendingOf('reporter'));
+  await assertSucceeds(pendingOf(adminId));
+  await assertSucceeds(getDoc(doc(firestoreFor(adminId), 'reportes', reportId)));
+});
+
+test('HU19: desestimar resuelve el reporte, avisa a quien reportó y no toca la publicación', async () => {
+  await createVolunteerDonation();
+  const reportId = await seedReport('reporter', donationPublicationId);
+  await seedAdmin();
+  await assertFails(updateDoc(
+    doc(firestoreFor(donorId), 'reportes', reportId),
+    resolution('desestimado', donorId),
+  ));
+  // Quien resuelve es quien firma la resolución.
+  await assertFails(updateDoc(
+    doc(firestoreFor(adminId), 'reportes', reportId),
+    resolution('desestimado', 'otro'),
+  ));
+
+  const db = firestoreFor(adminId);
+  const batch = writeBatch(db);
+  batch.update(doc(db, 'reportes', reportId), resolution('desestimado'));
+  batch.set(doc(db, 'notificaciones', 'dismissed-notice'), moderationNotification({
+    recipientId: 'reporter',
+    type: 'reporte_resuelto',
+    publicationId: donationPublicationId,
+    reportId,
+  }));
+  await assertSucceeds(batch.commit());
+
+  const report = await getDoc(doc(db, 'reportes', reportId));
+  assert.equal(report.data().status, 'desestimado');
+  assert.equal(report.data().resolvedBy, adminId);
+  const publication = await getDoc(doc(db, 'publicaciones', donationPublicationId));
+  assert.equal(publication.data().status, 'publicada');
+});
+
+test('HU19: retirar resuelve el reporte y avisa al autor y a quien reportó en el mismo lote', async () => {
+  await createVolunteerDonation('donante');
+  const reportId = await seedReport('reporter', donationPublicationId);
+  await seedAdmin();
+  // "Retirada" en el reporte exige la publicación retirada en el mismo lote.
+  await assertFails(updateDoc(
+    doc(firestoreFor(adminId), 'reportes', reportId),
+    resolution('retirada'),
+  ));
+  // Un usuario común no retira, ni siquiera el autor.
+  await assertFails(updateDoc(
+    doc(firestoreFor(donorId), 'publicaciones', donationPublicationId),
+    removal(),
+  ));
+
+  const db = firestoreFor(adminId);
+  const batch = writeBatch(db);
+  batch.update(doc(db, 'publicaciones', donationPublicationId), removal());
+  batch.update(doc(db, 'reportes', reportId), resolution('retirada'));
+  batch.set(doc(db, 'notificaciones', 'author-notice'), moderationNotification({
+    recipientId: donorId,
+    type: 'publicacion_retirada',
+    publicationId: donationPublicationId,
+  }));
+  batch.set(doc(db, 'notificaciones', 'reporter-notice'), moderationNotification({
+    recipientId: 'reporter',
+    type: 'reporte_resuelto',
+    publicationId: donationPublicationId,
+    reportId,
+  }));
+  await assertSucceeds(batch.commit());
+
+  const publication = await getDoc(doc(db, 'publicaciones', donationPublicationId));
+  assert.equal(publication.data().status, 'retirada');
+  const report = await getDoc(doc(db, 'reportes', reportId));
+  assert.equal(report.data().status, 'retirada');
+});
+
+test('HU19: retirar una donación comprometida avisa al voluntario', async () => {
+  await seedCommitted();
+  const reportId = await seedReport('reporter', donationPublicationId);
+  await seedAdmin();
+  const db = firestoreFor(adminId);
+  const batch = writeBatch(db);
+  batch.update(doc(db, 'publicaciones', donationPublicationId), removal());
+  batch.update(doc(db, 'reportes', reportId), resolution('retirada'));
+  batch.set(doc(db, 'notificaciones', 'volunteer-notice'), moderationNotification({
+    recipientId: volunteerId,
+    type: 'compromiso_cancelado',
+    publicationId: donationPublicationId,
+  }));
+  batch.set(doc(db, 'notificaciones', 'author-notice'), moderationNotification({
+    recipientId: donorId,
+    type: 'publicacion_retirada',
+    publicationId: donationPublicationId,
+  }));
+  batch.set(doc(db, 'notificaciones', 'reporter-notice'), moderationNotification({
+    recipientId: 'reporter',
+    type: 'reporte_resuelto',
+    publicationId: donationPublicationId,
+    reportId,
+  }));
+  await assertSucceeds(batch.commit());
+  // El aviso de cancelación solo va a quien tenía el compromiso.
+  await assertFails(setDoc(
+    doc(db, 'notificaciones', 'stranger-notice'),
+    moderationNotification({
+      recipientId: 'third-user',
+      type: 'compromiso_cancelado',
+      publicationId: donationPublicationId,
+    }),
+  ));
+});
+
+test('HU19: retirar un intercambio comprometido cancela la propuesta y libera la contraparte', async () => {
+  await createExchangePublications();
+  const proposalId = 'moderated-proposal';
+  await createProposal(proposalId);
+  await acceptProposal(proposalId);
+  const reportId = await seedReport('reporter', requestedPublicationId);
+  await seedAdmin();
+  const db = firestoreFor(adminId);
+  const release = {
+    status: 'publicada',
+    exchangeProposalId: deleteField(),
+    counterpartPublicationId: deleteField(),
+    counterpartUserId: deleteField(),
+    committedAt: deleteField(),
+  };
+  // La contraparte no se libera sin cancelar la propuesta.
+  await assertFails(updateDoc(
+    doc(db, 'publicaciones', offeredPublicationId),
+    release,
+  ));
+
+  const batch = writeBatch(db);
+  batch.update(doc(db, 'publicaciones', requestedPublicationId), removal());
+  batch.update(doc(db, 'propuestasIntercambio', proposalId), {
+    status: 'cancelada',
+    cancelledAt: serverTimestamp(),
+  });
+  batch.update(doc(db, 'publicaciones', offeredPublicationId), release);
+  batch.update(doc(db, 'reportes', reportId), resolution('retirada'));
+  batch.set(doc(db, 'notificaciones', 'counterpart-notice'), moderationNotification({
+    recipientId: offeredOwnerId,
+    type: 'compromiso_cancelado',
+    publicationId: requestedPublicationId,
+    proposalId,
+  }));
+  batch.set(doc(db, 'notificaciones', 'author-notice'), moderationNotification({
+    recipientId: requestedOwnerId,
+    type: 'publicacion_retirada',
+    publicationId: requestedPublicationId,
+  }));
+  batch.set(doc(db, 'notificaciones', 'reporter-notice'), moderationNotification({
+    recipientId: 'reporter',
+    type: 'reporte_resuelto',
+    publicationId: requestedPublicationId,
+    reportId,
+  }));
+  await assertSucceeds(batch.commit());
+
+  const offered = await getDoc(doc(db, 'publicaciones', offeredPublicationId));
+  assert.equal(offered.data().status, 'publicada');
+  assert.equal(offered.data().exchangeProposalId, undefined);
+  const proposal = await getDoc(doc(db, 'propuestasIntercambio', proposalId));
+  assert.equal(proposal.data().status, 'cancelada');
+});
+
+test('HU19: no se retira un bien que ya cambió de manos ni se fabrican avisos de moderación', async () => {
+  await seedPickedUp();
+  await seedAdmin();
+  await assertFails(updateDoc(
+    doc(firestoreFor(adminId), 'publicaciones', donationPublicationId),
+    removal(),
+  ));
+  // Ni un usuario común, ni un administrador sin el retiro detrás.
+  await assertFails(setDoc(
+    doc(firestoreFor(volunteerId), 'notificaciones', 'forged-moderation'),
+    moderationNotification({
+      recipientId: donorId,
+      type: 'publicacion_retirada',
+      publicationId: donationPublicationId,
+      actorId: volunteerId,
+    }),
+  ));
+  await assertFails(setDoc(
+    doc(firestoreFor(adminId), 'notificaciones', 'premature-notice'),
+    moderationNotification({
+      recipientId: donorId,
+      type: 'publicacion_retirada',
+      publicationId: donationPublicationId,
+    }),
+  ));
+});
+
+test('HU19: las propuestas pendientes sobre una publicación retirada se cancelan después', async () => {
+  await createExchangePublications();
+  const proposalId = 'pending-proposal';
+  await createProposal(proposalId);
+  await seedAdmin();
+  const db = firestoreFor(adminId);
+  const cancellation = { status: 'cancelada', cancelledAt: serverTimestamp() };
+  // Con las dos publicaciones disponibles no hay nada que cancelar.
+  await assertFails(updateDoc(
+    doc(db, 'propuestasIntercambio', proposalId),
+    cancellation,
+  ));
+  await assertSucceeds(updateDoc(
+    doc(db, 'publicaciones', requestedPublicationId),
+    removal(),
+  ));
+  await assertSucceeds(getDocs(query(
+    collection(db, 'propuestasIntercambio'),
+    where('requestedPublicationId', '==', requestedPublicationId),
+    where('status', '==', 'pendiente'),
+  )));
+  await assertFails(updateDoc(
+    doc(firestoreFor(offeredOwnerId), 'propuestasIntercambio', proposalId),
+    cancellation,
+  ));
+
+  const batch = writeBatch(db);
+  batch.update(doc(db, 'propuestasIntercambio', proposalId), cancellation);
+  batch.set(doc(db, 'notificaciones', 'proposer-notice'), moderationNotification({
+    recipientId: offeredOwnerId,
+    type: 'compromiso_cancelado',
+    publicationId: requestedPublicationId,
+    proposalId,
+  }));
+  await assertSucceeds(batch.commit());
 });

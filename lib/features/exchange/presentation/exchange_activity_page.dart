@@ -168,6 +168,13 @@ class _ProposalCard extends ConsumerWidget {
                 label: const Text('Confirmar que recibí el bien'),
               ),
             ],
+            if (proposal.status == ExchangeProposalStatus.cancelled) ...[
+              const SizedBox(height: 12),
+              Text(
+                'Cancelada por el equipo: una de las publicaciones fue retirada.',
+                style: TextStyle(color: context.appColors.textSecondary),
+              ),
+            ],
             if (proposal.status == ExchangeProposalStatus.accepted &&
                 proposal.hasConfirmed(userId) &&
                 !proposal.bothConfirmed) ...[

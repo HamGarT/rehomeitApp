@@ -3,7 +3,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../../core/utils/firestore_dates.dart';
 import '../../../shared/domain/publication.dart';
 
-enum ExchangeProposalStatus { pending, accepted, rejected }
+/// "Cancelada" solo la escribe la moderación cuando retira una de las dos
+/// publicaciones (HU19-16); las partes no cancelan propuestas.
+enum ExchangeProposalStatus { pending, accepted, rejected, cancelled }
 
 class ExchangeProposal {
   const ExchangeProposal({
@@ -125,18 +127,21 @@ extension ExchangeProposalStatusWire on ExchangeProposalStatus {
     ExchangeProposalStatus.pending => 'pendiente',
     ExchangeProposalStatus.accepted => 'aceptada',
     ExchangeProposalStatus.rejected => 'rechazada',
+    ExchangeProposalStatus.cancelled => 'cancelada',
   };
 
   String get label => switch (this) {
     ExchangeProposalStatus.pending => 'Pendiente',
     ExchangeProposalStatus.accepted => 'Aceptada',
     ExchangeProposalStatus.rejected => 'Rechazada',
+    ExchangeProposalStatus.cancelled => 'Cancelada',
   };
 
   static ExchangeProposalStatus fromValue(String? value) => switch (value) {
     'pendiente' => ExchangeProposalStatus.pending,
     'aceptada' => ExchangeProposalStatus.accepted,
     'rechazada' => ExchangeProposalStatus.rejected,
+    'cancelada' => ExchangeProposalStatus.cancelled,
     _ => throw FormatException('Estado de propuesta inválido: $value'),
   };
 }

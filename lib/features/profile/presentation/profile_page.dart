@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../app/theme.dart';
 import '../../../app/theme_mode_notifier.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../core/navigation/app_routes.dart';
 import '../../../shared/domain/publication.dart';
 import '../../../shared/widgets/app_dialog.dart';
 import '../../../shared/widgets/app_snack_bar.dart';
@@ -13,6 +14,8 @@ import '../../auth/data/auth_exception.dart';
 import '../../auth/presentation/auth_controller.dart';
 import '../../delivery/presentation/delivery_controller.dart';
 import '../../explore/presentation/explore_controller.dart';
+import '../../moderation/presentation/moderation_controller.dart';
+import '../../moderation/presentation/moderation_page.dart';
 import '../domain/profile_summary.dart';
 import 'edit_profile_page.dart';
 import 'profile_controller.dart';
@@ -120,6 +123,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
           ),
           ..._ownPublicationSlivers(publications),
           ..._commitmentSlivers(userId),
+          SliverToBoxAdapter(child: _ModerationSection(userId: userId)),
           const SliverToBoxAdapter(child: _AppearanceSection()),
           const SliverToBoxAdapter(
             child: ProfileSectionHeader(title: 'Sesión'),
@@ -240,6 +244,50 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
 String _fullName(String? displayName) {
   final name = displayName?.trim() ?? '';
   return name.isEmpty ? 'Usuario' : name;
+}
+
+/// Acceso a la consola de moderación (HU19-8). Solo existe para el rol de
+/// administrador; para el resto no deja ni un hueco. Vive en el perfil y no en
+/// la barra inferior porque es una función de dos o tres personas.
+class _ModerationSection extends ConsumerWidget {
+  const _ModerationSection({required this.userId});
+
+  final String userId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isAdmin = ref.watch(isAdminProvider(userId)).value ?? false;
+    if (!isAdmin) return const SizedBox.shrink();
+    // Se observa solo después de confirmar el rol: para otra cuenta la
+    // consulta termina en permiso denegado.
+    final pending = ref.watch(pendingReportsProvider).value?.length ?? 0;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const ProfileSectionHeader(title: 'Moderación'),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          child: OutlinedButton.icon(
+            onPressed: () => pushUnique(
+              context,
+              name: AppRoutes.moderation,
+              builder: (_) => const ModerationPage(),
+            ),
+            style: OutlinedButton.styleFrom(
+              minimumSize: const Size.fromHeight(52),
+            ),
+            icon: const Icon(Icons.flag_outlined),
+            label: Text(
+              pending == 0
+                  ? 'Reportes pendientes'
+                  : 'Reportes pendientes ($pending)',
+            ),
+          ),
+        ),
+      ],
+    );
+  }
 }
 
 /// Interruptor de modo oscuro. Vive en el perfil porque es el único ajuste de la

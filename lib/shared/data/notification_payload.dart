@@ -12,6 +12,7 @@ Map<String, Object?> notificationPayload({
   String? proposalId,
   String? conversationId,
   String? messageId,
+  String? reportId,
 }) {
   return {
     'recipientId': recipientId,
@@ -22,6 +23,7 @@ Map<String, Object?> notificationPayload({
     'proposalId': ?proposalId,
     'conversationId': ?conversationId,
     'messageId': ?messageId,
+    'reportId': ?reportId,
     'createdAt': FieldValue.serverTimestamp(),
     'read': false,
   };

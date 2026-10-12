@@ -1,5 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../../../core/utils/firestore_dates.dart';
+
 /// Motivo con el que se reporta una publicación (HU19, criterio 3).
 ///
 /// Los valores de [wireValue] son los que valida `validInitialReport` en
@@ -17,11 +19,8 @@ enum ReportReason {
 /// otros dos los resuelve el equipo administrador (HU19, criterios 10 y 11).
 enum ReportStatus { pending, dismissed, withdrawn }
 
-/// Reporte de una publicación, con el estado en que lo dejó quien lo escribió.
-///
-/// No tiene `fromMap` a propósito: hoy la aplicación solo escribe reportes. La
-/// lectura del listado y la resolución llegan con la consola de moderación
-/// (HU19, criterios 8 a 14) y serán el reverso de este mismo esquema.
+/// Reporte de una publicación. Lo escribe quien reporta y lo resuelve la
+/// consola de moderación (HU19, criterios 8 a 14) sobre el mismo esquema.
 class PublicationReport {
   const PublicationReport({
     required this.id,
@@ -76,6 +75,22 @@ class PublicationReport {
     'resolvedAt': resolvedAt == null ? null : Timestamp.fromDate(resolvedAt!),
     'resolvedBy': resolvedBy,
   };
+
+  factory PublicationReport.fromMap(String id, Map<String, Object?> map) {
+    return PublicationReport(
+      id: id,
+      publicationId: map['publicationId'] as String? ?? '',
+      reporterId: map['reporterId'] as String? ?? '',
+      reason: ReportReasonWire.fromValue(map['reason'] as String?),
+      status: ReportStatusWire.fromValue(map['status'] as String?),
+      createdAt:
+          readFirestoreDate(map['createdAt']) ??
+          DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
+      comment: map['comment'] as String?,
+      resolvedAt: readFirestoreDate(map['resolvedAt']),
+      resolvedBy: map['resolvedBy'] as String?,
+    );
+  }
 }
 
 extension ReportReasonWire on ReportReason {

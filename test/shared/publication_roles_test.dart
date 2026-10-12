@@ -31,6 +31,22 @@ Publication _publication({
 
 void main() {
   group('acciones por rol', () {
+    test('la moderación retira solo lo publicado o comprometido', () {
+      // Espejo de `validAdminRemoval`: desde recogida en adelante el bien ya
+      // cambió de manos y la consola solo ofrece desestimar (HU19-10).
+      const removable = {
+        PublicationStatus.published,
+        PublicationStatus.committed,
+      };
+      for (final status in PublicationStatus.values) {
+        expect(
+          _publication(status: status).isRemovableByModeration,
+          removable.contains(status),
+          reason: '$status',
+        );
+      }
+    });
+
     test('un tercero asume el recojo; el autor no', () {
       final publication = _publication();
       expect(publication.canAssumePickup('other'), isTrue);

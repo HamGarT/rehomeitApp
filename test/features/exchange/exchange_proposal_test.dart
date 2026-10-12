@@ -85,4 +85,17 @@ void main() {
     expect(map['status'], 'rechazada');
     expect(map['participantIds'], ['owner', 'proposer']);
   });
+
+  test('cancelled proposals round-trip and never derive a publication status', () {
+    // "Cancelada" la escribe la moderación (HU19-16); una propuesta así no
+    // avanza el ciclo de ninguna publicación.
+    expect(ExchangeProposalStatusWire.fromValue('cancelada'), ExchangeProposalStatus.cancelled);
+    expect(ExchangeProposalStatus.cancelled.wireValue, 'cancelada');
+    expect(ExchangeProposalStatus.cancelled.label, 'Cancelada');
+    expect(
+      proposal(status: ExchangeProposalStatus.cancelled)
+          .effectivePublicationStatus(DateTime.utc(2026, 10, 12)),
+      PublicationStatus.published,
+    );
+  });
 }
