@@ -50,15 +50,21 @@ String friendlyAuthError(Object error) {
   if (detail.contains('canceled') || detail.contains('cancelled')) {
     return '';
   }
-  if (detail.contains('network') || detail.contains('connection')) {
+  if (mentionsNetworkFailure(detail)) {
     return 'Se requiere conexión a internet.';
   }
   return 'Algo salió mal. Inténtalo de nuevo.';
 }
 
 /// Convierte un error de Google Sign-In en un mensaje amigable. Las
-/// cancelaciones y las interrupciones de la UI no se reportan como errores.
+/// cancelaciones y las interrupciones de la UI no se reportan como errores,
+/// salvo que el detalle diga que fue la red: sin conexión Android corta el
+/// flujo antes de mostrar nada y el usuario tiene que saber por qué (HU02-9).
 String friendlyGoogleSignInError(GoogleSignInException error) {
+  final detail = '${error.description} ${error.details}'.toLowerCase();
+  if (mentionsNetworkFailure(detail)) {
+    return 'Se requiere conexión a internet.';
+  }
   switch (error.code) {
     case GoogleSignInExceptionCode.canceled:
     case GoogleSignInExceptionCode.interrupted:
@@ -67,4 +73,20 @@ String friendlyGoogleSignInError(GoogleSignInException error) {
     default:
       return friendlyAuthError(error);
   }
+}
+
+/// Los SDK no exponen un código único de "sin red": Google Play devuelve el
+/// estado 7 (`NETWORK_ERROR`) en el texto y Auth describe la falla en inglés.
+bool mentionsNetworkFailure(String detail) {
+  const hints = [
+    'network',
+    'connection',
+    'unreachable',
+    'timed out',
+    'timeout',
+    'offline',
+    'host lookup',
+    '7:',
+  ];
+  return hints.any(detail.contains);
 }

@@ -5,6 +5,7 @@ import '../../../shared/domain/publication.dart';
 import '../../../shared/widgets/app_dialog.dart';
 import '../../../shared/widgets/app_snack_bar.dart';
 import '../../../shared/widgets/button_spinner.dart';
+import '../../../shared/widgets/impact_note.dart';
 import '../../../shared/widgets/sheet_handle.dart';
 import 'delivery_controller.dart';
 import 'widgets/evidence_card.dart';
@@ -36,7 +37,13 @@ class _DeliveryDetailSheet extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final evidence = publication.deliveryEvidence;
     final busy = ref.watch(deliveryControllerProvider).isLoading;
-    final canConfirm = publication.canConfirmClose(userId, DateTime.now());
+    final now = DateTime.now();
+    final canConfirm = publication.canConfirmClose(userId, now);
+    final status = publication.effectiveStatus(now);
+    // Solo las operaciones con ciclo cerrado suman al indicador (HU18-5).
+    final isClosed =
+        status == PublicationStatus.confirmed ||
+        status == PublicationStatus.closedWithoutConfirmation;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
@@ -60,6 +67,10 @@ class _DeliveryDetailSheet extends ConsumerWidget {
               )
             else
               const Text('La entrega no tiene evidencia registrada.'),
+            if (isClosed) ...[
+              const SizedBox(height: 12),
+              ImpactNote(category: publication.category),
+            ],
             if (canConfirm) ...[
               const SizedBox(height: 18),
               FilledButton.icon(

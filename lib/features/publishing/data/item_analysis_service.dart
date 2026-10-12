@@ -84,6 +84,9 @@ class ItemAnalysisService {
       throw const ItemAnalysisException.offline();
     } catch (error) {
       _log(error);
+      // El SDK envuelve la falta de red en sus propias excepciones (HU04-7);
+      // solo el texto permite distinguirla de un fallo del servicio.
+      if (_looksOffline(error)) throw const ItemAnalysisException.offline();
       throw const ItemAnalysisException.unavailable();
     }
 
@@ -91,6 +94,19 @@ class ItemAnalysisService {
       throw const ItemAnalysisException.unrecognized();
     }
     return suggestion;
+  }
+
+  static bool _looksOffline(Object error) {
+    final detail = error.toString().toLowerCase();
+    const hints = [
+      'socketexception',
+      'network',
+      'connection',
+      'host lookup',
+      'unreachable',
+      'offline',
+    ];
+    return hints.any(detail.contains);
   }
 
   // Si la compresión falla (formato no soportado o plataforma sin plugin) se

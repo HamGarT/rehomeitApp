@@ -6,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../../../app/theme.dart';
 import '../../../shared/widgets/image_source_sheet.dart';
+import '../../../shared/widgets/missing_fields_dialog.dart';
 import '../../../shared/widgets/step_app_bar.dart';
 import '../domain/publish_draft.dart';
 import 'analyzing_step.dart';
@@ -98,7 +99,7 @@ class _PhotosStepState extends ConsumerState<PhotosStep> {
               ),
               const SizedBox(height: 14),
               FilledButton(
-                onPressed: draft.photosCompleted ? _continue : null,
+                onPressed: () => _continue(draft),
                 child: const Text('Continuar'),
               ),
             ],
@@ -108,7 +109,14 @@ class _PhotosStepState extends ConsumerState<PhotosStep> {
     );
   }
 
-  void _continue() {
+  /// Como en los pasos 2 y 3: el botón siempre responde y, si falta algo,
+  /// dice qué (HU03-14). Un botón apagado sin explicación deja a la persona
+  /// sin saber por qué no avanza.
+  void _continue(PublishDraft draft) {
+    if (!draft.photosCompleted) {
+      showMissingFieldsDialog(context, fields: const ['Al menos una fotografía']);
+      return;
+    }
     Navigator.of(context)
         .push(MaterialPageRoute(builder: (_) => const AnalyzingStep()));
   }

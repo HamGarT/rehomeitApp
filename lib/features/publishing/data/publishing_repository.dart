@@ -105,7 +105,7 @@ class PublishingRepository {
     }
   }
 
-  /// Retira una publicación propia (HU03-18). La regla de Firestore solo
+  /// Anula una publicación propia (HU03-18). La regla de Firestore solo
   /// admite el paso publicada -> anulada y únicamente sobre `status`, por lo
   /// que no se registra fecha del hito: una publicación anulada sale de la
   /// consulta pública y no tiene recorrido.
@@ -117,7 +117,7 @@ class PublishingRepository {
     } on FirebaseException catch (error) {
       throw PublishingFailure(
         error.code == 'permission-denied'
-            ? 'La publicación ya no se puede retirar porque tiene un compromiso asociado.'
+            ? 'La publicación ya no se puede anular porque tiene un compromiso asociado.'
             : _friendlyFirebaseError(error),
       );
     }

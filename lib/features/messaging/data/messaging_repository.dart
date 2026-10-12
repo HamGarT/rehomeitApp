@@ -243,11 +243,17 @@ class MessagingRepository {
     );
 
     try {
-      await commitOfflineTolerant(batch);
+      // Plazo más corto que el general: el mensaje ya se ve en la lista desde
+      // la caché y sin red el campo quedaba bloqueado 8 s por cada envío
+      // (HU09-11). Si el servidor rechaza el lote después, el error se pierde,
+      // igual que con el plazo largo.
+      await commitOfflineTolerant(batch, timeout: _messageCommitTimeout);
     } on FirebaseException catch (error) {
       throw MessagingFailure(_friendlyMessage(error));
     }
   }
+
+  static const _messageCommitTimeout = Duration(seconds: 2);
 }
 
 class MessagingFailure implements Exception {

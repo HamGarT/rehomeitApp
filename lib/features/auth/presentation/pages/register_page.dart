@@ -70,6 +70,9 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
       showAppSnackBar(context, error, kind: AppSnackBarKind.error);
       return;
     }
+    // Con Google no se distingue cuenta nueva de existente (HU01-7), así que
+    // el mensaje de confirmación (HU01-8) vale para ambos casos.
+    showAppSnackBar(context, 'Sesión iniciada con Google. ¡Bienvenido!');
     Navigator.of(context).popUntil((route) => route.isFirst);
   }
 

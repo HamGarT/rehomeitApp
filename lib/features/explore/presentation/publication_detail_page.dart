@@ -443,7 +443,8 @@ class _PublicationActions extends ConsumerWidget {
           ),
         ),
       ..._notices(isAuthor, publication.canViewExchangeActivity(userId)),
-      if (!isAuthor) _ReportAction(publication: publication),
+      if (publication.canReport(userId, now))
+        _ReportAction(publication: publication),
     ];
 
     return Column(
@@ -511,7 +512,9 @@ class _PublicationActions extends ConsumerWidget {
       icon: withdrawing
           ? const ButtonSpinner()
           : const Icon(Icons.remove_circle_outline),
-      label: const Text('Retirar publicación'),
+      // "Anular" es el estado que deja HU03-18; "retirar" es lo que hace la
+      // moderación (HU19-10) y no conviene que suenen igual.
+      label: const Text('Anular publicación'),
     );
   }
 
@@ -520,10 +523,10 @@ class _PublicationActions extends ConsumerWidget {
       context,
       icon: Icons.remove_circle_outline,
       destructive: true,
-      title: '¿Retirar la publicación?',
+      title: '¿Anular la publicación?',
       subtitle:
           'El bien dejará de aparecer en el listado y no se puede deshacer.',
-      confirmLabel: 'Retirar',
+      confirmLabel: 'Anular',
     );
     if (!confirmed || !context.mounted) return;
 
@@ -540,7 +543,7 @@ class _PublicationActions extends ConsumerWidget {
     final messenger = ScaffoldMessenger.of(context);
     Navigator.of(context).pop();
     messenger.showSnackBar(
-      const SnackBar(content: Text('Publicación retirada')),
+      const SnackBar(content: Text('Publicación anulada')),
     );
   }
 

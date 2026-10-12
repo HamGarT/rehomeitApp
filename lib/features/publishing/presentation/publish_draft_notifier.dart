@@ -82,7 +82,8 @@ class PublishDraftNotifier extends Notifier<PublishDraft> {
 
   /// Analiza las fotografías del borrador y aplica la sugerencia. Devuelve
   /// `null` si se aplicó, o el mensaje a mostrar si no hubo sugerencia; en
-  /// ese caso el borrador queda intacto para el ingreso manual (HU04-7).
+  /// ese caso los campos sugeridos se presentan vacíos para el ingreso manual
+  /// (HU04-7 y HU05-8) y lo que la persona ya escribió se conserva.
   Future<String?> analyzePhotos() async {
     try {
       final suggestion = await ref
@@ -91,8 +92,29 @@ class PublishDraftNotifier extends Notifier<PublishDraft> {
       applyAiSuggestion(suggestion);
       return null;
     } on ItemAnalysisException catch (error) {
+      discardAiSuggestion();
       return error.message;
     }
+  }
+
+  /// Vacía lo que vino de la IA y nada más: en un segundo análisis fallido la
+  /// sugerencia anterior ya no responde a estas fotografías, pero lo editado a
+  /// mano sigue siendo de la persona.
+  void discardAiSuggestion() {
+    final ai = state.aiFields;
+    state = PublishDraft(
+      photos: state.photos,
+      title: ai.contains(AiField.title) ? '' : state.title,
+      category: ai.contains(AiField.category) ? null : state.category,
+      condition: ai.contains(AiField.condition) ? null : state.condition,
+      description: ai.contains(AiField.description) ? '' : state.description,
+      details: state.details
+          .where((detail) => !detail.generatedByAi)
+          .toList(growable: false),
+      district: state.district,
+      mode: state.mode,
+      deliveryMethod: state.deliveryMethod,
+    );
   }
 
   void applyAiSuggestion(ItemSuggestion suggestion) {

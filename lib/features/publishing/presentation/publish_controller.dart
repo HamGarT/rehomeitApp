@@ -45,7 +45,7 @@ class PublishController extends Notifier<AsyncValue<void>> {
       return error.message;
     } catch (error, stackTrace) {
       state = AsyncError(error, stackTrace);
-      return 'No se pudo retirar la publicación. Inténtalo nuevamente.';
+      return 'No se pudo anular la publicación. Inténtalo nuevamente.';
     }
   }
 }

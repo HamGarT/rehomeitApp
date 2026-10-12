@@ -379,13 +379,17 @@ class DeliveryRepository {
         notificationPayload(
           recipientId: authorId,
           type: 'entrega_destinatario',
-          message: 'La entrega al destinatario fue registrada. Podrás confirmar el cierre cuando esa opción esté habilitada.',
+          message:
+              'La entrega al destinatario fue registrada. Revisa la evidencia y confirma el cierre.',
           publicationId: pending.publicationId,
           actorId: pending.userId,
         ),
       );
     }
-    await batch.commit();
+    // Con plazo (HU12-12): si la red cae justo aquí, el lote queda en la
+    // caché de Firestore y la operación se conserva como pendiente. En el
+    // siguiente reintento la publicación ya aparece entregada y se descarta.
+    await batch.commit().timeout(firestoreCommitTimeout);
     await _pendingStore.remove(pending);
   }
 }

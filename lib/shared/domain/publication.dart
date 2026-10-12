@@ -143,6 +143,17 @@ class Publication {
 
   bool canWithdraw(String userId) => isAvailable && isAuthor(userId);
 
+  /// Se reporta lo ajeno y abierto (HU19-1, HU14-12): una publicación cerrada,
+  /// anulada o retirada ya no tiene nada que moderar.
+  bool canReport(String userId, DateTime now) =>
+      !isAuthor(userId) &&
+      !const {
+        PublicationStatus.confirmed,
+        PublicationStatus.closedWithoutConfirmation,
+        PublicationStatus.cancelled,
+        PublicationStatus.removed,
+      }.contains(effectiveStatus(now));
+
   /// La moderación retira solo lo que no cambió de manos (HU19-10): desde
   /// recogida en adelante el retiro no evita nada y dejaría la entrega sin
   /// cierre. Replica `validAdminRemoval` de las reglas.
@@ -176,12 +187,14 @@ class Publication {
     return null;
   }
 
-  /// Hitos que recorre el bien según su ruta (HU14-2 y HU14-8).
+  /// Hitos que recorre el bien según su ruta (HU14-2 y HU14-8). En un
+  /// intercambio la primera confirmación deja el bien "Entregada" (HU07-15),
+  /// pero no es un hito del recorrido: el criterio solo lista publicación,
+  /// propuesta aceptada e intercambio concretado.
   List<PublicationStatus> get expectedPath => switch ((mode, deliveryType)) {
     (PublicationMode.exchange, _) => const [
       PublicationStatus.published,
       PublicationStatus.committed,
-      PublicationStatus.delivered,
       PublicationStatus.confirmed,
     ],
     (_, DeliveryType.owner) => const [
@@ -229,7 +242,7 @@ class Publication {
           // Un compromiso deshecho deja su fecha en el documento; si la
           // publicación volvió a estar disponible, ese hito ya no cuenta.
           if (step != PublicationStatus.committed || !isAvailable)
-            (status: step, at: date),
+            if (expectedPath.contains(step)) (status: step, at: date),
     ];
     final deliveredAt = statusDates[PublicationStatus.delivered];
     final derived = effectiveStatus(now);

@@ -66,6 +66,12 @@ class _FormStepState extends ConsumerState<FormStep> {
               const _AiBanner(),
               const SizedBox(height: 20),
             ],
+            // Las dos secciones llevan el nombre que les da HU03-3.
+            const _SectionTitle(
+              icon: Icons.description_outlined,
+              title: 'Ficha principal',
+            ),
+            const SizedBox(height: 12),
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -142,7 +148,7 @@ class _FormStepState extends ConsumerState<FormStep> {
             const SizedBox(height: 28),
             _SectionTitle(
               icon: Icons.tune,
-              title: 'Detalles',
+              title: 'Detalles sugeridos',
               trailing: '${draft.details.length} de ${PublishDraft.maxDetails}',
             ),
             const SizedBox(height: 6),

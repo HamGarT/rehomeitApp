@@ -172,10 +172,54 @@ void main() {
         [
           PublicationStatus.published,
           PublicationStatus.committed,
-          PublicationStatus.delivered,
           PublicationStatus.confirmed,
         ],
       );
+    });
+
+    test('el intercambio no muestra la primera confirmación como hito', () {
+      // HU14-2 lista tres hitos para el intercambio; "Entregada" sigue siendo
+      // el estado (HU07-15), pero no entra en el recorrido.
+      final exchange = _publication(
+        mode: PublicationMode.exchange,
+        deliveryType: null,
+        status: PublicationStatus.delivered,
+        statusDates: {
+          PublicationStatus.published: DateTime.utc(2026, 10, 1),
+          PublicationStatus.committed: DateTime.utc(2026, 10, 2),
+          PublicationStatus.delivered: DateTime.utc(2026, 10, 3),
+        },
+      );
+      expect(
+        exchange.milestones(DateTime.utc(2026, 10, 3, 1)).map((m) => m.status),
+        [PublicationStatus.published, PublicationStatus.committed],
+      );
+      expect(
+        exchange.effectiveStatus(DateTime.utc(2026, 10, 3, 1)),
+        PublicationStatus.delivered,
+      );
+    });
+
+    test('se reporta lo ajeno mientras la operación siga abierta', () {
+      final now = DateTime.utc(2026, 10, 12);
+      expect(_publication().canReport('other', now), isTrue);
+      expect(_publication().canReport('author', now), isFalse);
+      for (final status in [
+        PublicationStatus.confirmed,
+        PublicationStatus.cancelled,
+        PublicationStatus.removed,
+      ]) {
+        expect(
+          _publication(status: status).canReport('other', now),
+          isFalse,
+          reason: '$status',
+        );
+      }
+      final closedWithoutConfirmation = _publication(
+        status: PublicationStatus.delivered,
+        statusDates: {PublicationStatus.delivered: DateTime.utc(2026, 10, 1)},
+      );
+      expect(closedWithoutConfirmation.canReport('other', now), isFalse);
     });
 
     test('el intercambio solo expone al autor como actor', () {

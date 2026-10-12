@@ -47,18 +47,46 @@ class ExchangeActivityPage extends ConsumerWidget {
                           itemBuilder: (context, index) => _ProposalCard(
                             proposal: proposals[index],
                             userId: user.uid,
+                            committedPublicationIds: _committedPublications(
+                              proposals,
+                            ),
                           ),
                         ),
                 ),
     );
   }
+
+  /// Publicaciones ya comprometidas por una propuesta aceptada. Las demás
+  /// propuestas pendientes sobre ellas no se pueden responder (la regla lo
+  /// rechaza), así que la tarjeta lo dice en vez de ofrecer botones que fallan.
+  /// Sale de la misma lista porque el propietario participa en todas las
+  /// propuestas sobre su publicación.
+  static Set<String> _committedPublications(List<ExchangeProposal> proposals) {
+    return {
+      for (final proposal in proposals)
+        if (proposal.status == ExchangeProposalStatus.accepted) ...[
+          proposal.requestedPublicationId,
+          proposal.offeredPublicationId,
+        ],
+    };
+  }
 }
 
 class _ProposalCard extends ConsumerWidget {
-  const _ProposalCard({required this.proposal, required this.userId});
+  const _ProposalCard({
+    required this.proposal,
+    required this.userId,
+    required this.committedPublicationIds,
+  });
 
   final ExchangeProposal proposal;
   final String userId;
+  final Set<String> committedPublicationIds;
+
+  bool get _blockedByAnotherExchange =>
+      proposal.status == ExchangeProposalStatus.pending &&
+      (committedPublicationIds.contains(proposal.requestedPublicationId) ||
+          committedPublicationIds.contains(proposal.offeredPublicationId));
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -134,7 +162,15 @@ class _ProposalCard extends ConsumerWidget {
                 'Confirmación del proponente: ${formatDateTime(proposal.offeredOwnerConfirmedAt!)}',
                 style: Theme.of(context).textTheme.bodySmall,
               ),
+            if (_blockedByAnotherExchange) ...[
+              const SizedBox(height: 12),
+              Text(
+                'Una de las publicaciones ya está comprometida en otro intercambio; esta propuesta no se puede responder.',
+                style: TextStyle(color: context.appColors.textSecondary),
+              ),
+            ],
             if (incoming &&
+                !_blockedByAnotherExchange &&
                 proposal.status == ExchangeProposalStatus.pending) ...[
               const SizedBox(height: 14),
               Row(

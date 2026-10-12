@@ -7,6 +7,7 @@ import '../../../core/constants/app_colors.dart';
 import '../../../core/navigation/app_routes.dart';
 import '../../../core/utils/date_format.dart';
 import '../../../shared/domain/publication.dart';
+import '../../../shared/widgets/impact_note.dart';
 import '../../../shared/widgets/publication_mode_badge.dart';
 import '../../../shared/widgets/publication_status_badge.dart';
 import '../../delivery/presentation/widgets/evidence_card.dart';
@@ -84,15 +85,32 @@ class PublicationJourneyPage extends ConsumerWidget {
               positive: true,
             ),
           if (status == PublicationStatus.closedWithoutConfirmation)
-            const _Notice(
+            _Notice(
               icon: Icons.warning_amber_outlined,
-              text: 'La operación se cerró sin la confirmación del donante.',
+              text: publication.isDonation
+                  ? 'La operación se cerró sin la confirmación del donante.'
+                  : 'El intercambio se cerró sin la confirmación de una de las partes.',
+            ),
+          // En un intercambio "Entregada" significa que una parte ya confirmó
+          // y falta la otra (HU07-15).
+          if (!publication.isDonation &&
+              (status == PublicationStatus.delivered ||
+                  status == PublicationStatus.pendingConfirmation))
+            const _Notice(
+              icon: Icons.hourglass_bottom_outlined,
+              text: 'Una de las partes ya confirmó. Falta la confirmación de la otra.',
             ),
           if (status == PublicationStatus.cancelled ||
               status == PublicationStatus.removed)
             _Notice(
               icon: Icons.remove_circle_outline,
               text: 'La publicación fue ${status.label.toLowerCase()}.',
+            ),
+          if (status == PublicationStatus.confirmed ||
+              status == PublicationStatus.closedWithoutConfirmation)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 16),
+              child: ImpactNote(category: publication.category),
             ),
           for (var index = 0; index < reached.length; index++)
             _MilestoneTile(
@@ -151,7 +169,6 @@ String milestoneTitle(Publication publication, PublicationStatus status) {
     return switch (status) {
       PublicationStatus.published => 'Publicación',
       PublicationStatus.committed => 'Propuesta aceptada',
-      PublicationStatus.delivered => 'Primera confirmación',
       PublicationStatus.confirmed => 'Intercambio concretado',
       _ => status.label,
     };

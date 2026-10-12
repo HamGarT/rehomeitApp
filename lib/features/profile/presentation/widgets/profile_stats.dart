@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../../app/theme.dart';
 import '../../../../core/constants/app_colors.dart';
+import '../../../../shared/widgets/impact_note.dart';
 
 /// Una cifra del perfil con su rótulo.
 class ProfileStat {
@@ -163,7 +164,7 @@ class ImpactSummary extends StatelessWidget {
               ),
               const SizedBox(height: 2),
               Text(
-                _amount(kilograms),
+                impactAmountLabel(kilograms),
                 style: Theme.of(context).textTheme.titleMedium?.copyWith(
                   fontWeight: FontWeight.w700,
                   color: palette.textPrimary,
@@ -171,8 +172,10 @@ class ImpactSummary extends StatelessWidget {
               ),
               const SizedBox(height: 4),
               Text(
-                'Es una estimación según el peso promedio de la categoría '
-                'de cada bien, no una medida de lo que publicaste.',
+                // Suma lo donado, lo intercambiado y lo entregado como
+                // voluntario (HU18-4), así que el aviso habla de cada bien y
+                // no de "lo que publicaste".
+                '$impactDisclaimer Suma tus operaciones cerradas.',
                 style: Theme.of(context).textTheme.bodySmall
                     ?.copyWith(color: palette.textSecondary, height: 1.35),
               ),
@@ -181,15 +184,6 @@ class ImpactSummary extends StatelessWidget {
         ),
       ],
     );
-  }
-
-  /// Por debajo de un kilogramo la cifra no dice nada: "0 kg" o "0,3 kg" se
-  /// leen como un error de cálculo.
-  String _amount(double kg) {
-    if (kg <= 0) return 'Aún no hay operaciones cerradas';
-    if (kg < 1) return 'Menos de 1 kg estimados';
-    final rounded = kg.round();
-    return rounded == 1 ? '1 kg estimado' : '$rounded kg estimados';
   }
 }
 

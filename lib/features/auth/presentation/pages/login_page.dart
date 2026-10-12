@@ -62,6 +62,7 @@ class _LoginPageState extends ConsumerState<LoginPage> {
       showAppSnackBar(context, error, kind: AppSnackBarKind.error);
       return;
     }
+    showAppSnackBar(context, 'Sesión iniciada con Google. ¡Bienvenido!');
     Navigator.of(context).popUntil((route) => route.isFirst);
   }
 
