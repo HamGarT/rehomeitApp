@@ -43,7 +43,7 @@ class PublicProfilePage extends ConsumerWidget {
     }
 
     final profile = ref.watch(publicProfileProvider(userId));
-    final publications = ref.watch(profilePublicationsProvider(userId));
+    final publications = ref.watch(publicProfilePublicationsProvider(userId));
     // Lo entregado como voluntario solo aporta al contador de confirmadas
     // (HU20, criterio 18); si aún no llegó se cuenta sin él y se corrige solo.
     final volunteered =
@@ -54,7 +54,7 @@ class PublicProfilePage extends ConsumerWidget {
       appBar: const _PublicProfileAppBar(),
       body: RefreshIndicator(
         onRefresh: () async {
-          ref.invalidate(profilePublicationsProvider(userId));
+          ref.invalidate(publicProfilePublicationsProvider(userId));
           ref.invalidate(volunteerPublicationsProvider(userId));
         },
         child: CustomScrollView(

@@ -271,6 +271,12 @@ class ExchangeRepository {
         if (proposal.hasConfirmed(userId)) {
           throw const ExchangeFailure('Ya confirmaste la recepción.');
         }
+        if (proposal.effectivePublicationStatus(DateTime.now()) ==
+            PublicationStatus.closedWithoutConfirmation) {
+          throw const ExchangeFailure(
+            'El plazo para confirmar venció; el intercambio quedó cerrado sin confirmación.',
+          );
+        }
 
         final isRequestedOwner = userId == proposal.requestedOwnerId;
         final otherAlreadyConfirmed = isRequestedOwner
@@ -286,25 +292,25 @@ class ExchangeRepository {
         final publicationStatus = otherAlreadyConfirmed
             ? PublicationStatus.confirmed
             : PublicationStatus.delivered;
+        // La primera confirmación deja constancia de quién la hizo en ambas
+        // publicaciones, que es lo que lee el recorrido (HU07-15 y 19).
+        final publicationUpdate = {
+          'status': publicationStatus.wireValue,
+          'statusDates.${publicationStatus.wireValue}':
+              FieldValue.serverTimestamp(),
+          if (!otherAlreadyConfirmed) 'firstConfirmedBy': userId,
+        };
         transaction.update(
           _firestore
               .collection('publicaciones')
               .doc(proposal.requestedPublicationId),
-          {
-            'status': publicationStatus.wireValue,
-            'statusDates.${publicationStatus.wireValue}':
-                FieldValue.serverTimestamp(),
-          },
+          publicationUpdate,
         );
         transaction.update(
           _firestore
               .collection('publicaciones')
               .doc(proposal.offeredPublicationId),
-          {
-            'status': publicationStatus.wireValue,
-            'statusDates.${publicationStatus.wireValue}':
-                FieldValue.serverTimestamp(),
-          },
+          publicationUpdate,
         );
         transaction.set(
           _firestore.collection('notificaciones').doc(),

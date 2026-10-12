@@ -28,6 +28,16 @@ final profilePublicationsProvider =
           .watchPublicationsByAuthor(userId);
     });
 
+/// Publicaciones de [userId] visibles para terceros (HU14-13). Es una
+/// consulta distinta de la propia y no un filtro en memoria porque la regla
+/// de lectura exige el estado en la consulta.
+final publicProfilePublicationsProvider =
+    StreamProvider.family<List<Publication>, String>((ref, userId) {
+      return ref
+          .watch(profileRepositoryProvider)
+          .watchPublicationsByAuthor(userId, publicOnly: true);
+    });
+
 /// Publicaciones ajenas en las que [userId] participó como voluntario. No se
 /// listan en el perfil; solo suman a los contadores y al impacto.
 final volunteerPublicationsProvider =

@@ -219,6 +219,7 @@ async function confirmReceipt({
     batch.update(doc(db, 'publicaciones', publicationId), {
       status,
       [`statusDates.${status}`]: serverTimestamp(),
+      ...(first ? { firstConfirmedBy: userId } : {}),
     });
   }
   batch.set(doc(db, 'notificaciones', `${status}-${proposalId}`),
@@ -552,6 +553,57 @@ test('permite las dos confirmaciones y sus transiciones atómicas', async () => 
     doc(db, 'publicaciones', requestedPublicationId),
   );
   assert.equal(requested.data().status, 'confirmada');
+});
+
+test('HU07-15: la primera confirmación registra quién la hizo', async () => {
+  await createExchangePublications();
+  const proposalId = 'signed-proposal';
+  await createProposal(proposalId);
+  await acceptProposal(proposalId);
+  const db = firestoreFor(requestedOwnerId);
+  // Firmar como la otra parte no vale.
+  const forged = writeBatch(db);
+  forged.update(doc(db, 'propuestasIntercambio', proposalId), {
+    requestedOwnerConfirmedAt: serverTimestamp(),
+  });
+  for (const publicationId of [requestedPublicationId, offeredPublicationId]) {
+    forged.update(doc(db, 'publicaciones', publicationId), {
+      status: 'entregada',
+      'statusDates.entregada': serverTimestamp(),
+      firstConfirmedBy: offeredOwnerId,
+    });
+  }
+  await assertFails(forged.commit());
+  await confirmReceipt({ proposalId, userId: requestedOwnerId, first: true });
+  const requested = await getDoc(doc(db, 'publicaciones', requestedPublicationId));
+  assert.equal(requested.data().firstConfirmedBy, requestedOwnerId);
+});
+
+test('HU07-19: la segunda confirmación no procede pasadas las 120 h', async () => {
+  await createExchangePublications();
+  const proposalId = 'expired-proposal';
+  await createProposal(proposalId);
+  await acceptProposal(proposalId);
+  await confirmReceipt({ proposalId, userId: requestedOwnerId, first: true });
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    for (const publicationId of [requestedPublicationId, offeredPublicationId]) {
+      await updateDoc(doc(context.firestore(), 'publicaciones', publicationId), {
+        'statusDates.entregada': new Date('2026-01-01T00:00:00Z'),
+      });
+    }
+  });
+  const db = firestoreFor(offeredOwnerId);
+  const batch = writeBatch(db);
+  batch.update(doc(db, 'propuestasIntercambio', proposalId), {
+    offeredOwnerConfirmedAt: serverTimestamp(),
+  });
+  for (const publicationId of [requestedPublicationId, offeredPublicationId]) {
+    batch.update(doc(db, 'publicaciones', publicationId), {
+      status: 'confirmada',
+      'statusDates.confirmada': serverTimestamp(),
+    });
+  }
+  await assertFails(batch.commit());
 });
 
 test('permite una notificación legítima al crear la propuesta', async () => {
@@ -895,7 +947,7 @@ async function seedPickedUp() {
 }
 
 test('HU09: solo participantes leen la conversación', async () => {
-  await createVolunteerDonation();
+  await seedCommitted();
   const conversationId = 'private-conversation';
   await assertSucceeds(setDoc(
     doc(firestoreFor(volunteerId), 'conversaciones', conversationId),
@@ -906,6 +958,43 @@ test('HU09: solo participantes leen la conversación', async () => {
   ));
   await assertFails(getDoc(
     doc(firestoreFor('third-user'), 'conversaciones', conversationId),
+  ));
+});
+
+test('HU09-1: sin compromiso no se crea la conversación', async () => {
+  // Donación publicada: el voluntario todavía no asumió el recojo.
+  await createVolunteerDonation();
+  await assertFails(setDoc(
+    doc(firestoreFor(volunteerId), 'conversaciones', 'early-conversation'),
+    conversationData(),
+  ));
+  // Intercambio: antes de aceptar no hay con quién coordinar; después sí.
+  await createExchangePublications();
+  const proposalId = 'conversation-proposal';
+  await createProposal(proposalId);
+  const exchangeConversation = {
+    ...conversationData([requestedOwnerId, offeredOwnerId]),
+    publicationId: requestedPublicationId,
+    publicationTitle: 'Mesa',
+    publicationImageUrl: 'https://example.test/foto_0.jpg',
+    publicationMode: 'intercambio',
+  };
+  await assertFails(setDoc(
+    doc(firestoreFor(offeredOwnerId), 'conversaciones', 'exchange-conversation'),
+    exchangeConversation,
+  ));
+  await acceptProposal(proposalId);
+  await assertSucceeds(setDoc(
+    doc(firestoreFor(offeredOwnerId), 'conversaciones', 'exchange-conversation'),
+    exchangeConversation,
+  ));
+  // Un tercero no entra aunque incluya al autor entre los participantes.
+  await assertFails(setDoc(
+    doc(firestoreFor('third-user'), 'conversaciones', 'intruder-conversation'),
+    {
+      ...exchangeConversation,
+      participantIds: [requestedOwnerId, 'third-user'].sort(),
+    },
   ));
 });
 
@@ -925,7 +1014,7 @@ test('HU09: leer una conversación que no existe no se deniega', async () => {
 });
 
 test('HU09: participante envía y no puede falsificar senderId', async () => {
-  await createVolunteerDonation();
+  await seedCommitted();
   const conversationId = 'message-conversation';
   await assertSucceeds(setDoc(
     doc(firestoreFor(volunteerId), 'conversaciones', conversationId),
@@ -1091,6 +1180,86 @@ test('HU10: voluntario desiste y donante cancela solo en comprometida', async ()
     doc(firestoreFor(donorId), 'publicaciones', donationPublicationId),
     { status: 'publicada' },
   ));
+});
+
+test('HU10: liberar el compromiso avisa a la otra parte en el mismo lote', async () => {
+  await seedCommitted();
+  const db = firestoreFor(volunteerId);
+  const release = {
+    status: 'publicada',
+    volunteerId: deleteField(),
+    committedAt: deleteField(),
+  };
+  const notice = (recipientId) => ({
+    recipientId,
+    type: 'compromiso_liberado',
+    message: 'El voluntario desistió del recojo.',
+    publicationId: donationPublicationId,
+    actorId: volunteerId,
+    createdAt: serverTimestamp(),
+    read: false,
+  });
+  const forged = writeBatch(db);
+  forged.update(doc(db, 'publicaciones', donationPublicationId), release);
+  forged.set(doc(db, 'notificaciones', 'forged-release'), notice('third-user'));
+  await assertFails(forged.commit());
+
+  const batch = writeBatch(db);
+  batch.update(doc(db, 'publicaciones', donationPublicationId), release);
+  batch.set(doc(db, 'notificaciones', 'release-notice'), notice(donorId));
+  await assertSucceeds(batch.commit());
+});
+
+test('HU14-13: anuladas y retiradas solo las leen el autor, los participantes y la moderación', async () => {
+  await createVolunteerDonation();
+  await assertSucceeds(updateDoc(
+    doc(firestoreFor(donorId), 'publicaciones', donationPublicationId),
+    { status: 'anulada' },
+  ));
+  await assertFails(getDoc(
+    doc(firestoreFor('third-user'), 'publicaciones', donationPublicationId),
+  ));
+  await assertSucceeds(getDoc(
+    doc(firestoreFor(donorId), 'publicaciones', donationPublicationId),
+  ));
+  await seedAdmin();
+  await assertSucceeds(getDoc(
+    doc(firestoreFor(adminId), 'publicaciones', donationPublicationId),
+  ));
+  // Retirada con voluntario: el voluntario conserva el acceso a su historial.
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), 'publicaciones', 'removed-with-volunteer'), {
+      ...initialPublication({ authorId: donorId, mode: 'donacion', deliveryType: 'voluntario' }),
+      status: 'retirada',
+      volunteerId,
+    });
+  });
+  await assertSucceeds(getDoc(
+    doc(firestoreFor(volunteerId), 'publicaciones', 'removed-with-volunteer'),
+  ));
+  await assertFails(getDoc(
+    doc(firestoreFor('third-user'), 'publicaciones', 'removed-with-volunteer'),
+  ));
+  // El perfil público de un tercero lista solo con el filtro de estado; el
+  // propio lista todo.
+  const publicStatuses = ['publicada', 'comprometida', 'recogida', 'entregada', 'confirmada'];
+  await assertSucceeds(getDocs(query(
+    collection(firestoreFor('third-user'), 'publicaciones'),
+    where('authorId', '==', donorId),
+    where('status', 'in', publicStatuses),
+  )));
+  await assertFails(getDocs(query(
+    collection(firestoreFor('third-user'), 'publicaciones'),
+    where('authorId', '==', donorId),
+  )));
+  await assertSucceeds(getDocs(query(
+    collection(firestoreFor(donorId), 'publicaciones'),
+    where('authorId', '==', donorId),
+  )));
+  await assertSucceeds(getDocs(query(
+    collection(firestoreFor(volunteerId), 'publicaciones'),
+    where('volunteerId', '==', volunteerId),
+  )));
 });
 
 test('HU11: solo donante confirma comprometida a recogida', async () => {

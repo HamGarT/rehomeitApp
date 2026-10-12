@@ -45,15 +45,29 @@ class ProfileRepository {
   static const avatarSide = 512;
   static const _avatarQuality = 80;
 
-  /// Todas las publicaciones de [userId], en cualquier estado y de la más
-  /// reciente a la más antigua.
+  /// Publicaciones de [userId] de la más reciente a la más antigua. El propio
+  /// dueño las ve todas; para el perfil público ([publicOnly]) se piden solo
+  /// los estados visibles, porque la regla no deja listar anuladas ni
+  /// retiradas ajenas (HU14-13).
   ///
-  /// Exige el índice compuesto `authorId ASC + publishedAt DESC` declarado en
-  /// `firestore.indexes.json`.
-  Stream<List<Publication>> watchPublicationsByAuthor(String userId) {
-    return _firestore
+  /// Exige los índices `authorId ASC + publishedAt DESC` y `authorId ASC +
+  /// status ASC + publishedAt DESC` de `firestore.indexes.json`.
+  Stream<List<Publication>> watchPublicationsByAuthor(
+    String userId, {
+    bool publicOnly = false,
+  }) {
+    Query<Map<String, dynamic>> query = _firestore
         .collection('publicaciones')
-        .where('authorId', isEqualTo: userId)
+        .where('authorId', isEqualTo: userId);
+    if (publicOnly) {
+      query = query.where(
+        'status',
+        whereIn: [
+          for (final status in Publication.publicStatuses) status.wireValue,
+        ],
+      );
+    }
+    return query
         .orderBy('publishedAt', descending: true)
         .snapshots()
         .map(

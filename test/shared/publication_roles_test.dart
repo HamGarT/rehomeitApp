@@ -8,8 +8,10 @@ Publication _publication({
   String? volunteerId,
   String? counterpartUserId,
   Map<PublicationStatus, DateTime> statusDates = const {},
+  String? firstConfirmedBy,
 }) {
   return Publication(
+    firstConfirmedBy: firstConfirmedBy,
     id: 'p1',
     authorId: 'author',
     title: 'Silla',
@@ -198,6 +200,33 @@ void main() {
         exchange.effectiveStatus(DateTime.utc(2026, 10, 3, 1)),
         PublicationStatus.delivered,
       );
+    });
+
+    test('el intercambio sabe a quién le falta confirmar', () {
+      // HU07-15 y 19: la parte pendiente es la que no firmó la primera
+      // confirmación; sin el dato (intercambios anteriores) no se adivina.
+      Publication exchange({String? firstConfirmedBy}) => _publication(
+        mode: PublicationMode.exchange,
+        deliveryType: null,
+        counterpartUserId: 'proposer',
+        firstConfirmedBy: firstConfirmedBy,
+      );
+      expect(
+        exchange(firstConfirmedBy: 'author').pendingExchangeConfirmerId,
+        'proposer',
+      );
+      expect(
+        exchange(firstConfirmedBy: 'proposer').pendingExchangeConfirmerId,
+        'author',
+      );
+      expect(exchange().pendingExchangeConfirmerId, isNull);
+      expect(
+        _publication(firstConfirmedBy: 'author').pendingExchangeConfirmerId,
+        isNull,
+      );
+      final map = exchange(firstConfirmedBy: 'author').toMap();
+      expect(Publication.fromMap('p1', map).firstConfirmedBy, 'author');
+      expect(_publication().toMap().containsKey('firstConfirmedBy'), isFalse);
     });
 
     test('se reporta lo ajeno mientras la operación siga abierta', () {

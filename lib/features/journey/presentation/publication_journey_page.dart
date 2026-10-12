@@ -89,16 +89,16 @@ class PublicationJourneyPage extends ConsumerWidget {
               icon: Icons.warning_amber_outlined,
               text: publication.isDonation
                   ? 'La operación se cerró sin la confirmación del donante.'
-                  : 'El intercambio se cerró sin la confirmación de una de las partes.',
+                  : 'El intercambio se cerró sin la confirmación de ${_pendingConfirmer(ref, publication)}.',
             ),
           // En un intercambio "Entregada" significa que una parte ya confirmó
           // y falta la otra (HU07-15).
           if (!publication.isDonation &&
               (status == PublicationStatus.delivered ||
                   status == PublicationStatus.pendingConfirmation))
-            const _Notice(
+            _Notice(
               icon: Icons.hourglass_bottom_outlined,
-              text: 'Una de las partes ya confirmó. Falta la confirmación de la otra.',
+              text: 'Una de las partes ya confirmó. Falta la confirmación de ${_pendingConfirmer(ref, publication)}.',
             ),
           if (status == PublicationStatus.cancelled ||
               status == PublicationStatus.removed)
@@ -137,6 +137,16 @@ class PublicationJourneyPage extends ConsumerWidget {
         ],
       ),
     );
+  }
+
+  /// Nombre abreviado de la parte que no ha confirmado (HU07-15 y 19). Los
+  /// intercambios anteriores al campo `firstConfirmedBy` no lo tienen y se
+  /// nombra de forma genérica.
+  String _pendingConfirmer(WidgetRef ref, Publication publication) {
+    final userId = publication.pendingExchangeConfirmerId;
+    if (userId == null) return 'la otra parte';
+    final name = ref.watch(publicProfileProvider(userId)).value?.shortName;
+    return name == null || name.isEmpty ? 'la otra parte' : name;
   }
 
   Future<void> _share(

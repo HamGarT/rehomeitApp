@@ -168,7 +168,9 @@ Widget _hostPublic(
 }) {
   return ProviderScope(
     overrides: [
-      profilePublicationsProvider.overrideWith(
+      // El perfil público usa su propia consulta, acotada a los estados
+      // visibles (HU14-13); el filtro en memoria sigue siendo la segunda red.
+      publicProfilePublicationsProvider.overrideWith(
         (ref, userId) => Stream.value(items),
       ),
       volunteerPublicationsProvider.overrideWith(

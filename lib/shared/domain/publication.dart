@@ -74,7 +74,18 @@ class Publication {
     this.pickedUpAt,
     this.deliveredAt,
     this.deliveryEvidence,
+    this.firstConfirmedBy,
   });
+
+  /// Estados que forman parte de la consulta pública (HU14-13). Las reglas
+  /// solo dejan listar publicaciones ajenas con este filtro.
+  static const publicStatuses = [
+    PublicationStatus.published,
+    PublicationStatus.committed,
+    PublicationStatus.pickedUp,
+    PublicationStatus.delivered,
+    PublicationStatus.confirmed,
+  ];
 
   final String id;
   final String authorId;
@@ -98,6 +109,16 @@ class Publication {
   final DateTime? pickedUpAt;
   final DateTime? deliveredAt;
   final DeliveryEvidence? deliveryEvidence;
+
+  /// Quién hizo la primera confirmación de un intercambio (HU07-15 y 19).
+  final String? firstConfirmedBy;
+
+  /// En un intercambio con una sola confirmación, a quién le falta confirmar;
+  /// `null` si no aplica o si el dato no quedó registrado.
+  String? get pendingExchangeConfirmerId {
+    if (isDonation || firstConfirmedBy == null) return null;
+    return firstConfirmedBy == authorId ? counterpartUserId : authorId;
+  }
 
   /// Plazos desde la entrega (HU13-12 y HU13-13). El segundo corre desde que
   /// venció el primero. Se derivan al consultar (D02), nunca se escriben.
@@ -313,6 +334,7 @@ class Publication {
     if (pickedUpAt != null) 'pickedUpAt': Timestamp.fromDate(pickedUpAt!),
     if (deliveredAt != null) 'deliveredAt': Timestamp.fromDate(deliveredAt!),
     if (deliveryEvidence != null) 'deliveryEvidence': deliveryEvidence!.toMap(),
+    if (firstConfirmedBy != null) 'firstConfirmedBy': firstConfirmedBy,
   };
 
   factory Publication.fromMap(String id, Map<String, Object?> map) {
@@ -351,6 +373,7 @@ class Publication {
               ),
             )
           : null,
+      firstConfirmedBy: map['firstConfirmedBy'] as String?,
     );
   }
 

@@ -55,6 +55,15 @@
       ]
     },
     {
+      "collectionGroup": "publicaciones",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "authorId", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "publishedAt", "order": "DESCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "propuestasIntercambio",
       "queryScope": "COLLECTION",
       "fields": [

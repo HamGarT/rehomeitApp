@@ -415,6 +415,19 @@ service cloud.firestore {
         );
     }
 
+    // Sin compromiso no hay conversación (HU09-1): la otra parte tiene que ser
+    // el voluntario del recojo o la contraparte del intercambio aceptado. Se
+    // mira el estado posterior porque asumir el recojo crea la conversación en
+    // la misma transacción.
+    function committedCounterpart(publication, participants) {
+      let other = participants[0] == publication.authorId
+        ? participants[1]
+        : participants[0];
+      return publication.mode == 'donacion'
+        ? publication.get('volunteerId', '') == other
+        : publication.get('counterpartUserId', '') == other;
+    }
+
     function validConversationCreate() {
       let publication = publicationAfter(request.resource.data.publicationId);
       let participants = request.resource.data.participantIds;
@@ -452,6 +465,7 @@ service cloud.firestore {
         && participants[0] != participants[1]
         && request.auth.uid in participants
         && publication.authorId in participants
+        && committedCounterpart(publication, participants)
         && request.resource.data.createdAt == request.time
         && request.resource.data.updatedAt == request.time
         && request.resource.data.lastMessage == ''
@@ -588,19 +602,26 @@ service cloud.firestore {
           'committedAt',
           'statusDates'
         ]);
+      // La primera confirmación deja constancia de quién la hizo, así el
+      // recorrido puede decir qué confirmación falta o faltó (HU07-15 y 19).
       let firstConfirmation = resource.data.status == 'comprometida'
         && request.resource.data.status == 'entregada'
         && request.resource.data.statusDates.entregada == request.time
         && request.resource.data.statusDates.diff(resource.data.statusDates)
           .affectedKeys().hasOnly(['entregada'])
+        && request.resource.data.firstConfirmedBy == request.auth.uid
         && confirmationCount == 1
         && request.resource.data.diff(resource.data).affectedKeys()
-          .hasOnly(['status', 'statusDates']);
+          .hasOnly(['status', 'statusDates', 'firstConfirmedBy']);
+      // Pasadas las 120 h desde la primera confirmación el cierre sin
+      // confirmación es definitivo (HU07-19), como en HU13.
       let finalConfirmation = resource.data.status == 'entregada'
         && request.resource.data.status == 'confirmada'
         && request.resource.data.statusDates.confirmada == request.time
         && request.resource.data.statusDates.diff(resource.data.statusDates)
           .affectedKeys().hasOnly(['confirmada'])
+        && request.time < resource.data.statusDates.entregada
+          + duration.value(120, 'h')
         && confirmationCount == 2
         && request.resource.data.diff(resource.data).affectedKeys()
           .hasOnly(['status', 'statusDates']);
@@ -1017,7 +1038,23 @@ service cloud.firestore {
     }
 
     match /publicaciones/{publicationId} {
-      allow read: if signedIn();
+      // Anuladas y retiradas salen de la consulta pública (HU14-13): las ven
+      // el autor, quien participó en la operación y la moderación. Las
+      // consultas de terceros tienen que filtrar por estado para que la regla
+      // sea demostrable.
+      allow read: if signedIn() && (
+        resource.data.status in [
+          'publicada',
+          'comprometida',
+          'recogida',
+          'entregada',
+          'confirmada'
+        ]
+        || resource.data.authorId == request.auth.uid
+        || resource.data.get('volunteerId', '') == request.auth.uid
+        || resource.data.get('counterpartUserId', '') == request.auth.uid
+        || isAdmin()
+      );
       allow create: if signedIn() && validInitialPublication();
       allow update: if signedIn() && (
         (
@@ -1139,6 +1176,14 @@ service cloud.firestore {
                 && resource.data.offeredOwnerConfirmedAt == null
               ? 'entregada'
               : 'confirmada'
+          )
+          // La segunda confirmación solo dentro de las 120 h (HU07-19).
+          && (
+            (resource.data.requestedOwnerConfirmedAt == null
+              && resource.data.offeredOwnerConfirmedAt == null)
+            || request.time < publicationBefore(
+                resource.data.requestedPublicationId
+              ).statusDates.entregada + duration.value(120, 'h')
           )
         )
         || (isAdmin() && validAdminProposalCancellation())

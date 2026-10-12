@@ -195,8 +195,12 @@ class _ProposalCard extends ConsumerWidget {
                 ],
               ),
             ],
+            // Pasado el segundo plazo el cierre es definitivo (HU07-19) y la
+            // regla rechaza la confirmación.
             if (proposal.status == ExchangeProposalStatus.accepted &&
-                !proposal.hasConfirmed(userId)) ...[
+                !proposal.hasConfirmed(userId) &&
+                effectiveStatus !=
+                    PublicationStatus.closedWithoutConfirmation) ...[
               const SizedBox(height: 14),
               FilledButton.icon(
                 onPressed: busy ? null : () => _confirm(context, ref),
