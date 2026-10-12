@@ -146,6 +146,16 @@ class Publication {
   bool canProposeExchange(String userId) =>
       mode == PublicationMode.exchange && isAvailable && !isAuthor(userId);
 
+  /// "Mis intercambios" es la única pantalla donde se acepta una propuesta y
+  /// se confirma la recepción (HU07-4, HU07-14), así que el acceso debe
+  /// seguir disponible después de aceptar y no solo mientras está publicada.
+  bool canViewExchangeActivity(String userId) =>
+      mode == PublicationMode.exchange &&
+      ((isAuthor(userId) &&
+              status != PublicationStatus.cancelled &&
+              status != PublicationStatus.removed) ||
+          (counterpartUserId != null && userId == counterpartUserId));
+
   /// Con quién conversa [userId], o `null` si no le corresponde conversar.
   /// La mensajería existe para coordinar un compromiso (HU09-12, HU07-7): en
   /// una donación hablan el autor y su voluntario; en un intercambio, el autor

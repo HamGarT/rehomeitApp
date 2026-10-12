@@ -72,14 +72,8 @@ class DeliveryRepository {
             'Este bien ya no está disponible para recojo.',
           );
         }
-        transaction.update(publicationRef, {
-          'status': PublicationStatus.committed.wireValue,
-          'volunteerId': volunteerId,
-          'committedAt': FieldValue.serverTimestamp(),
-          'statusDates.${PublicationStatus.committed.wireValue}':
-              FieldValue.serverTimestamp(),
-        });
-
+        // Una transacción de Firestore exige todas las lecturas antes de la
+        // primera escritura; en debug lo verifica con un assert.
         final conversationId = MessagingRepository.conversationId(
           publicationId: current.id,
           firstUserId: current.authorId,
@@ -89,6 +83,14 @@ class DeliveryRepository {
             .collection('conversaciones')
             .doc(conversationId);
         final conversation = await transaction.get(conversationRef);
+
+        transaction.update(publicationRef, {
+          'status': PublicationStatus.committed.wireValue,
+          'volunteerId': volunteerId,
+          'committedAt': FieldValue.serverTimestamp(),
+          'statusDates.${PublicationStatus.committed.wireValue}':
+              FieldValue.serverTimestamp(),
+        });
         if (!conversation.exists) {
           final participants = [current.authorId, volunteerId]..sort();
           transaction.set(conversationRef, {

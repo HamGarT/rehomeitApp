@@ -37,10 +37,10 @@ class ItemAnalysisService {
   // setiembre de 2026; el servicio indicó este reemplazo.
   static const _modelName = 'gemini-3.6-flash';
 
-  /// HU04-6 fijaba 5 segundos. Se amplió a 30 el 23 de setiembre de 2026:
-  /// la latencia que reporta Firebase (4 a 15 s) no incluye la subida de las
-  /// fotografías ni la conexión en frío de la primera llamada del día, y el
-  /// corte anterior descartaba respuestas que el servicio sí completaba.
+  /// HU04-6 fija 30 segundos (partió de 10): la latencia que reporta Firebase
+  /// (4 a 15 s) no incluye la subida de las fotografías ni la conexión en frío
+  /// de la primera llamada del día, y el corte anterior descartaba respuestas
+  /// que el servicio sí completaba.
   static const timeout = Duration(seconds: 30);
 
   /// La copia que va al modelo es más liviana que la foto publicada (1600 px):
@@ -52,13 +52,15 @@ class ItemAnalysisService {
   final GenerativeModel _model;
 
   Future<ItemSuggestion> analyze(List<File> photos) async {
-    final parts = <Part>[
-      for (final photo in photos) await _photoPart(photo),
-      const TextPart(_prompt),
-    ];
-
     final ItemSuggestion suggestion;
     try {
+      // La lectura de las fotos va dentro del try: un error de E/S que no se
+      // traduzca a ItemAnalysisException dejaría la pantalla de análisis sin
+      // salida (HU04-7).
+      final parts = <Part>[
+        for (final photo in photos) await _photoPart(photo),
+        const TextPart(_prompt),
+      ];
       final response = await _model
           .generateContent([Content.multi(parts)])
           .timeout(timeout);

@@ -111,6 +111,28 @@ void main() {
       expect(open.conversationCounterpart('other'), isNull);
       expect(open.conversationCounterpart('author'), isNull);
     });
+
+    test('intercambio: Mis intercambios sigue accesible tras aceptar', () {
+      final open = _publication(mode: PublicationMode.exchange);
+      expect(open.canViewExchangeActivity('author'), isTrue);
+      expect(open.canViewExchangeActivity('other'), isFalse);
+
+      final accepted = _publication(
+        mode: PublicationMode.exchange,
+        status: PublicationStatus.committed,
+        counterpartUserId: 'partner',
+      );
+      expect(accepted.canViewExchangeActivity('author'), isTrue);
+      expect(accepted.canViewExchangeActivity('partner'), isTrue);
+      expect(accepted.canViewExchangeActivity('other'), isFalse);
+
+      final cancelled = _publication(
+        mode: PublicationMode.exchange,
+        status: PublicationStatus.cancelled,
+      );
+      expect(cancelled.canViewExchangeActivity('author'), isFalse);
+      expect(_publication().canViewExchangeActivity('author'), isFalse);
+    });
   });
 
   group('ruta esperada', () {
