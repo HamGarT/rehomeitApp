@@ -17,6 +17,15 @@ service cloud.firestore {
         ).data.rol == 'administrador';
     }
 
+    // Igual que administrador, organización es un rol del mismo documento
+    // privado y solo lo asigna el backend. Nunca se solicita en el registro.
+    function isOrganization() {
+      return signedIn()
+        && get(
+          /databases/$(database)/documents/usuarios/$(request.auth.uid)
+        ).data.rol == 'organizacion';
+    }
+
     function isCajamarcaDistrict(value) {
       return value in [
         'Cajamarca',
@@ -1008,6 +1017,228 @@ service cloud.firestore {
             : validDeliveryNotification();
     }
 
+    function validCampaignCollectionPoint(point) {
+      return point is map
+        && point.keys().hasAll(['name', 'address', 'openingHours'])
+        && point.keys().hasOnly(['name', 'address', 'openingHours'])
+        && point.name is string
+        && point.name.size() > 0
+        && point.name.size() <= 120
+        && point.address is string
+        && point.address.size() > 0
+        && point.address.size() <= 240
+        && point.openingHours is string
+        && point.openingHours.size() > 0
+        && point.openingHours.size() <= 160;
+    }
+
+    function validCampaignNeed(need) {
+      return need is map
+        && need.keys().hasAll([
+          'id', 'name', 'requiredQuantity', 'contributedQuantity'
+        ])
+        && need.keys().hasOnly([
+          'id', 'name', 'requiredQuantity', 'contributedQuantity'
+        ])
+        && need.id is string
+        && need.id.size() > 0
+        && need.id.size() <= 100
+        && need.name is string
+        && need.name.size() > 0
+        && need.name.size() <= 120
+        && need.requiredQuantity is int
+        && need.requiredQuantity > 0
+        && need.contributedQuantity is int
+        && need.contributedQuantity >= 0;
+    }
+
+    // Firestore Rules no tiene iteradores. HU15 acota el formulario a diez
+    // necesidades y valida explícitamente cada posición para no dejar huecos
+    // de esquema ni permitir contribuciones iniciales falsas.
+    function validInitialCampaignNeedAt(index) {
+      let needs = request.resource.data.needs;
+      return needs.size() <= index
+        || (validCampaignNeed(needs[index])
+          && needs[index].contributedQuantity == 0);
+    }
+
+    function validInitialCampaignNeeds() {
+      let needs = request.resource.data.needs;
+      return needs is list
+        && needs.size() >= 1
+        && needs.size() <= 10
+        && validInitialCampaignNeedAt(0)
+        && validInitialCampaignNeedAt(1)
+        && validInitialCampaignNeedAt(2)
+        && validInitialCampaignNeedAt(3)
+        && validInitialCampaignNeedAt(4)
+        && validInitialCampaignNeedAt(5)
+        && validInitialCampaignNeedAt(6)
+        && validInitialCampaignNeedAt(7)
+        && validInitialCampaignNeedAt(8)
+        && validInitialCampaignNeedAt(9);
+    }
+
+    function validEditedCampaignNeedAt(index) {
+      let before = resource.data.needs;
+      let after = request.resource.data.needs;
+      return after.size() <= index
+        || (validCampaignNeed(after[index])
+          && (
+            (before.size() > index
+              && after[index].id == before[index].id
+              && after[index].contributedQuantity
+                == before[index].contributedQuantity)
+            || (before.size() <= index
+              && after[index].contributedQuantity == 0)
+          ));
+    }
+
+    function validEditedCampaignNeeds() {
+      let before = resource.data.needs;
+      let after = request.resource.data.needs;
+      return after is list
+        && after.size() >= before.size()
+        && after.size() <= 10
+        && validEditedCampaignNeedAt(0)
+        && validEditedCampaignNeedAt(1)
+        && validEditedCampaignNeedAt(2)
+        && validEditedCampaignNeedAt(3)
+        && validEditedCampaignNeedAt(4)
+        && validEditedCampaignNeedAt(5)
+        && validEditedCampaignNeedAt(6)
+        && validEditedCampaignNeedAt(7)
+        && validEditedCampaignNeedAt(8)
+        && validEditedCampaignNeedAt(9);
+    }
+
+    function validCampaignImage(campaignId, campaign) {
+      return (
+          campaign.imageUrl == null
+          && campaign.imageStoragePath == null
+        ) || (
+          campaign.imageUrl is string
+          && campaign.imageUrl.size() > 0
+          && campaign.imageStoragePath is string
+          && campaign.imageStoragePath.matches(
+            'campaigns/' + campaignId + '/' + campaign.organizationId
+              + '/cover\\.(jpg|jpeg|png|webp|heic|heif)'
+          )
+        );
+    }
+
+    function validCampaignFields(campaignId, campaign) {
+      return campaign.title is string
+        && campaign.title.size() > 0
+        && campaign.title.size() <= 160
+        && campaign.description is string
+        && campaign.description.size() > 0
+        && campaign.description.size() <= 3000
+        && isCajamarcaDistrict(campaign.district)
+        && campaign.closeAt is timestamp
+        && validCampaignCollectionPoint(campaign.collectionPoint)
+        && validCampaignImage(campaignId, campaign);
+    }
+
+    function validInitialCampaign(campaignId) {
+      let campaign = request.resource.data;
+      let user = get(
+        /databases/$(database)/documents/usuarios/$(request.auth.uid)
+      ).data;
+      return campaign.keys().hasAll([
+          'organizationId',
+          'organizationName',
+          'title',
+          'description',
+          'district',
+          'closeAt',
+          'imageUrl',
+          'imageStoragePath',
+          'collectionPoint',
+          'needs',
+          'status',
+          'createdAt',
+          'updatedAt',
+          'closedAt',
+          'closedBy',
+          'closureReason'
+        ])
+        && campaign.keys().hasOnly([
+          'organizationId',
+          'organizationName',
+          'title',
+          'description',
+          'district',
+          'closeAt',
+          'imageUrl',
+          'imageStoragePath',
+          'collectionPoint',
+          'needs',
+          'status',
+          'createdAt',
+          'updatedAt',
+          'closedAt',
+          'closedBy',
+          'closureReason'
+        ])
+        && campaign.organizationId == request.auth.uid
+        && campaign.organizationName == user.nombreCompleto
+        && campaign.organizationName.size() > 0
+        && campaign.status == 'active'
+        && campaign.createdAt == request.time
+        && campaign.updatedAt == request.time
+        && campaign.closeAt > request.time
+        && campaign.closedAt == null
+        && campaign.closedBy == null
+        && campaign.closureReason == null
+        && validCampaignFields(campaignId, campaign)
+        && validInitialCampaignNeeds();
+    }
+
+    function validOrganizationCampaignEdit(campaignId) {
+      let after = request.resource.data;
+      let changed = after.diff(resource.data).affectedKeys();
+      return resource.data.organizationId == request.auth.uid
+        && resource.data.status == 'active'
+        && request.time < resource.data.closeAt
+        && after.organizationId == resource.data.organizationId
+        && after.organizationName == resource.data.organizationName
+        && after.createdAt == resource.data.createdAt
+        && after.status == 'active'
+        && after.closedAt == resource.data.closedAt
+        && after.closedBy == resource.data.closedBy
+        && after.closureReason == resource.data.closureReason
+        && after.updatedAt == request.time
+        && after.closeAt > request.time
+        && changed.hasOnly([
+          'title',
+          'description',
+          'district',
+          'closeAt',
+          'imageUrl',
+          'imageStoragePath',
+          'collectionPoint',
+          'needs',
+          'updatedAt'
+        ])
+        && validCampaignFields(campaignId, after)
+        && validEditedCampaignNeeds();
+    }
+
+    function validAdminCampaignClose() {
+      let after = request.resource.data;
+      return resource.data.status == 'active'
+        && request.time < resource.data.closeAt
+        && after.status == 'closed'
+        && after.updatedAt == request.time
+        && after.closedAt == request.time
+        && after.closedBy == request.auth.uid
+        && after.closureReason == 'Cierre anticipado por administración'
+        && after.diff(resource.data).affectedKeys().hasOnly([
+          'status', 'updatedAt', 'closedAt', 'closedBy', 'closureReason'
+        ]);
+    }
+
     match /usuarios/{userId} {
       // Nombre completo y correo son privados (D07); el público va en perfiles.
       allow read: if signedIn() && request.auth.uid == userId;
@@ -1073,6 +1304,17 @@ service cloud.firestore {
           isAdmin()
           && (validAdminRemoval() || validAdminExchangeRelease())
         )
+      );
+      allow delete: if false;
+    }
+
+    match /campaigns/{campaignId} {
+      allow read: if signedIn();
+      allow create: if isOrganization()
+        && validInitialCampaign(campaignId);
+      allow update: if signedIn() && (
+        (isOrganization() && validOrganizationCampaignEdit(campaignId))
+        || (isAdmin() && validAdminCampaignClose())
       );
       allow delete: if false;
     }

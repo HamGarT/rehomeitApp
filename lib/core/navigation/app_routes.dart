@@ -10,6 +10,7 @@ abstract final class AppRoutes {
   static String profile(String userId) => 'profile/$userId';
   static String conversation(String id) => 'conversation/$id';
   static String journey(String publicationId) => 'journey/$publicationId';
+  static String campaign(String id) => 'campaign/$id';
   static const exchanges = 'exchanges';
   static const moderation = 'moderation';
 }
@@ -66,6 +67,9 @@ Future<T?> pushUnique<T>(
     return Future<T?>.value(null);
   }
   return navigator.push<T>(
-    MaterialPageRoute(settings: RouteSettings(name: name), builder: builder),
+    MaterialPageRoute(
+      settings: RouteSettings(name: name),
+      builder: builder,
+    ),
   );
 }

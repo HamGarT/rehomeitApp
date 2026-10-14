@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../features/auth/presentation/auth_controller.dart';
+import '../features/campaigns/presentation/campaigns_page.dart';
 import '../features/home/presentation/home_page.dart';
 import '../features/notifications/data/notifications_repository.dart';
 import '../features/messaging/presentation/messages_page.dart';
@@ -22,6 +23,7 @@ class HomeShell extends ConsumerStatefulWidget {
 class _HomeShellState extends ConsumerState<HomeShell>
     with WidgetsBindingObserver {
   static const _homeIndex = 0;
+  static const _campaignsIndex = 1;
   static const _publishIndex = 2;
   static const _messagesIndex = 3;
   static const _perfilIndex = 4;
@@ -92,6 +94,7 @@ class _HomeShellState extends ConsumerState<HomeShell>
           : AppBar(title: Text(section.title)),
       body: switch (_selectedIndex) {
         _homeIndex => const HomePage(),
+        _campaignsIndex => const CampaignsPage(),
         _messagesIndex => const MessagesPage(),
         _perfilIndex => const ProfilePage(),
         _ => Center(

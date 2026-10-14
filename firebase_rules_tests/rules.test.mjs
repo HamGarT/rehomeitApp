@@ -1795,3 +1795,277 @@ test('HU19: las propuestas pendientes sobre una publicación retirada se cancela
   }));
   await assertSucceeds(batch.commit());
 });
+
+async function seedCampaignActor(userId, rol, nombreCompleto) {
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), 'usuarios', userId), {
+      nombreCompleto,
+      nombres: nombreCompleto,
+      apellidos: '',
+      correo: `${userId}@example.test`,
+      rol,
+    });
+  });
+}
+
+function initialCampaign({
+  organizationId = 'campaign-org',
+  organizationName = 'Organización Solidaria',
+  closeAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+  status = 'active',
+  contributedQuantity = 0,
+  overrides = {},
+} = {}) {
+  return {
+    organizationId,
+    organizationName,
+    title: 'Abrigo para Cajamarca',
+    description: 'Recolectamos ropa de abrigo para familias de la zona.',
+    district: 'Cajamarca',
+    closeAt,
+    imageUrl: null,
+    imageStoragePath: null,
+    collectionPoint: {
+      name: 'Local comunal',
+      address: 'Jr. Amalia 123',
+      openingHours: 'Lunes a sábado, 9 a 17 h',
+    },
+    needs: [{
+      id: 'ropa',
+      name: 'Ropa',
+      requiredQuantity: 10,
+      contributedQuantity,
+    }],
+    status,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+    closedAt: null,
+    closedBy: null,
+    closureReason: null,
+    ...overrides,
+  };
+}
+
+async function seedCampaign(campaignId, data) {
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), 'campaigns', campaignId), data);
+  });
+}
+
+test('HU15: un usuario normal no puede crear campañas', async () => {
+  await seedCampaignActor('normal-user', 'usuario', 'Persona Regular');
+  await assertFails(setDoc(
+    doc(firestoreFor('normal-user'), 'campaigns', 'normal-campaign'),
+    initialCampaign({
+      organizationId: 'normal-user',
+      organizationName: 'Persona Regular',
+    }),
+  ));
+});
+
+test('HU15: una organización crea una campaña propia válida', async () => {
+  await seedCampaignActor(
+    'campaign-org',
+    'organizacion',
+    'Organización Solidaria',
+  );
+  await assertSucceeds(setDoc(
+    doc(firestoreFor('campaign-org'), 'campaigns', 'own-campaign'),
+    initialCampaign(),
+  ));
+});
+
+test('HU15: una organización edita su campaña activa y agrega necesidades', async () => {
+  await seedCampaignActor(
+    'campaign-org',
+    'organizacion',
+    'Organización Solidaria',
+  );
+  await seedCampaign('editable-campaign', initialCampaign());
+  await assertSucceeds(updateDoc(
+    doc(firestoreFor('campaign-org'), 'campaigns', 'editable-campaign'),
+    {
+      title: 'Abrigo y alimentos para Cajamarca',
+      needs: [
+        {
+          id: 'ropa',
+          name: 'Ropa de abrigo',
+          requiredQuantity: 12,
+          contributedQuantity: 0,
+        },
+        {
+          id: 'alimentos',
+          name: 'Alimentos no perecibles',
+          requiredQuantity: 20,
+          contributedQuantity: 0,
+        },
+      ],
+      updatedAt: serverTimestamp(),
+    },
+  ));
+});
+
+test('HU15: una organización no puede crear para otro uid', async () => {
+  await seedCampaignActor(
+    'campaign-org',
+    'organizacion',
+    'Organización Solidaria',
+  );
+  await assertFails(setDoc(
+    doc(firestoreFor('campaign-org'), 'campaigns', 'foreign-campaign'),
+    initialCampaign({ organizationId: 'other-org' }),
+  ));
+});
+
+test('HU15: una organización no puede editar una campaña ajena', async () => {
+  await seedCampaignActor('other-org', 'organizacion', 'Otra Organización');
+  await seedCampaign('foreign-campaign', initialCampaign());
+  await assertFails(updateDoc(
+    doc(firestoreFor('other-org'), 'campaigns', 'foreign-campaign'),
+    { title: 'Título apropiado', updatedAt: serverTimestamp() },
+  ));
+});
+
+test('HU15: la organización no manipula contributedQuantity', async () => {
+  await seedCampaignActor(
+    'campaign-org',
+    'organizacion',
+    'Organización Solidaria',
+  );
+  await seedCampaign('contributions-campaign', initialCampaign());
+  await assertFails(updateDoc(
+    doc(firestoreFor('campaign-org'), 'campaigns', 'contributions-campaign'),
+    {
+      needs: [{
+        id: 'ropa',
+        name: 'Ropa',
+        requiredQuantity: 10,
+        contributedQuantity: 7,
+      }],
+      updatedAt: serverTimestamp(),
+    },
+  ));
+});
+
+test('HU15: la organización no edita campañas vencidas ni cerradas', async () => {
+  await seedCampaignActor(
+    'campaign-org',
+    'organizacion',
+    'Organización Solidaria',
+  );
+  await seedCampaign('expired-campaign', initialCampaign({
+    closeAt: new Date(Date.now() - 60 * 1000),
+  }));
+  await seedCampaign('closed-campaign', initialCampaign({
+    status: 'closed',
+    overrides: {
+      closedAt: new Date(),
+      closedBy: 'admin-user',
+      closureReason: 'Cierre anticipado por administración',
+    },
+  }));
+  const edit = { title: 'Título editado', updatedAt: serverTimestamp() };
+  await assertFails(updateDoc(
+    doc(firestoreFor('campaign-org'), 'campaigns', 'expired-campaign'),
+    edit,
+  ));
+  await assertFails(updateDoc(
+    doc(firestoreFor('campaign-org'), 'campaigns', 'closed-campaign'),
+    edit,
+  ));
+});
+
+test('HU15: el administrador cierra una campaña activa antes de fecha', async () => {
+  await seedCampaignActor('campaign-admin', 'administrador', 'Admin');
+  await seedCampaign('admin-close-campaign', initialCampaign());
+  await assertSucceeds(updateDoc(
+    doc(firestoreFor('campaign-admin'), 'campaigns', 'admin-close-campaign'),
+    {
+      status: 'closed',
+      updatedAt: serverTimestamp(),
+      closedAt: serverTimestamp(),
+      closedBy: 'campaign-admin',
+      closureReason: 'Cierre anticipado por administración',
+    },
+  ));
+});
+
+test('HU15: una campaña cerrada no puede reabrirse', async () => {
+  await seedCampaignActor('campaign-admin', 'administrador', 'Admin');
+  await seedCampaign('no-reopen-campaign', initialCampaign({
+    status: 'closed',
+    overrides: {
+      closedAt: new Date(),
+      closedBy: 'campaign-admin',
+      closureReason: 'Cierre anticipado por administración',
+    },
+  }));
+  await assertFails(updateDoc(
+    doc(firestoreFor('campaign-admin'), 'campaigns', 'no-reopen-campaign'),
+    { status: 'active', updatedAt: serverTimestamp() },
+  ));
+});
+
+test('HU15: no se modifican campos inmutables', async () => {
+  await seedCampaignActor(
+    'campaign-org',
+    'organizacion',
+    'Organización Solidaria',
+  );
+  await seedCampaign('immutable-campaign', initialCampaign());
+  const campaignRef = doc(
+    firestoreFor('campaign-org'),
+    'campaigns',
+    'immutable-campaign',
+  );
+  await assertFails(updateDoc(campaignRef, {
+    organizationId: 'stolen-org',
+    updatedAt: serverTimestamp(),
+  }));
+  await assertFails(updateDoc(campaignRef, {
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  }));
+  await assertFails(updateDoc(campaignRef, {
+    status: 'closed',
+    updatedAt: serverTimestamp(),
+  }));
+});
+
+test('HU15: un usuario autenticado puede leer una campaña válida', async () => {
+  await seedCampaign('readable-campaign', initialCampaign());
+  await assertSucceeds(getDoc(
+    doc(firestoreFor('reader'), 'campaigns', 'readable-campaign'),
+  ));
+});
+
+test('HU15: Storage reserva la portada a la organización propietaria', async () => {
+  const campaignId = 'AbCdEfGhIjKlMnOpQrSt';
+  const organizationId = 'storage-org';
+  const bytes = new Uint8Array([0xff, 0xd8, 0xff, 0xd9]);
+  await seedCampaignActor(
+    organizationId,
+    'organizacion',
+    'Organización Storage',
+  );
+  await seedCampaignActor('storage-normal', 'usuario', 'Persona Regular');
+
+  const path = `campaigns/${campaignId}/${organizationId}/cover.jpg`;
+  await assertSucceeds(uploadBytes(
+    ref(storageFor(organizationId), path),
+    bytes,
+    { contentType: 'image/jpeg' },
+  ));
+  await assertFails(uploadBytes(
+    ref(storageFor('storage-normal'), path),
+    bytes,
+    { contentType: 'image/jpeg' },
+  ));
+  await assertFails(uploadBytes(
+    ref(storageFor(organizationId),
+      `campaigns/${campaignId}/${organizationId}/cover.txt`),
+    bytes,
+    { contentType: 'text/plain' },
+  ));
+  await assertSucceeds(deleteObject(ref(storageFor(organizationId), path)));
+});
