@@ -7,6 +7,7 @@ Campaign _campaign({
   List<CampaignNeed> needs = const [],
   CampaignStatus status = CampaignStatus.active,
   DateTime? closeAt,
+  Map<String, int> contributions = const {},
 }) => Campaign(
   id: 'campaign',
   organizationId: 'organization',
@@ -21,6 +22,7 @@ Campaign _campaign({
     openingHours: 'Lunes a sábado, 9 a 17 h',
   ),
   needs: needs,
+  contributions: contributions,
   status: status,
   createdAt: DateTime.utc(2027, 1, 1),
   updatedAt: DateTime.utc(2027, 1, 1),
@@ -110,6 +112,49 @@ void main() {
         ).isCovered,
         isTrue,
       );
+    });
+  });
+
+  group('contadores de aportes confirmados', () {
+    test('contributedFor lee el mapa de aportes de la campaña', () {
+      final campaign = _campaign(
+        needs: const [_requiredTen],
+        contributions: const {'ropa': 4},
+      );
+      expect(campaign.contributedFor('ropa'), 4);
+      expect(campaign.totalContributed, 4);
+    });
+
+    test('contributedFor cae al valor heredado si no hay mapa', () {
+      final campaign = _campaign(
+        needs: const [
+          CampaignNeed(
+            id: 'ropa',
+            name: 'Ropa',
+            requiredQuantity: 10,
+            contributedQuantity: 3,
+          ),
+        ],
+      );
+      expect(campaign.contributedFor('ropa'), 3);
+    });
+
+    test('isNeedCovered usa el contador confirmado', () {
+      final campaign = _campaign(
+        needs: const [_requiredTen],
+        contributions: const {'ropa': 10},
+      );
+      expect(campaign.isNeedCovered(_requiredTen), isTrue);
+    });
+
+    test('el mapa serializado conserva los aportes confirmados', () {
+      final campaign = _campaign(
+        needs: const [_requiredTen],
+        contributions: const {'ropa': 7},
+      );
+      final restored = Campaign.fromMap('campaign', campaign.toMap());
+      expect(restored.contributions, {'ropa': 7});
+      expect(restored.contributedFor('ropa'), 7);
     });
   });
 

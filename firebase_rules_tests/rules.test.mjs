@@ -16,6 +16,7 @@ import {
   deleteField,
   getDoc,
   getDocs,
+  increment,
   orderBy,
   query,
   serverTimestamp,
@@ -1836,6 +1837,7 @@ function initialCampaign({
       requiredQuantity: 10,
       contributedQuantity,
     }],
+    contributions: {},
     status,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
@@ -2069,3 +2071,361 @@ test('HU15: Storage reserva la portada a la organización propietaria', async ()
   ));
   await assertSucceeds(deleteObject(ref(storageFor(organizationId), path)));
 });
+
+const contributionOrgId = 'campaign-org';
+const contributionCampaignId = 'contribution-campaign';
+const contributorId = 'contributor-user';
+
+async function seedContributionScenario({
+  status = 'active',
+  closeAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+  needs,
+} = {}) {
+  await seedCampaignActor(
+    contributionOrgId,
+    'organizacion',
+    'Organización Solidaria',
+  );
+  await seedCampaignActor(contributorId, 'usuario', 'Persona Aportante');
+  await seedCampaign(contributionCampaignId, initialCampaign({
+    status,
+    closeAt,
+    overrides: needs ? { needs } : {},
+  }));
+}
+
+function contributionData(overrides = {}) {
+  return {
+    campaignId: contributionCampaignId,
+    campaignTitle: 'Abrigo para Cajamarca',
+    organizationId: contributionOrgId,
+    needId: 'ropa',
+    needName: 'Ropa',
+    quantity: 3,
+    contributorId,
+    contributorName: 'Persona A.',
+    status: 'pendiente',
+    createdAt: serverTimestamp(),
+    confirmedAt: null,
+    confirmedBy: null,
+    rejectedAt: null,
+    rejectedBy: null,
+    rejectionReason: null,
+    ...overrides,
+  };
+}
+
+function confirmationNotification(contributionId, quantity = 3) {
+  return {
+    recipientId: contributorId,
+    type: 'aporte_confirmado',
+    message: `Confirmaron tu aporte de ${quantity} Ropa.`,
+    campaignId: contributionCampaignId,
+    contributionId,
+    actorId: contributionOrgId,
+    createdAt: serverTimestamp(),
+    read: false,
+  };
+}
+
+test('HU16: un usuario aporta a una necesidad declarada de una campaña activa', async () => {
+  await seedContributionScenario();
+  await assertSucceeds(setDoc(
+    doc(firestoreFor(contributorId), 'aportes', 'contribution-1'),
+    contributionData(),
+  ));
+});
+
+test('HU16: no se aporta fuera de las necesidades declaradas', async () => {
+  await seedContributionScenario();
+  await assertFails(setDoc(
+    doc(firestoreFor(contributorId), 'aportes', 'contribution-unknown'),
+    contributionData({ needId: 'no-existe', needName: 'Otra' }),
+  ));
+});
+
+test('HU16: la organización no aporta a su propia campaña', async () => {
+  await seedContributionScenario();
+  await assertFails(setDoc(
+    doc(firestoreFor(contributionOrgId), 'aportes', 'own-contribution'),
+    contributionData({
+      contributorId: contributionOrgId,
+      contributorName: 'Organización Solidaria',
+    }),
+  ));
+});
+
+test('HU16: no se aporta a una campaña cerrada ni vencida', async () => {
+  await seedContributionScenario({
+    status: 'closed',
+    closeAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+  });
+  await assertFails(setDoc(
+    doc(firestoreFor(contributorId), 'aportes', 'closed-contribution'),
+    contributionData(),
+  ));
+
+  await testEnv.clearFirestore();
+  await seedContributionScenario({
+    closeAt: new Date(Date.now() - 60 * 1000),
+  });
+  await assertFails(setDoc(
+    doc(firestoreFor(contributorId), 'aportes', 'expired-contribution'),
+    contributionData(),
+  ));
+});
+
+test('HU16: la organización confirma el aporte e incrementa el contador en el mismo lote', async () => {
+  await seedContributionScenario();
+  await assertSucceeds(setDoc(
+    doc(firestoreFor(contributorId), 'aportes', 'contribution-2'),
+    contributionData({ quantity: 4 }),
+  ));
+
+  const db = firestoreFor(contributionOrgId);
+  const batch = writeBatch(db);
+  batch.update(doc(db, 'aportes', 'contribution-2'), {
+    status: 'confirmado',
+    confirmedAt: serverTimestamp(),
+    confirmedBy: contributionOrgId,
+  });
+  batch.update(doc(db, 'campaigns', contributionCampaignId), {
+    'contributions.ropa': increment(4),
+    lastContributionId: 'contribution-2',
+    updatedAt: serverTimestamp(),
+  });
+  batch.set(
+    doc(db, 'notificaciones', 'contribution-confirmed'),
+    confirmationNotification('contribution-2', 4),
+  );
+  await assertSucceeds(batch.commit());
+
+  const campaign = await getDoc(doc(db, 'campaigns', contributionCampaignId));
+  assert.equal(campaign.data().contributions.ropa, 4);
+  const contribution = await getDoc(doc(db, 'aportes', 'contribution-2'));
+  assert.equal(contribution.data().status, 'confirmado');
+});
+
+test('HU16: el avance puede superar la cantidad requerida', async () => {
+  await seedContributionScenario();
+  await assertSucceeds(setDoc(
+    doc(firestoreFor(contributorId), 'aportes', 'over-contribution'),
+    contributionData({ quantity: 12 }),
+  ));
+  const db = firestoreFor(contributionOrgId);
+  const batch = writeBatch(db);
+  batch.update(doc(db, 'aportes', 'over-contribution'), {
+    status: 'confirmado',
+    confirmedAt: serverTimestamp(),
+    confirmedBy: contributionOrgId,
+  });
+  batch.update(doc(db, 'campaigns', contributionCampaignId), {
+    'contributions.ropa': increment(12),
+    lastContributionId: 'over-contribution',
+    updatedAt: serverTimestamp(),
+  });
+  await assertSucceeds(batch.commit());
+  const campaign = await getDoc(doc(db, 'campaigns', contributionCampaignId));
+  assert.equal(campaign.data().contributions.ropa, 12);
+});
+
+test('HU16: solo la organización responsable confirma sus aportes', async () => {
+  await seedContributionScenario();
+  await assertSucceeds(setDoc(
+    doc(firestoreFor(contributorId), 'aportes', 'contribution-3'),
+    contributionData(),
+  ));
+  await assertFails(updateDoc(
+    doc(firestoreFor(contributorId), 'aportes', 'contribution-3'),
+    {
+      status: 'confirmado',
+      confirmedAt: serverTimestamp(),
+      confirmedBy: contributorId,
+    },
+  ));
+});
+
+test('HU16: la confirmación exige el incremento atómico real', async () => {
+  await seedContributionScenario();
+  await assertSucceeds(setDoc(
+    doc(firestoreFor(contributorId), 'aportes', 'contribution-4'),
+    contributionData({ quantity: 5 }),
+  ));
+  const db = firestoreFor(contributionOrgId);
+  // Confirmar sin tocar la campaña queda sin el respaldo del incremento.
+  await assertFails(updateDoc(doc(db, 'aportes', 'contribution-4'), {
+    status: 'confirmado',
+    confirmedAt: serverTimestamp(),
+    confirmedBy: contributionOrgId,
+  }));
+  // Un incremento que no coincide con la cantidad tampoco vale.
+  const forged = writeBatch(db);
+  forged.update(doc(db, 'aportes', 'contribution-4'), {
+    status: 'confirmado',
+    confirmedAt: serverTimestamp(),
+    confirmedBy: contributionOrgId,
+  });
+  forged.update(doc(db, 'campaigns', contributionCampaignId), {
+    'contributions.ropa': increment(99),
+    lastContributionId: 'contribution-4',
+    updatedAt: serverTimestamp(),
+  });
+  await assertFails(forged.commit());
+});
+
+test('HU16: la organización rechaza un aporte con motivo acotado', async () => {
+  await seedContributionScenario();
+  await assertSucceeds(setDoc(
+    doc(firestoreFor(contributorId), 'aportes', 'rejected-contribution'),
+    contributionData(),
+  ));
+  const db = firestoreFor(contributionOrgId);
+  await assertSucceeds(updateDoc(doc(db, 'aportes', 'rejected-contribution'), {
+    status: 'rechazado',
+    rejectedAt: serverTimestamp(),
+    rejectedBy: contributionOrgId,
+    rejectionReason: 'No llegó el bien al punto de acopio.',
+  }));
+  await assertSucceeds(setDoc(
+    doc(firestoreFor(contributorId), 'aportes', 'rejected-empty'),
+    contributionData(),
+  ));
+  await assertFails(updateDoc(doc(db, 'aportes', 'rejected-empty'), {
+    status: 'rechazado',
+    rejectedAt: serverTimestamp(),
+    rejectedBy: contributionOrgId,
+    rejectionReason: '',
+  }));
+});
+
+test('HU16: no se fabrican avisos de aporte sin la confirmación o rechazo reales', async () => {
+  await seedContributionScenario();
+  await assertSucceeds(setDoc(
+    doc(firestoreFor(contributorId), 'aportes', 'pending-contribution'),
+    contributionData(),
+  ));
+  // El propio aportante no puede avisarse que su aporte fue confirmado.
+  await assertFails(setDoc(
+    doc(firestoreFor(contributorId), 'notificaciones', 'forged-contribution'),
+    {
+      recipientId: contributorId,
+      type: 'aporte_confirmado',
+      message: 'Aporte confirmado.',
+      campaignId: contributionCampaignId,
+      contributionId: 'pending-contribution',
+      actorId: contributorId,
+      createdAt: serverTimestamp(),
+      read: false,
+    },
+  ));
+  // La organización tampoco, porque el aporte sigue pendiente.
+  await assertFails(setDoc(
+    doc(firestoreFor(contributionOrgId), 'notificaciones', 'early-contribution'),
+    confirmationNotification('pending-contribution'),
+  ));
+});
+
+test('HU16: solo el aportante y la organización leen el aporte', async () => {
+  await seedContributionScenario();
+  await assertSucceeds(setDoc(
+    doc(firestoreFor(contributorId), 'aportes', 'private-contribution'),
+    contributionData(),
+  ));
+  await assertSucceeds(getDoc(
+    doc(firestoreFor(contributorId), 'aportes', 'private-contribution'),
+  ));
+  await assertSucceeds(getDoc(
+    doc(firestoreFor(contributionOrgId), 'aportes', 'private-contribution'),
+  ));
+  await assertFails(getDoc(
+    doc(firestoreFor('third-user'), 'aportes', 'private-contribution'),
+  ));
+});
+
+test('HU16: la organización lista los aportes pendientes de su campaña', async () => {
+  await seedContributionScenario();
+  await assertSucceeds(setDoc(
+    doc(firestoreFor(contributorId), 'aportes', 'pending-list-item'),
+    contributionData(),
+  ));
+  const db = firestoreFor(contributionOrgId);
+  await assertSucceeds(getDocs(query(
+    collection(db, 'aportes'),
+    where('organizationId', '==', contributionOrgId),
+    where('status', '==', 'pendiente'),
+  )));
+});
+
+test('HU16: el aportante lista sus propios aportes', async () => {
+  await seedContributionScenario();
+  await assertSucceeds(setDoc(
+    doc(firestoreFor(contributorId), 'aportes', 'mine-list-item'),
+    contributionData(),
+  ));
+  const db = firestoreFor(contributorId);
+  await assertSucceeds(getDocs(query(
+    collection(db, 'aportes'),
+    where('contributorId', '==', contributorId),
+  )));
+});
+
+test('HU16: un tercero no lista aportes ajenos y la organización no los lista todos', async () => {
+  await seedContributionScenario();
+  await assertSucceeds(setDoc(
+    doc(firestoreFor(contributorId), 'aportes', 'guarded-list-item'),
+    contributionData(),
+  ));
+  await assertFails(getDocs(query(
+    collection(firestoreFor('third-user'), 'aportes'),
+    where('contributorId', '==', contributorId),
+  )));
+  await assertFails(getDocs(query(
+    collection(firestoreFor(contributionOrgId), 'aportes'),
+    where('status', '==', 'pendiente'),
+  )));
+});
+
+test('HU16: la organización confirma aportes de campañas creadas antes de D08', async () => {
+  await seedCampaignActor(contributionOrgId, 'organizacion', 'Organización Solidaria');
+  await seedCampaignActor(contributorId, 'usuario', 'Persona Aportante');
+  // Campaña anterior a D08: sin el mapa `contributions`.
+  const legacy = initialCampaign();
+  delete legacy.contributions;
+  await seedCampaign(contributionCampaignId, legacy);
+
+  await assertSucceeds(setDoc(
+    doc(firestoreFor(contributorId), 'aportes', 'legacy-create'),
+    contributionData(),
+  ));
+
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    await setDoc(
+      doc(context.firestore(), 'aportes', 'legacy-confirm'),
+      contributionData({ quantity: 4 }),
+    );
+  });
+  const db = firestoreFor(contributionOrgId);
+  const batch = writeBatch(db);
+  batch.update(doc(db, 'aportes', 'legacy-confirm'), {
+    status: 'confirmado',
+    confirmedAt: serverTimestamp(),
+    confirmedBy: contributionOrgId,
+  });
+  batch.update(doc(db, 'campaigns', contributionCampaignId), {
+    'contributions.ropa': increment(4),
+    lastContributionId: 'legacy-confirm',
+    updatedAt: serverTimestamp(),
+  });
+  batch.set(
+    doc(db, 'notificaciones', 'legacy-confirm-notif'),
+    confirmationNotification('legacy-confirm', 4),
+  );
+  await assertSucceeds(batch.commit());
+
+  const campaign = await getDoc(doc(db, 'campaigns', contributionCampaignId));
+  assert.equal(campaign.data().contributions.ropa, 4);
+  const contribution = await getDoc(doc(db, 'aportes', 'legacy-confirm'));
+  assert.equal(contribution.data().status, 'confirmado');
+});
+
+

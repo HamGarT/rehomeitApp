@@ -766,7 +766,6 @@ service cloud.firestore {
           'recipientId',
           'type',
           'message',
-          'publicationId',
           'createdAt',
           'read'
         ])
@@ -776,6 +775,8 @@ service cloud.firestore {
           'message',
           'proposalId',
           'publicationId',
+          'campaignId',
+          'contributionId',
           'conversationId',
           'messageId',
           'reportId',
@@ -799,12 +800,15 @@ service cloud.firestore {
           'cierre_confirmado',
           'publicacion_retirada',
           'reporte_resuelto',
-          'compromiso_cancelado'
+          'compromiso_cancelado',
+          'aporte_confirmado',
+          'aporte_rechazado'
         ]
         && request.resource.data.message is string
         && request.resource.data.message.size() > 0
         && request.resource.data.message.size() <= 500
-        && request.resource.data.publicationId is string
+        && (!('publicationId' in request.resource.data)
+          || request.resource.data.publicationId is string)
         && request.resource.data.createdAt == request.time
         && request.resource.data.read == false;
     }
@@ -1014,7 +1018,32 @@ service cloud.firestore {
               'compromiso_cancelado'
             ]
             ? validModerationNotification()
-            : validDeliveryNotification();
+            : request.resource.data.type in [
+                'aporte_confirmado',
+                'aporte_rechazado'
+              ]
+              ? validContributionNotification()
+              : validDeliveryNotification();
+    }
+
+    // El aviso de aporte se ata al documento del aporte y a la campaña que lo
+    // recibe: solo la organización responsable puede firmarlo.
+    function validContributionNotification() {
+      let contributionId = request.resource.data.contributionId;
+      let contribution = getAfter(
+        /databases/$(database)/documents/aportes/$(contributionId)
+      ).data;
+      let campaign = campaignAfter(contribution.campaignId);
+      let actor = request.auth.uid;
+      let recipient = request.resource.data.recipientId;
+      let confirmed = request.resource.data.type == 'aporte_confirmado'
+        && contribution.status == 'confirmado';
+      let rejected = request.resource.data.type == 'aporte_rechazado'
+        && contribution.status == 'rechazado';
+      return campaign.organizationId == actor
+        && contribution.organizationId == actor
+        && recipient == contribution.contributorId
+        && (confirmed || rejected);
     }
 
     function validCampaignCollectionPoint(point) {
@@ -1156,6 +1185,7 @@ service cloud.firestore {
           'imageStoragePath',
           'collectionPoint',
           'needs',
+          'contributions',
           'status',
           'createdAt',
           'updatedAt',
@@ -1174,6 +1204,7 @@ service cloud.firestore {
           'imageStoragePath',
           'collectionPoint',
           'needs',
+          'contributions',
           'status',
           'createdAt',
           'updatedAt',
@@ -1185,6 +1216,8 @@ service cloud.firestore {
         && campaign.organizationName == user.nombreCompleto
         && campaign.organizationName.size() > 0
         && campaign.status == 'active'
+        && campaign.contributions is map
+        && campaign.contributions.size() == 0
         && campaign.createdAt == request.time
         && campaign.updatedAt == request.time
         && campaign.closeAt > request.time
@@ -1237,6 +1270,174 @@ service cloud.firestore {
         && after.diff(resource.data).affectedKeys().hasOnly([
           'status', 'updatedAt', 'closedAt', 'closedBy', 'closureReason'
         ]);
+    }
+
+    function campaignAfter(campaignId) {
+      return getAfter(
+        /databases/$(database)/documents/campaigns/$(campaignId)
+      ).data;
+    }
+
+    // Firestore Rules no itera: la necesidad del aporte tiene que coincidir
+    // con una de las declaradas. Se compara cada posición con cortocircuito,
+    // como en `validInitialCampaignNeedAt`.
+    function validContributionNeedMatch(campaign, needId, needName) {
+      let needs = campaign.needs;
+      return mayMatchNeed(needs, 0, needId, needName)
+        || mayMatchNeed(needs, 1, needId, needName)
+        || mayMatchNeed(needs, 2, needId, needName)
+        || mayMatchNeed(needs, 3, needId, needName)
+        || mayMatchNeed(needs, 4, needId, needName)
+        || mayMatchNeed(needs, 5, needId, needName)
+        || mayMatchNeed(needs, 6, needId, needName)
+        || mayMatchNeed(needs, 7, needId, needName)
+        || mayMatchNeed(needs, 8, needId, needName)
+        || mayMatchNeed(needs, 9, needId, needName);
+    }
+
+    function mayMatchNeed(needs, index, needId, needName) {
+      return needs.size() > index
+        && needs[index].id == needId
+        && needs[index].name == needName;
+    }
+
+    function validInitialContribution() {
+      let contribution = request.resource.data;
+      let campaign = campaignAfter(contribution.campaignId);
+      return contribution.keys().hasAll([
+          'campaignId',
+          'campaignTitle',
+          'organizationId',
+          'needId',
+          'needName',
+          'quantity',
+          'contributorId',
+          'contributorName',
+          'status',
+          'createdAt',
+          'confirmedAt',
+          'confirmedBy',
+          'rejectedAt',
+          'rejectedBy',
+          'rejectionReason'
+        ])
+        && contribution.keys().hasOnly([
+          'campaignId',
+          'campaignTitle',
+          'organizationId',
+          'needId',
+          'needName',
+          'quantity',
+          'contributorId',
+          'contributorName',
+          'status',
+          'createdAt',
+          'confirmedAt',
+          'confirmedBy',
+          'rejectedAt',
+          'rejectedBy',
+          'rejectionReason'
+        ])
+        && contribution.campaignId is string
+        && contribution.campaignTitle == campaign.title
+        && contribution.organizationId == campaign.organizationId
+        && contribution.organizationId != request.auth.uid
+        && contribution.contributorId == request.auth.uid
+        && contribution.contributorName is string
+        && contribution.contributorName.size() > 0
+        && contribution.contributorName.size() <= 60
+        && contribution.needId is string
+        && contribution.needName is string
+        && contribution.quantity is int
+        && contribution.quantity > 0
+        && contribution.status == 'pendiente'
+        && contribution.createdAt == request.time
+        && contribution.confirmedAt == null
+        && contribution.confirmedBy == null
+        && contribution.rejectedAt == null
+        && contribution.rejectedBy == null
+        && contribution.rejectionReason == null
+        && campaign.status == 'active'
+        && request.time < campaign.closeAt
+        && validContributionNeedMatch(
+          campaign, contribution.needId, contribution.needName
+        );
+    }
+
+    function validContributionConfirmation(contributionId) {
+      let after = request.resource.data;
+      let before = resource.data;
+      let campaign = campaignAfter(before.campaignId);
+      return before.status == 'pendiente'
+        && after.status == 'confirmado'
+        && after.confirmedAt == request.time
+        && after.confirmedBy == request.auth.uid
+        && after.rejectedAt == before.rejectedAt
+        && after.rejectedBy == before.rejectedBy
+        && after.rejectionReason == before.rejectionReason
+        && after.diff(before).affectedKeys().hasOnly([
+          'status', 'confirmedAt', 'confirmedBy'
+        ])
+        && before.organizationId == request.auth.uid
+        && campaign.status == 'active'
+        && request.time < campaign.closeAt
+        && campaign.lastContributionId == contributionId;
+    }
+
+    function validContributionRejection() {
+      let after = request.resource.data;
+      let before = resource.data;
+      return before.status == 'pendiente'
+        && after.status == 'rechazado'
+        && after.rejectedAt == request.time
+        && after.rejectedBy == request.auth.uid
+        && after.confirmedAt == before.confirmedAt
+        && after.confirmedBy == before.confirmedBy
+        && after.rejectionReason is string
+        && after.rejectionReason.size() > 0
+        && after.rejectionReason.size() <= 300
+        && after.diff(before).affectedKeys().hasOnly([
+          'status', 'rejectedAt', 'rejectedBy', 'rejectionReason'
+        ])
+        && before.organizationId == request.auth.uid;
+    }
+
+    // El incremento atómico del contador (D08) y la confirmación del aporte
+    // ocurren en el mismo lote: la campaña referencia el aporte que se está
+    // confirmando y el incremento tiene que coincidir con su cantidad.
+    function validContributionIncrement(campaignId) {
+      let after = request.resource.data;
+      let before = resource.data;
+      let contributionId = after.lastContributionId;
+      let contribution = get(
+        /databases/$(database)/documents/aportes/$(contributionId)
+      ).data;
+      let confirmed = getAfter(
+        /databases/$(database)/documents/aportes/$(contributionId)
+      ).data;
+      let changed = after.diff(before).affectedKeys();
+      // Las campañas creadas antes de D08 no tienen el mapa `contributions`;
+      // se trata como vacío para no romper la confirmación sobre datos viejos.
+      let beforeContributions = before.get('contributions', {});
+      let afterContributions = after.get('contributions', {});
+      return before.organizationId == request.auth.uid
+        && after.organizationId == before.organizationId
+        && before.status == 'active'
+        && after.status == 'active'
+        && request.time < before.closeAt
+        && contribution.campaignId == campaignId
+        && contribution.organizationId == request.auth.uid
+        && contribution.status == 'pendiente'
+        && confirmed.status == 'confirmado'
+        && changed.hasOnly([
+          'contributions', 'lastContributionId', 'updatedAt'
+        ])
+        && after.updatedAt == request.time
+        && afterContributions.diff(beforeContributions)
+            .affectedKeys().hasOnly([contribution.needId])
+        && afterContributions[contribution.needId]
+            == beforeContributions.get(contribution.needId, 0)
+              + contribution.quantity;
     }
 
     match /usuarios/{userId} {
@@ -1313,8 +1514,33 @@ service cloud.firestore {
       allow create: if isOrganization()
         && validInitialCampaign(campaignId);
       allow update: if signedIn() && (
-        (isOrganization() && validOrganizationCampaignEdit(campaignId))
+        (isOrganization() && (
+          validOrganizationCampaignEdit(campaignId)
+          || validContributionIncrement(campaignId)
+        ))
         || (isAdmin() && validAdminCampaignClose())
+      );
+      allow delete: if false;
+    }
+
+    match /aportes/{contributionId} {
+      // El aporte lo ven quien lo hizo, la organización responsable y la
+      // moderación. Las dos consultas de la aplicación filtran por su dueño,
+      // así que la regla es demostrable para cada una.
+      allow get: if signedIn() && (
+        resource.data.contributorId == request.auth.uid
+        || resource.data.organizationId == request.auth.uid
+        || isAdmin()
+      );
+      allow list: if signedIn() && (
+        resource.data.contributorId == request.auth.uid
+        || resource.data.organizationId == request.auth.uid
+        || isAdmin()
+      );
+      allow create: if signedIn() && validInitialContribution();
+      allow update: if signedIn() && (
+        validContributionConfirmation(contributionId)
+        || validContributionRejection()
       );
       allow delete: if false;
     }

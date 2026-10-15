@@ -7,11 +7,13 @@ import 'package:rehomeitapp/features/auth/domain/app_user.dart';
 import 'package:rehomeitapp/features/auth/presentation/auth_controller.dart';
 import 'package:rehomeitapp/features/campaigns/domain/campaign.dart';
 import 'package:rehomeitapp/features/campaigns/domain/campaign_draft.dart';
+import 'package:rehomeitapp/features/campaigns/domain/contribution.dart';
 import 'package:rehomeitapp/features/campaigns/presentation/campaign_controller.dart';
 import 'package:rehomeitapp/features/campaigns/presentation/campaign_detail_page.dart';
 import 'package:rehomeitapp/features/campaigns/presentation/campaign_form_page.dart';
 import 'package:rehomeitapp/features/campaigns/presentation/campaigns_page.dart';
 import 'package:rehomeitapp/features/campaigns/presentation/widgets/campaign_progress.dart';
+import 'package:rehomeitapp/features/campaigns/presentation/widgets/pending_contribution_card.dart';
 
 const _uid = 'account';
 
@@ -150,5 +152,38 @@ void main() {
       find.byKey(const Key('campaign-progress-indicator')),
     );
     expect(indicator.value, 1);
+  });
+
+  testWidgets('la tarjeta de aporte pendiente se acota sin ancho infinito', (
+    tester,
+  ) async {
+    final contribution = Contribution(
+      id: 'aporte-id',
+      campaignId: 'campaign-id',
+      campaignTitle: 'Abrigo para Cajamarca',
+      organizationId: _uid,
+      needId: 'ropa',
+      needName: 'Ropa',
+      quantity: 3,
+      contributorId: 'vecina',
+      contributorName: 'Ana',
+      status: ContributionStatus.pending,
+      createdAt: DateTime.utc(2026, 10, 1),
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildAppTheme(brightness: Brightness.light),
+        home: Scaffold(
+          body: PendingContributionCard(
+            contribution: contribution,
+            onConfirm: () {},
+            onReject: () {},
+          ),
+        ),
+      ),
+    );
+    expect(tester.takeException(), isNull);
+    expect(find.text('Confirmar'), findsOneWidget);
+    expect(find.text('Rechazar'), findsOneWidget);
   });
 }

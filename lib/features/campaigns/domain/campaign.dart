@@ -87,6 +87,7 @@ class Campaign {
     required this.status,
     required this.createdAt,
     required this.updatedAt,
+    this.contributions = const {},
     this.imageUrl,
     this.imageStoragePath,
     this.closedAt,
@@ -106,6 +107,10 @@ class Campaign {
   final String? imageStoragePath;
   final CollectionPoint collectionPoint;
   final List<CampaignNeed> needs;
+
+  /// Contador confirmado por necesidad (D08). `needs` conserva la definición y
+  /// este mapa el avance, así dos confirmaciones simultáneas no se pisan.
+  final Map<String, int> contributions;
   final CampaignStatus status;
   final DateTime createdAt;
   final DateTime updatedAt;
@@ -114,11 +119,25 @@ class Campaign {
   final String? closureReason;
   final bool hasPendingWrites;
 
+  /// Avance confirmado de una necesidad. Recurre al valor almacenado en la
+  /// necesidad cuando el mapa no lo trae, para documentos anteriores a D08.
+  int contributedFor(String needId) {
+    final value = contributions[needId];
+    if (value != null) return value;
+    for (final need in needs) {
+      if (need.id == needId) return need.contributedQuantity;
+    }
+    return 0;
+  }
+
+  bool isNeedCovered(CampaignNeed need) =>
+      contributedFor(need.id) >= need.requiredQuantity;
+
   int get totalRequired =>
       needs.fold(0, (total, need) => total + need.requiredQuantity);
 
   int get totalContributed =>
-      needs.fold(0, (total, need) => total + need.contributedQuantity);
+      needs.fold(0, (total, need) => total + contributedFor(need.id));
 
   double get progressPercent =>
       totalRequired == 0 ? 0 : totalContributed / totalRequired * 100;
@@ -151,6 +170,7 @@ class Campaign {
     'imageStoragePath': imageStoragePath,
     'collectionPoint': collectionPoint.toMap(),
     'needs': needs.map((need) => need.toMap()).toList(growable: false),
+    'contributions': contributions,
     'status': status.wireValue,
     'createdAt': Timestamp.fromDate(createdAt),
     'updatedAt': Timestamp.fromDate(updatedAt),
@@ -192,10 +212,24 @@ class Campaign {
       status: _campaignStatusFromWire(map['status']),
       createdAt: readFirestoreDate(map['createdAt']) ?? fallback,
       updatedAt: readFirestoreDate(map['updatedAt']) ?? fallback,
+      contributions: _contributionsFromMap(map['contributions']),
       closedAt: readFirestoreDate(map['closedAt']),
       closedBy: map['closedBy'] as String?,
       closureReason: map['closureReason'] as String?,
       hasPendingWrites: hasPendingWrites,
     );
   }
+}
+
+Map<String, int> _contributionsFromMap(Object? value) {
+  if (value is! Map) return const {};
+  final result = <String, int>{};
+  for (final entry in value.entries) {
+    final key = entry.key;
+    final count = entry.value;
+    if (key is String && count is num) {
+      result[key] = count.toInt();
+    }
+  }
+  return result;
 }

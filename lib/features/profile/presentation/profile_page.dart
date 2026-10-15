@@ -12,6 +12,12 @@ import '../../../shared/widgets/button_spinner.dart';
 import '../../../shared/widgets/mascot.dart';
 import '../../auth/data/auth_exception.dart';
 import '../../auth/presentation/auth_controller.dart';
+import '../../campaigns/domain/contribution.dart';
+import '../../campaigns/presentation/campaign_controller.dart';
+import '../../campaigns/presentation/contribution_controller.dart';
+import '../../campaigns/presentation/widgets/contribution_review.dart';
+import '../../campaigns/presentation/widgets/contribution_tile.dart';
+import '../../campaigns/presentation/widgets/pending_contribution_card.dart';
 import '../../delivery/presentation/delivery_controller.dart';
 import '../../explore/presentation/explore_controller.dart';
 import '../../moderation/presentation/moderation_controller.dart';
@@ -123,6 +129,8 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
           ),
           ..._ownPublicationSlivers(publications),
           ..._commitmentSlivers(userId),
+          ..._contributionSlivers(userId),
+          ..._pendingContributionsSlivers(userId),
           SliverToBoxAdapter(child: _ModerationSection(userId: userId)),
           const SliverToBoxAdapter(child: _AppearanceSection()),
           const SliverToBoxAdapter(
@@ -238,6 +246,71 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
       title: 'Mis compromisos de recojo',
       items: items,
     );
+  }
+
+  /// Aportes a campañas (HU16, criterio 15). Se omite cuando no hay ninguno
+  /// para no dejar un bloque vacío en el perfil de quien nunca aportó.
+  List<Widget> _contributionSlivers(String userId) {
+    final items =
+        ref.watch(contributionsByContributorProvider(userId)).value ??
+        const <Contribution>[];
+    if (items.isEmpty) return const [];
+    return [
+      SliverToBoxAdapter(
+        child: ProfileSectionHeader(
+          title: 'Mis aportes a campañas',
+          trailing: '${items.length}',
+        ),
+      ),
+      SliverPadding(
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        sliver: SliverList.separated(
+          itemCount: items.length,
+          separatorBuilder: (_, _) => const SizedBox(height: 10),
+          itemBuilder: (context, index) =>
+              ContributionTile(contribution: items[index]),
+        ),
+      ),
+    ];
+  }
+
+  /// Aportes pendientes de las campañas de la organización (HU16, criterio 6).
+  /// Solo aparece para cuentas de organización y cuando hay algo por revisar.
+  List<Widget> _pendingContributionsSlivers(String userId) {
+    final isOrganization =
+        ref.watch(campaignAccessProvider(userId)).value?.isOrganization ??
+        false;
+    if (!isOrganization) return const [];
+    final items =
+        ref.watch(pendingContributionsByOrganizationProvider(userId)).value ??
+        const <Contribution>[];
+    if (items.isEmpty) return const [];
+    return [
+      SliverToBoxAdapter(
+        child: ProfileSectionHeader(
+          title: 'Aportes por confirmar',
+          trailing: '${items.length}',
+        ),
+      ),
+      SliverPadding(
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        sliver: SliverList.separated(
+          itemCount: items.length,
+          separatorBuilder: (_, _) => const SizedBox(height: 10),
+          itemBuilder: (context, index) {
+            final contribution = items[index];
+            return PendingContributionCard(
+              contribution: contribution,
+              showCampaign: true,
+              onConfirm: () =>
+                  confirmContribution(context, ref, contribution, userId),
+              onReject: () =>
+                  rejectContribution(context, ref, contribution, userId),
+            );
+          },
+        ),
+      ),
+    ];
   }
 }
 
