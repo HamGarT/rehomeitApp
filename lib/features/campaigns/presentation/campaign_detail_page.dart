@@ -35,12 +35,19 @@ class CampaignDetailPage extends ConsumerWidget {
     final canEdit =
         access?.isOrganization == true &&
         campaign.canEdit(userId: userId, now: now);
-    final canClose = access?.isAdmin == true && !closed;
+    final isAdmin = access?.isAdmin == true;
+    final canClose =
+        access != null &&
+        campaign.canCloseEarly(
+          userId: userId,
+          isOrganization: access.isOrganization,
+          isAdmin: isAdmin,
+          now: now,
+        );
     final canContribute =
         !closed && userId.isNotEmpty && userId != campaign.organizationId;
     final isOwner =
-        access?.isOrganization == true &&
-        campaign.organizationId == userId;
+        access?.isOrganization == true && campaign.organizationId == userId;
     final pendingContributions = isOwner
         ? (ref
                       .watch(pendingContributionsByOrganizationProvider(userId))
@@ -210,7 +217,15 @@ class CampaignDetailPage extends ConsumerWidget {
             OutlinedButton.icon(
               key: const Key('close-campaign-button'),
               style: OutlinedButton.styleFrom(foregroundColor: AppColors.error),
-              onPressed: () => _close(context, ref, campaign, userId),
+              onPressed: () => _close(
+                context,
+                ref,
+                campaign,
+                closedBy: userId,
+                reason: isAdmin
+                    ? CampaignClosureReasons.byAdministration
+                    : CampaignClosureReasons.byOrganization,
+              ),
               icon: const Icon(Icons.lock_outline),
               label: const Text('Cerrar campaña anticipadamente'),
             ),
@@ -223,9 +238,10 @@ class CampaignDetailPage extends ConsumerWidget {
   Future<void> _close(
     BuildContext context,
     WidgetRef ref,
-    Campaign campaign,
-    String adminId,
-  ) async {
+    Campaign campaign, {
+    required String closedBy,
+    required String reason,
+  }) async {
     final confirmed = await showAppConfirmDialog(
       context,
       title: '¿Cerrar esta campaña?',
@@ -236,7 +252,11 @@ class CampaignDetailPage extends ConsumerWidget {
     if (!confirmed || !context.mounted) return;
     final error = await ref
         .read(campaignControllerProvider.notifier)
-        .closeEarly(campaignId: campaign.id, adminId: adminId);
+        .closeEarly(
+          campaignId: campaign.id,
+          closedBy: closedBy,
+          reason: reason,
+        );
     if (!context.mounted) return;
     showAppSnackBar(
       context,
@@ -251,10 +271,7 @@ class CampaignDetailPage extends ConsumerWidget {
     Campaign campaign,
     String userId,
   ) async {
-    final request = await showContributionSheet(
-      context,
-      campaign: campaign,
-    );
+    final request = await showContributionSheet(context, campaign: campaign);
     if (request == null || !context.mounted) return;
     final error = await ref
         .read(contributionControllerProvider.notifier)
@@ -278,24 +295,21 @@ class CampaignDetailPage extends ConsumerWidget {
     );
   }
 
-  Future<void> _showCollectionPoint(
-    BuildContext context,
-    Campaign campaign,
-  ) {
+  Future<void> _showCollectionPoint(BuildContext context, Campaign campaign) {
     return showDialog<void>(
       context: context,
       builder: (context) => AppDialog(
         title: 'Aporte registrado',
-        subtitle: 'Queda en estado Pendiente hasta que la organización lo confirme.',
+        subtitle:
+            'Queda en estado Pendiente hasta que la organización lo confirme.',
         header: const AppDialogIcon(icon: Icons.volunteer_activism_outlined),
         content: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
               'Acércalo al punto de acopio:',
-              style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                color: context.appColors.textSecondary,
-              ),
+              style: Theme.of(context).textTheme.labelLarge
+                  ?.copyWith(color: context.appColors.textSecondary),
             ),
             const SizedBox(height: 6),
             _PointRow(
@@ -321,7 +335,6 @@ class CampaignDetailPage extends ConsumerWidget {
       ),
     );
   }
-
 }
 
 class _NeedTile extends StatelessWidget {

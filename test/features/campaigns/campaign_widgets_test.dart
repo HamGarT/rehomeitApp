@@ -69,6 +69,13 @@ Widget _host({
   ),
 );
 
+/// El botón de cierre va al final de un ListView perezoso: sin desplazar no
+/// se construye y `findsNothing` pasaría aunque existiera.
+Future<void> _scrollToEnd(WidgetTester tester) async {
+  await tester.drag(find.byType(Scrollable).first, const Offset(0, -3000));
+  await tester.pumpAndSettle();
+}
+
 void main() {
   testWidgets('usuario normal no ve Crear campaña', (tester) async {
     await tester.pumpWidget(
@@ -130,6 +137,44 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('edit-campaign-button')), findsNothing);
+    await _scrollToEnd(tester);
+    expect(find.byKey(const Key('close-campaign-button')), findsNothing);
+  });
+
+  testWidgets('la organización dueña puede cerrar su campaña activa', (
+    tester,
+  ) async {
+    final active = _campaign();
+    await tester.pumpWidget(
+      _host(
+        child: CampaignDetailPage(initial: active),
+        detail: active,
+        access: const CampaignAccess(
+          role: CampaignAccess.organizationRole,
+          organizationName: 'Organización Solidaria',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await _scrollToEnd(tester);
+    expect(find.byKey(const Key('close-campaign-button')), findsOneWidget);
+  });
+
+  testWidgets('un usuario normal no puede cerrar una campaña', (tester) async {
+    final active = _campaign();
+    await tester.pumpWidget(
+      _host(
+        child: CampaignDetailPage(initial: active),
+        detail: active,
+        access: const CampaignAccess(
+          role: CampaignAccess.userRole,
+          organizationName: 'Persona',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await _scrollToEnd(tester);
+    expect(find.byKey(const Key('close-campaign-button')), findsNothing);
   });
 
   testWidgets('el progreso muestra sobreaporte y limita la barra a 100 %', (

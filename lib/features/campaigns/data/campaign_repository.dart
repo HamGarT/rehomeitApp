@@ -24,7 +24,7 @@ class CampaignRepository {
   final FirebaseStorage _storage;
 
   CollectionReference<Map<String, dynamic>> get _campaigns =>
-      _firestore.collection('campaigns');
+      _firestore.collection('campanias');
 
   Stream<CampaignAccess> watchAccess(String userId) {
     return _firestore.collection('usuarios').doc(userId).snapshots().map((doc) {
@@ -216,15 +216,16 @@ class CampaignRepository {
 
   Future<void> closeEarly({
     required String campaignId,
-    required String adminId,
+    required String closedBy,
+    required String reason,
   }) async {
     try {
       await _campaigns.doc(campaignId).update({
         'status': CampaignStatus.closed.wireValue,
         'updatedAt': FieldValue.serverTimestamp(),
         'closedAt': FieldValue.serverTimestamp(),
-        'closedBy': adminId,
-        'closureReason': 'Cierre anticipado por administración',
+        'closedBy': closedBy,
+        'closureReason': reason,
       });
     } on FirebaseException catch (error) {
       throw CampaignFailure(_friendlyCampaignError(error));
@@ -246,7 +247,7 @@ class CampaignRepository {
       _ => 'jpg',
     };
     return _storage.ref(
-      'campaigns/$campaignId/$organizationId/cover.$extension',
+      'campanias/$campaignId/$organizationId/cover.$extension',
     );
   }
 

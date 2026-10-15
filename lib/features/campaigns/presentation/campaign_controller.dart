@@ -82,11 +82,12 @@ class CampaignController extends Notifier<AsyncValue<void>> {
 
   Future<String?> closeEarly({
     required String campaignId,
-    required String adminId,
+    required String closedBy,
+    required String reason,
   }) => _run(
     () => ref
         .read(campaignRepositoryProvider)
-        .closeEarly(campaignId: campaignId, adminId: adminId),
+        .closeEarly(campaignId: campaignId, closedBy: closedBy, reason: reason),
   );
 
   Future<String?> _run(Future<void> Function() operation) async {

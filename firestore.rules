@@ -1150,7 +1150,7 @@ service cloud.firestore {
           && campaign.imageUrl.size() > 0
           && campaign.imageStoragePath is string
           && campaign.imageStoragePath.matches(
-            'campaigns/' + campaignId + '/' + campaign.organizationId
+            'campanias/' + campaignId + '/' + campaign.organizationId
               + '/cover\\.(jpg|jpeg|png|webp|heic|heif)'
           )
         );
@@ -1258,7 +1258,10 @@ service cloud.firestore {
         && validEditedCampaignNeeds();
     }
 
-    function validAdminCampaignClose() {
+    // El motivo fijo por rol deja constancia de quién decidió el cierre
+    // anticipado (HU15-13) sin abrir un texto libre que luego habría que
+    // validar.
+    function validEarlyCampaignClose(reason) {
       let after = request.resource.data;
       return resource.data.status == 'active'
         && request.time < resource.data.closeAt
@@ -1266,15 +1269,24 @@ service cloud.firestore {
         && after.updatedAt == request.time
         && after.closedAt == request.time
         && after.closedBy == request.auth.uid
-        && after.closureReason == 'Cierre anticipado por administración'
+        && after.closureReason == reason
         && after.diff(resource.data).affectedKeys().hasOnly([
           'status', 'updatedAt', 'closedAt', 'closedBy', 'closureReason'
         ]);
     }
 
+    function validAdminCampaignClose() {
+      return validEarlyCampaignClose('Cierre anticipado por administración');
+    }
+
+    function validOrganizationCampaignClose() {
+      return resource.data.organizationId == request.auth.uid
+        && validEarlyCampaignClose('Cierre anticipado por la organización');
+    }
+
     function campaignAfter(campaignId) {
       return getAfter(
-        /databases/$(database)/documents/campaigns/$(campaignId)
+        /databases/$(database)/documents/campanias/$(campaignId)
       ).data;
     }
 
@@ -1509,13 +1521,14 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    match /campaigns/{campaignId} {
+    match /campanias/{campaignId} {
       allow read: if signedIn();
       allow create: if isOrganization()
         && validInitialCampaign(campaignId);
       allow update: if signedIn() && (
         (isOrganization() && (
           validOrganizationCampaignEdit(campaignId)
+          || validOrganizationCampaignClose()
           || validContributionIncrement(campaignId)
         ))
         || (isAdmin() && validAdminCampaignClose())

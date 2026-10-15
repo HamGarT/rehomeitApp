@@ -19,6 +19,13 @@ extension CampaignStatusWire on CampaignStatus {
 CampaignStatus _campaignStatusFromWire(Object? value) =>
     value == 'closed' ? CampaignStatus.closed : CampaignStatus.active;
 
+/// Motivos de cierre anticipado (HU15-13). Las reglas exigen el texto exacto
+/// según el rol de quien cierra, así que no se escriben a mano.
+abstract final class CampaignClosureReasons {
+  static const byAdministration = 'Cierre anticipado por administración';
+  static const byOrganization = 'Cierre anticipado por la organización';
+}
+
 class CampaignNeed {
   const CampaignNeed({
     required this.id,
@@ -158,6 +165,17 @@ class Campaign {
 
   bool canEdit({required String userId, required DateTime now}) =>
       organizationId == userId && !isClosedAt(now);
+
+  /// La organización dueña y el administrador cierran antes de fecha
+  /// (HU15-13). Ser dueño no basta: la regla exige además el rol vigente.
+  bool canCloseEarly({
+    required String userId,
+    required bool isOrganization,
+    required bool isAdmin,
+    required DateTime now,
+  }) =>
+      (isAdmin || (isOrganization && organizationId == userId)) &&
+      !isClosedAt(now);
 
   Map<String, Object?> toMap() => {
     'organizationId': organizationId,

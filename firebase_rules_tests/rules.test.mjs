@@ -1850,14 +1850,14 @@ function initialCampaign({
 
 async function seedCampaign(campaignId, data) {
   await testEnv.withSecurityRulesDisabled(async (context) => {
-    await setDoc(doc(context.firestore(), 'campaigns', campaignId), data);
+    await setDoc(doc(context.firestore(), 'campanias', campaignId), data);
   });
 }
 
 test('HU15: un usuario normal no puede crear campañas', async () => {
   await seedCampaignActor('normal-user', 'usuario', 'Persona Regular');
   await assertFails(setDoc(
-    doc(firestoreFor('normal-user'), 'campaigns', 'normal-campaign'),
+    doc(firestoreFor('normal-user'), 'campanias', 'normal-campaign'),
     initialCampaign({
       organizationId: 'normal-user',
       organizationName: 'Persona Regular',
@@ -1872,7 +1872,7 @@ test('HU15: una organización crea una campaña propia válida', async () => {
     'Organización Solidaria',
   );
   await assertSucceeds(setDoc(
-    doc(firestoreFor('campaign-org'), 'campaigns', 'own-campaign'),
+    doc(firestoreFor('campaign-org'), 'campanias', 'own-campaign'),
     initialCampaign(),
   ));
 });
@@ -1885,7 +1885,7 @@ test('HU15: una organización edita su campaña activa y agrega necesidades', as
   );
   await seedCampaign('editable-campaign', initialCampaign());
   await assertSucceeds(updateDoc(
-    doc(firestoreFor('campaign-org'), 'campaigns', 'editable-campaign'),
+    doc(firestoreFor('campaign-org'), 'campanias', 'editable-campaign'),
     {
       title: 'Abrigo y alimentos para Cajamarca',
       needs: [
@@ -1914,7 +1914,7 @@ test('HU15: una organización no puede crear para otro uid', async () => {
     'Organización Solidaria',
   );
   await assertFails(setDoc(
-    doc(firestoreFor('campaign-org'), 'campaigns', 'foreign-campaign'),
+    doc(firestoreFor('campaign-org'), 'campanias', 'foreign-campaign'),
     initialCampaign({ organizationId: 'other-org' }),
   ));
 });
@@ -1923,7 +1923,7 @@ test('HU15: una organización no puede editar una campaña ajena', async () => {
   await seedCampaignActor('other-org', 'organizacion', 'Otra Organización');
   await seedCampaign('foreign-campaign', initialCampaign());
   await assertFails(updateDoc(
-    doc(firestoreFor('other-org'), 'campaigns', 'foreign-campaign'),
+    doc(firestoreFor('other-org'), 'campanias', 'foreign-campaign'),
     { title: 'Título apropiado', updatedAt: serverTimestamp() },
   ));
 });
@@ -1936,7 +1936,7 @@ test('HU15: la organización no manipula contributedQuantity', async () => {
   );
   await seedCampaign('contributions-campaign', initialCampaign());
   await assertFails(updateDoc(
-    doc(firestoreFor('campaign-org'), 'campaigns', 'contributions-campaign'),
+    doc(firestoreFor('campaign-org'), 'campanias', 'contributions-campaign'),
     {
       needs: [{
         id: 'ropa',
@@ -1968,11 +1968,11 @@ test('HU15: la organización no edita campañas vencidas ni cerradas', async () 
   }));
   const edit = { title: 'Título editado', updatedAt: serverTimestamp() };
   await assertFails(updateDoc(
-    doc(firestoreFor('campaign-org'), 'campaigns', 'expired-campaign'),
+    doc(firestoreFor('campaign-org'), 'campanias', 'expired-campaign'),
     edit,
   ));
   await assertFails(updateDoc(
-    doc(firestoreFor('campaign-org'), 'campaigns', 'closed-campaign'),
+    doc(firestoreFor('campaign-org'), 'campanias', 'closed-campaign'),
     edit,
   ));
 });
@@ -1981,12 +1981,60 @@ test('HU15: el administrador cierra una campaña activa antes de fecha', async (
   await seedCampaignActor('campaign-admin', 'administrador', 'Admin');
   await seedCampaign('admin-close-campaign', initialCampaign());
   await assertSucceeds(updateDoc(
-    doc(firestoreFor('campaign-admin'), 'campaigns', 'admin-close-campaign'),
+    doc(firestoreFor('campaign-admin'), 'campanias', 'admin-close-campaign'),
     {
       status: 'closed',
       updatedAt: serverTimestamp(),
       closedAt: serverTimestamp(),
       closedBy: 'campaign-admin',
+      closureReason: 'Cierre anticipado por administración',
+    },
+  ));
+});
+
+test('HU15: la organización cierra una campaña propia antes de fecha', async () => {
+  await seedCampaignActor(
+    'campaign-org',
+    'organizacion',
+    'Organización Solidaria',
+  );
+  await seedCampaign('org-close-campaign', initialCampaign());
+  await assertSucceeds(updateDoc(
+    doc(firestoreFor('campaign-org'), 'campanias', 'org-close-campaign'),
+    {
+      status: 'closed',
+      updatedAt: serverTimestamp(),
+      closedAt: serverTimestamp(),
+      closedBy: 'campaign-org',
+      closureReason: 'Cierre anticipado por la organización',
+    },
+  ));
+});
+
+test('HU15: la organización no cierra una campaña ajena ni usa el motivo de administración', async () => {
+  await seedCampaignActor(
+    'campaign-org',
+    'organizacion',
+    'Organización Solidaria',
+  );
+  await seedCampaignActor('other-org', 'organizacion', 'Otra Organización');
+  await seedCampaign('foreign-close-campaign', initialCampaign());
+  await seedCampaign('own-reason-campaign', initialCampaign());
+  const closeAs = (uid) => ({
+    status: 'closed',
+    updatedAt: serverTimestamp(),
+    closedAt: serverTimestamp(),
+    closedBy: uid,
+    closureReason: 'Cierre anticipado por la organización',
+  });
+  await assertFails(updateDoc(
+    doc(firestoreFor('other-org'), 'campanias', 'foreign-close-campaign'),
+    closeAs('other-org'),
+  ));
+  await assertFails(updateDoc(
+    doc(firestoreFor('campaign-org'), 'campanias', 'own-reason-campaign'),
+    {
+      ...closeAs('campaign-org'),
       closureReason: 'Cierre anticipado por administración',
     },
   ));
@@ -2003,7 +2051,7 @@ test('HU15: una campaña cerrada no puede reabrirse', async () => {
     },
   }));
   await assertFails(updateDoc(
-    doc(firestoreFor('campaign-admin'), 'campaigns', 'no-reopen-campaign'),
+    doc(firestoreFor('campaign-admin'), 'campanias', 'no-reopen-campaign'),
     { status: 'active', updatedAt: serverTimestamp() },
   ));
 });
@@ -2017,7 +2065,7 @@ test('HU15: no se modifican campos inmutables', async () => {
   await seedCampaign('immutable-campaign', initialCampaign());
   const campaignRef = doc(
     firestoreFor('campaign-org'),
-    'campaigns',
+    'campanias',
     'immutable-campaign',
   );
   await assertFails(updateDoc(campaignRef, {
@@ -2037,7 +2085,7 @@ test('HU15: no se modifican campos inmutables', async () => {
 test('HU15: un usuario autenticado puede leer una campaña válida', async () => {
   await seedCampaign('readable-campaign', initialCampaign());
   await assertSucceeds(getDoc(
-    doc(firestoreFor('reader'), 'campaigns', 'readable-campaign'),
+    doc(firestoreFor('reader'), 'campanias', 'readable-campaign'),
   ));
 });
 
@@ -2052,7 +2100,7 @@ test('HU15: Storage reserva la portada a la organización propietaria', async ()
   );
   await seedCampaignActor('storage-normal', 'usuario', 'Persona Regular');
 
-  const path = `campaigns/${campaignId}/${organizationId}/cover.jpg`;
+  const path = `campanias/${campaignId}/${organizationId}/cover.jpg`;
   await assertSucceeds(uploadBytes(
     ref(storageFor(organizationId), path),
     bytes,
@@ -2065,7 +2113,7 @@ test('HU15: Storage reserva la portada a la organización propietaria', async ()
   ));
   await assertFails(uploadBytes(
     ref(storageFor(organizationId),
-      `campaigns/${campaignId}/${organizationId}/cover.txt`),
+      `campanias/${campaignId}/${organizationId}/cover.txt`),
     bytes,
     { contentType: 'text/plain' },
   ));
@@ -2189,7 +2237,7 @@ test('HU16: la organización confirma el aporte e incrementa el contador en el m
     confirmedAt: serverTimestamp(),
     confirmedBy: contributionOrgId,
   });
-  batch.update(doc(db, 'campaigns', contributionCampaignId), {
+  batch.update(doc(db, 'campanias', contributionCampaignId), {
     'contributions.ropa': increment(4),
     lastContributionId: 'contribution-2',
     updatedAt: serverTimestamp(),
@@ -2200,7 +2248,7 @@ test('HU16: la organización confirma el aporte e incrementa el contador en el m
   );
   await assertSucceeds(batch.commit());
 
-  const campaign = await getDoc(doc(db, 'campaigns', contributionCampaignId));
+  const campaign = await getDoc(doc(db, 'campanias', contributionCampaignId));
   assert.equal(campaign.data().contributions.ropa, 4);
   const contribution = await getDoc(doc(db, 'aportes', 'contribution-2'));
   assert.equal(contribution.data().status, 'confirmado');
@@ -2219,13 +2267,13 @@ test('HU16: el avance puede superar la cantidad requerida', async () => {
     confirmedAt: serverTimestamp(),
     confirmedBy: contributionOrgId,
   });
-  batch.update(doc(db, 'campaigns', contributionCampaignId), {
+  batch.update(doc(db, 'campanias', contributionCampaignId), {
     'contributions.ropa': increment(12),
     lastContributionId: 'over-contribution',
     updatedAt: serverTimestamp(),
   });
   await assertSucceeds(batch.commit());
-  const campaign = await getDoc(doc(db, 'campaigns', contributionCampaignId));
+  const campaign = await getDoc(doc(db, 'campanias', contributionCampaignId));
   assert.equal(campaign.data().contributions.ropa, 12);
 });
 
@@ -2265,7 +2313,7 @@ test('HU16: la confirmación exige el incremento atómico real', async () => {
     confirmedAt: serverTimestamp(),
     confirmedBy: contributionOrgId,
   });
-  forged.update(doc(db, 'campaigns', contributionCampaignId), {
+  forged.update(doc(db, 'campanias', contributionCampaignId), {
     'contributions.ropa': increment(99),
     lastContributionId: 'contribution-4',
     updatedAt: serverTimestamp(),
@@ -2411,7 +2459,7 @@ test('HU16: la organización confirma aportes de campañas creadas antes de D08'
     confirmedAt: serverTimestamp(),
     confirmedBy: contributionOrgId,
   });
-  batch.update(doc(db, 'campaigns', contributionCampaignId), {
+  batch.update(doc(db, 'campanias', contributionCampaignId), {
     'contributions.ropa': increment(4),
     lastContributionId: 'legacy-confirm',
     updatedAt: serverTimestamp(),
@@ -2422,7 +2470,7 @@ test('HU16: la organización confirma aportes de campañas creadas antes de D08'
   );
   await assertSucceeds(batch.commit());
 
-  const campaign = await getDoc(doc(db, 'campaigns', contributionCampaignId));
+  const campaign = await getDoc(doc(db, 'campanias', contributionCampaignId));
   assert.equal(campaign.data().contributions.ropa, 4);
   const contribution = await getDoc(doc(db, 'aportes', 'legacy-confirm'));
   assert.equal(contribution.data().status, 'confirmado');

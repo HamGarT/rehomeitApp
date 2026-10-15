@@ -25,7 +25,7 @@ class ContributionRepository {
       _firestore.collection(_contributionsCollection);
 
   CollectionReference<Map<String, dynamic>> get _campaigns =>
-      _firestore.collection('campaigns');
+      _firestore.collection('campanias');
 
   CollectionReference<Map<String, dynamic>> get _notifications =>
       _firestore.collection('notificaciones');
