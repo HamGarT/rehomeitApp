@@ -2163,6 +2163,14 @@ function contributionData(overrides = {}) {
   };
 }
 
+/// Contadores del resumen de cierre que acompañan a toda confirmación (HU17-3).
+function summaryCounters({ newContributor = true } = {}) {
+  return {
+    confirmedContributions: increment(1),
+    contributorsCount: increment(newContributor ? 1 : 0),
+  };
+}
+
 function confirmationNotification(contributionId, quantity = 3) {
   return {
     recipientId: contributorId,
@@ -2241,6 +2249,7 @@ test('HU16: la organización confirma el aporte e incrementa el contador en el m
     'contributions.ropa': increment(4),
     lastContributionId: 'contribution-2',
     updatedAt: serverTimestamp(),
+    ...summaryCounters(),
   });
   batch.set(
     doc(db, 'notificaciones', 'contribution-confirmed'),
@@ -2250,6 +2259,8 @@ test('HU16: la organización confirma el aporte e incrementa el contador en el m
 
   const campaign = await getDoc(doc(db, 'campanias', contributionCampaignId));
   assert.equal(campaign.data().contributions.ropa, 4);
+  assert.equal(campaign.data().confirmedContributions, 1);
+  assert.equal(campaign.data().contributorsCount, 1);
   const contribution = await getDoc(doc(db, 'aportes', 'contribution-2'));
   assert.equal(contribution.data().status, 'confirmado');
 });
@@ -2271,6 +2282,7 @@ test('HU16: el avance puede superar la cantidad requerida', async () => {
     'contributions.ropa': increment(12),
     lastContributionId: 'over-contribution',
     updatedAt: serverTimestamp(),
+    ...summaryCounters(),
   });
   await assertSucceeds(batch.commit());
   const campaign = await getDoc(doc(db, 'campanias', contributionCampaignId));
@@ -2463,6 +2475,7 @@ test('HU16: la organización confirma aportes de campañas creadas antes de D08'
     'contributions.ropa': increment(4),
     lastContributionId: 'legacy-confirm',
     updatedAt: serverTimestamp(),
+    ...summaryCounters(),
   });
   batch.set(
     doc(db, 'notificaciones', 'legacy-confirm-notif'),
@@ -2474,6 +2487,200 @@ test('HU16: la organización confirma aportes de campañas creadas antes de D08'
   assert.equal(campaign.data().contributions.ropa, 4);
   const contribution = await getDoc(doc(db, 'aportes', 'legacy-confirm'));
   assert.equal(contribution.data().status, 'confirmado');
+});
+
+// HU17: resumen de cierre.
+
+async function seedContribution(contributionId, overrides = {}) {
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    await setDoc(
+      doc(context.firestore(), 'aportes', contributionId),
+      contributionData(overrides),
+    );
+  });
+}
+
+function confirmationBatch(db, contributionId, quantity, counters) {
+  const batch = writeBatch(db);
+  batch.update(doc(db, 'aportes', contributionId), {
+    status: 'confirmado',
+    confirmedAt: serverTimestamp(),
+    confirmedBy: contributionOrgId,
+  });
+  batch.update(doc(db, 'campanias', contributionCampaignId), {
+    'contributions.ropa': increment(quantity),
+    lastContributionId: contributionId,
+    updatedAt: serverTimestamp(),
+    ...counters,
+  });
+  return batch;
+}
+
+function summaryNotification(contributionId, overrides = {}) {
+  return {
+    recipientId: contributorId,
+    type: 'resumen_publicado',
+    message: 'La campaña Abrigo para Cajamarca cerró y su resumen ya está disponible.',
+    campaignId: contributionCampaignId,
+    contributionId,
+    actorId: contributionOrgId,
+    createdAt: serverTimestamp(),
+    read: false,
+    ...overrides,
+  };
+}
+
+test('HU17: la confirmación exige los contadores del resumen con el paso correcto', async () => {
+  await seedContributionScenario();
+  await seedContribution('summary-first', { quantity: 2 });
+  await seedContribution('summary-second', { quantity: 1 });
+  const db = firestoreFor(contributionOrgId);
+
+  // Sin contadores, o con un paso que no es el de una confirmación, falla.
+  await assertFails(confirmationBatch(db, 'summary-first', 2, {}).commit());
+  await assertFails(confirmationBatch(db, 'summary-first', 2, {
+    confirmedContributions: increment(2),
+    contributorsCount: increment(1),
+  }).commit());
+  await assertFails(confirmationBatch(db, 'summary-first', 2, {
+    confirmedContributions: increment(1),
+    contributorsCount: increment(2),
+  }).commit());
+
+  await assertSucceeds(
+    confirmationBatch(db, 'summary-first', 2, summaryCounters()).commit(),
+  );
+  // Segunda confirmación de la misma persona: el aporte suma, la persona no.
+  await assertSucceeds(
+    confirmationBatch(
+      db,
+      'summary-second',
+      1,
+      summaryCounters({ newContributor: false }),
+    ).commit(),
+  );
+  const campaign = await getDoc(doc(db, 'campanias', contributionCampaignId));
+  assert.equal(campaign.data().confirmedContributions, 2);
+  assert.equal(campaign.data().contributorsCount, 1);
+});
+
+test('HU17: la organización describe el destino solo con la campaña cerrada', async () => {
+  await seedContributionScenario();
+  await seedCampaignActor('other-org', 'organizacion', 'Otra Organización');
+  const note = {
+    destinationNote: 'La ropa se entregó a 12 familias del caserío.',
+    updatedAt: serverTimestamp(),
+  };
+  const db = firestoreFor(contributionOrgId);
+  await assertFails(updateDoc(doc(db, 'campanias', contributionCampaignId), note));
+
+  await testEnv.clearFirestore();
+  await seedContributionScenario({ closeAt: new Date(Date.now() - 60 * 1000) });
+  await seedCampaignActor('other-org', 'organizacion', 'Otra Organización');
+  await assertSucceeds(
+    updateDoc(doc(db, 'campanias', contributionCampaignId), note),
+  );
+  // Se puede corregir después, pero no junto con otro campo ni por otra organización.
+  await assertSucceeds(updateDoc(doc(db, 'campanias', contributionCampaignId), {
+    destinationNote: 'La ropa se entregó a 14 familias del caserío.',
+    updatedAt: serverTimestamp(),
+  }));
+  await assertFails(updateDoc(doc(db, 'campanias', contributionCampaignId), {
+    ...note,
+    title: 'Otro título',
+  }));
+  await assertFails(updateDoc(
+    doc(firestoreFor('other-org'), 'campanias', contributionCampaignId),
+    note,
+  ));
+
+  await testEnv.clearFirestore();
+  await seedContributionScenario({ status: 'closed' });
+  await assertSucceeds(
+    updateDoc(doc(db, 'campanias', contributionCampaignId), note),
+  );
+});
+
+test('HU17: el aviso del resumen va solo a quien tiene un aporte confirmado en una campaña cerrada', async () => {
+  await seedContributionScenario({ closeAt: new Date(Date.now() - 60 * 1000) });
+  await seedCampaignActor('summary-admin', 'administrador', 'Admin');
+  await seedCampaignActor('summary-third', 'usuario', 'Tercera Persona');
+  await seedContribution('summary-confirmed', {
+    status: 'confirmado',
+    confirmedAt: new Date(),
+    confirmedBy: contributionOrgId,
+  });
+  await seedContribution('summary-pending');
+
+  const db = firestoreFor(contributionOrgId);
+  await assertSucceeds(setDoc(
+    doc(db, 'notificaciones', 'resumen_publicado_summary-confirmed'),
+    summaryNotification('summary-confirmed'),
+  ));
+  await assertFails(setDoc(
+    doc(db, 'notificaciones', 'resumen_publicado_summary-pending'),
+    summaryNotification('summary-pending'),
+  ));
+  await assertFails(setDoc(
+    doc(firestoreFor('summary-third'), 'notificaciones', 'resumen-third'),
+    summaryNotification('summary-confirmed', { actorId: 'summary-third' }),
+  ));
+  await assertSucceeds(setDoc(
+    doc(firestoreFor('summary-admin'), 'notificaciones', 'resumen-admin'),
+    summaryNotification('summary-confirmed', { actorId: 'summary-admin' }),
+  ));
+
+  await testEnv.clearFirestore();
+  await seedContributionScenario();
+  await seedContribution('summary-active', {
+    status: 'confirmado',
+    confirmedAt: new Date(),
+    confirmedBy: contributionOrgId,
+  });
+  await assertFails(setDoc(
+    doc(db, 'notificaciones', 'resumen_publicado_summary-active'),
+    summaryNotification('summary-active'),
+  ));
+});
+
+test('HU17: la marca de avisos enviados se escribe una sola vez y solo cerrada', async () => {
+  await seedContributionScenario();
+  const mark = {
+    summaryNotifiedAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  };
+  const db = firestoreFor(contributionOrgId);
+  await assertFails(updateDoc(doc(db, 'campanias', contributionCampaignId), mark));
+
+  await testEnv.clearFirestore();
+  await seedContributionScenario({ status: 'closed' });
+  await assertSucceeds(
+    updateDoc(doc(db, 'campanias', contributionCampaignId), mark),
+  );
+  await assertFails(updateDoc(doc(db, 'campanias', contributionCampaignId), mark));
+});
+
+test('HU17: una campaña nueva nace con los contadores del resumen en cero', async () => {
+  await seedCampaignActor(
+    'campaign-org',
+    'organizacion',
+    'Organización Solidaria',
+  );
+  await assertSucceeds(setDoc(
+    doc(firestoreFor('campaign-org'), 'campanias', 'summary-zero'),
+    initialCampaign({
+      overrides: {
+        confirmedContributions: 0,
+        contributorsCount: 0,
+        destinationNote: null,
+        summaryNotifiedAt: null,
+      },
+    }),
+  ));
+  await assertFails(setDoc(
+    doc(firestoreFor('campaign-org'), 'campanias', 'summary-forged'),
+    initialCampaign({ overrides: { confirmedContributions: 3 } }),
+  ));
 });
 
 

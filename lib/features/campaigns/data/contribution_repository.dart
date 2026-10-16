@@ -106,6 +106,11 @@ class ContributionRepository {
     required Contribution contribution,
     required String organizationId,
   }) async {
+    final newContributor = !await _hasConfirmedContribution(
+      campaignId: contribution.campaignId,
+      contributorId: contribution.contributorId,
+      organizationId: organizationId,
+    );
     final batch = _firestore.batch();
     batch.update(_contributions.doc(contribution.id), {
       'status': ContributionStatus.confirmed.wireValue,
@@ -118,6 +123,10 @@ class ContributionRepository {
       ),
       'lastContributionId': contribution.id,
       'updatedAt': FieldValue.serverTimestamp(),
+      // Contadores del resumen de cierre (HU17-3). La regla solo acota el
+      // paso; saber si la persona es nueva en la campaña es tarea de aquí.
+      'confirmedContributions': FieldValue.increment(1),
+      'contributorsCount': FieldValue.increment(newContributor ? 1 : 0),
     });
     batch.set(
       _notifications.doc('aporte_confirmado_${contribution.id}'),
@@ -170,6 +179,94 @@ class ContributionRepository {
       await commitOfflineTolerant(batch);
     } on FirebaseException catch (error) {
       throw ContributionFailure(_friendlyError(error));
+    }
+  }
+
+  /// Cuatro igualdades sin `orderBy`: índices de un solo campo. El filtro por
+  /// organización hace demostrable la regla de listado. Si la consulta falla,
+  /// se da por nueva: lo habitual es que cada persona aporte una vez.
+  Future<bool> _hasConfirmedContribution({
+    required String campaignId,
+    required String contributorId,
+    required String organizationId,
+  }) async {
+    try {
+      final snapshot = await _contributions
+          .where('organizationId', isEqualTo: organizationId)
+          .where('campaignId', isEqualTo: campaignId)
+          .where('contributorId', isEqualTo: contributorId)
+          .where('status', isEqualTo: ContributionStatus.confirmed.wireValue)
+          .limit(1)
+          .get()
+          .timeout(_profileLookupTimeout);
+      return snapshot.docs.isNotEmpty;
+    } on TimeoutException {
+      return false;
+    } on FirebaseException {
+      return false;
+    }
+  }
+
+  /// Avisa a cada persona con un aporte confirmado que el resumen de cierre
+  /// está publicado (HU17-8) y deja la marca en la campaña. Una escritura
+  /// por aviso, fuera de cualquier lote grande (D16); el id determinista
+  /// evita duplicados si la ronda se interrumpe y se repite. La marca solo se
+  /// escribe cuando ningún aviso fue rechazado.
+  Future<void> notifySummaryPublished({
+    required Campaign campaign,
+    required String actorId,
+    required bool asAdmin,
+  }) async {
+    Query<Map<String, dynamic>> query = _contributions
+        .where('campaignId', isEqualTo: campaign.id)
+        .where('status', isEqualTo: ContributionStatus.confirmed.wireValue);
+    if (!asAdmin) {
+      query = query.where('organizationId', isEqualTo: actorId);
+    }
+    final QuerySnapshot<Map<String, dynamic>> snapshot;
+    try {
+      snapshot = await query.get().timeout(_profileLookupTimeout);
+    } on TimeoutException {
+      return;
+    } on FirebaseException {
+      return;
+    }
+
+    final notified = <String>{};
+    for (final doc in snapshot.docs) {
+      final contribution = Contribution.fromMap(doc.id, doc.data());
+      final recipientId = contribution.contributorId;
+      if (recipientId == actorId || !notified.add(recipientId)) continue;
+      final batch = _firestore.batch();
+      batch.set(
+        _notifications.doc('resumen_publicado_${campaign.id}_$recipientId'),
+        notificationPayload(
+          recipientId: recipientId,
+          type: 'resumen_publicado',
+          message:
+              'La campaña ${campaign.title} cerró. Ya puedes ver el resumen de lo recibido.',
+          campaignId: campaign.id,
+          contributionId: contribution.id,
+          actorId: actorId,
+        ),
+      );
+      try {
+        await commitOfflineTolerant(batch);
+      } on FirebaseException {
+        return;
+      }
+    }
+
+    final mark = _firestore.batch();
+    mark.update(_campaigns.doc(campaign.id), {
+      'summaryNotifiedAt': FieldValue.serverTimestamp(),
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+    try {
+      await commitOfflineTolerant(mark);
+    } on FirebaseException {
+      // Sin la marca, la siguiente apertura repite la ronda; los ids fijos
+      // hacen que repetirla sea inocua.
     }
   }
 

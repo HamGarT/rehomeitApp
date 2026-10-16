@@ -13,18 +13,30 @@ import 'campaign_controller.dart';
 import 'campaign_form_page.dart';
 import 'contribution_controller.dart';
 import 'widgets/campaign_progress.dart';
+import 'widgets/closure_summary_section.dart';
 import 'widgets/contribution_review.dart';
 import 'widgets/contribution_sheet.dart';
+import 'widgets/destination_note_sheet.dart';
 import 'widgets/pending_contribution_card.dart';
 
-class CampaignDetailPage extends ConsumerWidget {
+class CampaignDetailPage extends ConsumerStatefulWidget {
   const CampaignDetailPage({super.key, required this.initial});
 
   final Campaign initial;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final campaign = ref.watch(campaignProvider(initial.id)).value ?? initial;
+  ConsumerState<CampaignDetailPage> createState() => _CampaignDetailPageState();
+}
+
+class _CampaignDetailPageState extends ConsumerState<CampaignDetailPage> {
+  /// La ronda de avisos del resumen (HU17-8) se lanza una vez por apertura
+  /// de la pantalla; la marca en la campaña evita repetirla entre aperturas.
+  bool _summaryNotificationStarted = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final campaign =
+        ref.watch(campaignProvider(widget.initial.id)).value ?? widget.initial;
     final userId = ref.watch(authStateProvider).value?.uid ?? '';
     final access = userId.isEmpty
         ? null
@@ -46,6 +58,24 @@ class CampaignDetailPage extends ConsumerWidget {
         );
     final canContribute =
         !closed && userId.isNotEmpty && userId != campaign.organizationId;
+    final canEditDestination =
+        access != null &&
+        campaign.canEditDestinationNote(
+          userId: userId,
+          isOrganization: access.isOrganization,
+          now: now,
+        );
+    if (!_summaryNotificationStarted &&
+        access != null &&
+        campaign.shouldNotifySummary(
+          userId: userId,
+          isOrganization: access.isOrganization,
+          isAdmin: isAdmin,
+          now: now,
+        )) {
+      _summaryNotificationStarted = true;
+      _notifySummary(campaign, actorId: userId, asAdmin: isAdmin);
+    }
     final isOwner =
         access?.isOrganization == true && campaign.organizationId == userId;
     final pendingContributions = isOwner
@@ -195,16 +225,24 @@ class CampaignDetailPage extends ConsumerWidget {
             ),
           ),
           const SizedBox(height: 20),
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: AppColors.accent.withValues(alpha: 0.18),
-              borderRadius: BorderRadius.circular(18),
+          if (closed)
+            ClosureSummarySection(
+              summary: campaign.closureSummary(),
+              onEditDestination: canEditDestination
+                  ? () => _editDestination(context, campaign)
+                  : null,
+            )
+          else
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: AppColors.accent.withValues(alpha: 0.18),
+                borderRadius: BorderRadius.circular(18),
+              ),
+              child: const Text(
+                'Al cerrarse la campaña se publicará un resumen con lo recibido y su destino.',
+              ),
             ),
-            child: const Text(
-              'Al cerrarse la campaña se publicará un resumen con lo recibido y su destino.',
-            ),
-          ),
           if (campaign.hasPendingWrites) ...[
             const SizedBox(height: 14),
             const Text(
@@ -232,6 +270,43 @@ class CampaignDetailPage extends ConsumerWidget {
           ],
         ],
       ),
+    );
+  }
+
+  /// Ronda de fondo: cualquier fallo se reintenta en la próxima apertura
+  /// porque la marca `summaryNotifiedAt` solo se escribe si todo llegó.
+  Future<void> _notifySummary(
+    Campaign campaign, {
+    required String actorId,
+    required bool asAdmin,
+  }) async {
+    try {
+      await ref
+          .read(contributionControllerProvider.notifier)
+          .notifySummaryPublished(
+            campaign: campaign,
+            actorId: actorId,
+            asAdmin: asAdmin,
+          );
+    } catch (_) {
+      // Sin Firebase disponible (pruebas) o sin permiso: queda para después.
+    }
+  }
+
+  Future<void> _editDestination(BuildContext context, Campaign campaign) async {
+    final note = await showDestinationNoteSheet(
+      context,
+      initial: campaign.destinationNote,
+    );
+    if (note == null || !context.mounted) return;
+    final error = await ref
+        .read(campaignControllerProvider.notifier)
+        .saveDestinationNote(campaignId: campaign.id, note: note);
+    if (!context.mounted) return;
+    showAppSnackBar(
+      context,
+      error ?? 'Destino guardado.',
+      kind: error == null ? AppSnackBarKind.success : AppSnackBarKind.error,
     );
   }
 

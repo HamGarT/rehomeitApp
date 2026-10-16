@@ -214,6 +214,35 @@ class CampaignRepository {
     }
   }
 
+  /// Descripción del destino de lo recibido (HU17-6). Solo la admite la regla
+  /// con la campaña cerrada; el texto se recorta a lo que la regla acepta.
+  Future<void> saveDestinationNote({
+    required String campaignId,
+    required String note,
+  }) async {
+    final trimmed = note.trim();
+    if (trimmed.isEmpty) {
+      throw const CampaignFailure('Escribe a qué se destinó lo recibido.');
+    }
+    if (trimmed.length > destinationNoteMaxLength) {
+      throw const CampaignFailure(
+        'La descripción del destino admite hasta $destinationNoteMaxLength caracteres.',
+      );
+    }
+    final batch = _firestore.batch();
+    batch.update(_campaigns.doc(campaignId), {
+      'destinationNote': trimmed,
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+    try {
+      await commitOfflineTolerant(batch);
+    } on FirebaseException catch (error) {
+      throw CampaignFailure(_friendlyCampaignError(error));
+    }
+  }
+
+  static const destinationNoteMaxLength = 1000;
+
   Future<void> closeEarly({
     required String campaignId,
     required String closedBy,

@@ -802,7 +802,8 @@ service cloud.firestore {
           'reporte_resuelto',
           'compromiso_cancelado',
           'aporte_confirmado',
-          'aporte_rechazado'
+          'aporte_rechazado',
+          'resumen_publicado'
         ]
         && request.resource.data.message is string
         && request.resource.data.message.size() > 0
@@ -1023,7 +1024,27 @@ service cloud.firestore {
                 'aporte_rechazado'
               ]
               ? validContributionNotification()
-              : validDeliveryNotification();
+              : request.resource.data.type == 'resumen_publicado'
+                ? validSummaryNotification()
+                : validDeliveryNotification();
+    }
+
+    // Aviso del resumen de cierre (HU17-8): va a quien tiene un aporte
+    // confirmado en una campaña ya cerrada, firmado por la organización
+    // responsable o por la moderación. `get` sobre el aporte porque el aviso
+    // se escribe después del cierre, nunca en su mismo lote.
+    function validSummaryNotification() {
+      let data = request.resource.data;
+      let contribution = get(
+        /databases/$(database)/documents/aportes/$(data.contributionId)
+      ).data;
+      let campaign = campaignAfter(contribution.campaignId);
+      return contribution.status == 'confirmado'
+        && data.recipientId == contribution.contributorId
+        && data.campaignId == contribution.campaignId
+        && data.actorId == request.auth.uid
+        && campaignClosed(campaign)
+        && (campaign.organizationId == request.auth.uid || isAdmin());
     }
 
     // El aviso de aporte se ata al documento del aporte y a la campaña que lo
@@ -1210,7 +1231,11 @@ service cloud.firestore {
           'updatedAt',
           'closedAt',
           'closedBy',
-          'closureReason'
+          'closureReason',
+          'confirmedContributions',
+          'contributorsCount',
+          'destinationNote',
+          'summaryNotifiedAt'
         ])
         && campaign.organizationId == request.auth.uid
         && campaign.organizationName == user.nombreCompleto
@@ -1218,6 +1243,11 @@ service cloud.firestore {
         && campaign.status == 'active'
         && campaign.contributions is map
         && campaign.contributions.size() == 0
+        // Los campos del resumen de cierre (HU17) nacen en cero o vacíos.
+        && campaign.get('confirmedContributions', 0) == 0
+        && campaign.get('contributorsCount', 0) == 0
+        && campaign.get('destinationNote', null) == null
+        && campaign.get('summaryNotifiedAt', null) == null
         && campaign.createdAt == request.time
         && campaign.updatedAt == request.time
         && campaign.closeAt > request.time
@@ -1282,6 +1312,44 @@ service cloud.firestore {
     function validOrganizationCampaignClose() {
       return resource.data.organizationId == request.auth.uid
         && validEarlyCampaignClose('Cierre anticipado por la organización');
+    }
+
+    // Cerrada por decisión o por fecha (D02): el resumen de cierre existe
+    // desde cualquiera de las dos.
+    function campaignClosed(campaign) {
+      return campaign.status == 'closed' || request.time >= campaign.closeAt;
+    }
+
+    // La descripción del destino es lo único que la organización escribe
+    // después del cierre (HU17-6, HU17-12); las cifras quedan fijas
+    // (HU17-11) porque ninguna regla admite confirmaciones tras el cierre.
+    function validDestinationNote() {
+      let after = request.resource.data;
+      let before = resource.data;
+      return before.organizationId == request.auth.uid
+        && campaignClosed(before)
+        && after.destinationNote is string
+        && after.destinationNote.size() > 0
+        && after.destinationNote.size() <= 1000
+        && after.updatedAt == request.time
+        && after.diff(before).affectedKeys().hasOnly([
+          'destinationNote', 'updatedAt'
+        ]);
+    }
+
+    // Marca de que ya se avisó a quienes aportaron (HU17-8). Una sola vez,
+    // por la organización responsable o la moderación, con la campaña cerrada.
+    function validSummaryNotifiedMark() {
+      let after = request.resource.data;
+      let before = resource.data;
+      return before.get('summaryNotifiedAt', null) == null
+        && campaignClosed(before)
+        && after.summaryNotifiedAt == request.time
+        && after.updatedAt == request.time
+        && after.diff(before).affectedKeys().hasOnly([
+          'summaryNotifiedAt', 'updatedAt'
+        ])
+        && (before.organizationId == request.auth.uid || isAdmin());
     }
 
     function campaignAfter(campaignId) {
@@ -1442,14 +1510,27 @@ service cloud.firestore {
         && contribution.status == 'pendiente'
         && confirmed.status == 'confirmado'
         && changed.hasOnly([
-          'contributions', 'lastContributionId', 'updatedAt'
+          'contributions',
+          'lastContributionId',
+          'updatedAt',
+          'confirmedContributions',
+          'contributorsCount'
         ])
         && after.updatedAt == request.time
         && afterContributions.diff(beforeContributions)
             .affectedKeys().hasOnly([contribution.needId])
         && afterContributions[contribution.needId]
             == beforeContributions.get(contribution.needId, 0)
-              + contribution.quantity;
+              + contribution.quantity
+        // Contadores del resumen de cierre (HU17-3). El de personas sube solo
+        // si es la primera confirmación de quien aporta; la regla no puede
+        // consultarlo, así que acota el paso a 0 o 1 y la app decide.
+        && after.confirmedContributions
+            == before.get('confirmedContributions', 0) + 1
+        && after.contributorsCount in [
+          before.get('contributorsCount', 0),
+          before.get('contributorsCount', 0) + 1
+        ];
     }
 
     match /usuarios/{userId} {
@@ -1530,8 +1611,13 @@ service cloud.firestore {
           validOrganizationCampaignEdit(campaignId)
           || validOrganizationCampaignClose()
           || validContributionIncrement(campaignId)
+          || validDestinationNote()
+          || validSummaryNotifiedMark()
         ))
-        || (isAdmin() && validAdminCampaignClose())
+        || (isAdmin() && (
+          validAdminCampaignClose()
+          || validSummaryNotifiedMark()
+        ))
       );
       allow delete: if false;
     }

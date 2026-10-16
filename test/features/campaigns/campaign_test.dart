@@ -8,6 +8,10 @@ Campaign _campaign({
   CampaignStatus status = CampaignStatus.active,
   DateTime? closeAt,
   Map<String, int> contributions = const {},
+  int confirmedContributions = 0,
+  int contributorsCount = 0,
+  String? destinationNote,
+  DateTime? summaryNotifiedAt,
 }) => Campaign(
   id: 'campaign',
   organizationId: 'organization',
@@ -23,6 +27,10 @@ Campaign _campaign({
   ),
   needs: needs,
   contributions: contributions,
+  confirmedContributions: confirmedContributions,
+  contributorsCount: contributorsCount,
+  destinationNote: destinationNote,
+  summaryNotifiedAt: summaryNotifiedAt,
   status: status,
   createdAt: DateTime.utc(2027, 1, 1),
   updatedAt: DateTime.utc(2027, 1, 1),
@@ -175,6 +183,134 @@ void main() {
       _campaign(closeAt: DateTime.utc(2027, 1, 10, 13)).isClosedAt(now),
       isFalse,
     );
+  });
+
+  group('resumen de cierre (HU17)', () {
+    final now = DateTime.utc(2027, 1, 10, 12);
+    const needs = [
+      _requiredTen,
+      CampaignNeed(
+        id: 'frazadas',
+        name: 'Frazadas',
+        requiredQuantity: 5,
+        contributedQuantity: 0,
+      ),
+    ];
+
+    test('consolida requerido y aportado por necesidad y en total', () {
+      final summary = _campaign(
+        needs: needs,
+        contributions: const {'ropa': 12, 'frazadas': 2},
+        confirmedContributions: 5,
+        contributorsCount: 3,
+        destinationNote: 'Se entregó a familias del caserío.',
+      ).closureSummary();
+
+      expect(summary.needs.map((need) => need.contributedQuantity), [12, 2]);
+      expect(summary.needs.first.isCovered, isTrue);
+      expect(summary.needs.last.isCovered, isFalse);
+      expect(summary.totalRequired, 15);
+      expect(summary.totalContributed, 14);
+      expect(summary.confirmedContributions, 5);
+      expect(summary.contributorsCount, 3);
+      expect(summary.district, 'Cajamarca');
+      expect(summary.hasDestinationNote, isTrue);
+    });
+
+    test('sin descripción del destino, el resumen lo dice', () {
+      expect(
+        _campaign(destinationNote: '  ').closureSummary().hasDestinationNote,
+        isFalse,
+      );
+    });
+
+    test('los campos del resumen sobreviven a la serialización', () {
+      final restored = Campaign.fromMap(
+        'campaign',
+        _campaign(
+          confirmedContributions: 4,
+          contributorsCount: 2,
+          destinationNote: 'Destino',
+          summaryNotifiedAt: now,
+        ).toMap(),
+      );
+      expect(restored.confirmedContributions, 4);
+      expect(restored.contributorsCount, 2);
+      expect(restored.destinationNote, 'Destino');
+      // `Timestamp.toDate` devuelve hora local; se compara en UTC.
+      expect(restored.summaryNotifiedAt?.toUtc(), now);
+    });
+
+    test('un documento anterior a HU17 arranca en cero', () {
+      final legacy = _campaign().toMap()
+        ..remove('confirmedContributions')
+        ..remove('contributorsCount')
+        ..remove('destinationNote')
+        ..remove('summaryNotifiedAt');
+      final restored = Campaign.fromMap('campaign', legacy);
+      expect(restored.confirmedContributions, 0);
+      expect(restored.contributorsCount, 0);
+      expect(restored.destinationNote, isNull);
+      expect(restored.summaryNotifiedAt, isNull);
+    });
+
+    test('la dueña describe el destino solo con la campaña cerrada', () {
+      final open = _campaign(closeAt: DateTime.utc(2027, 2));
+      final closed = _campaign(closeAt: DateTime.utc(2027, 1, 1));
+      expect(
+        open.canEditDestinationNote(
+          userId: 'organization',
+          isOrganization: true,
+          now: now,
+        ),
+        isFalse,
+      );
+      expect(
+        closed.canEditDestinationNote(
+          userId: 'organization',
+          isOrganization: true,
+          now: now,
+        ),
+        isTrue,
+      );
+      expect(
+        closed.canEditDestinationNote(
+          userId: 'otra',
+          isOrganization: true,
+          now: now,
+        ),
+        isFalse,
+      );
+    });
+
+    test('el aviso del resumen se debe una vez, cerrada, a dueña o admin', () {
+      final closed = _campaign(closeAt: DateTime.utc(2027, 1, 1));
+      bool should(
+        Campaign campaign, {
+        String userId = 'organization',
+        bool isOrganization = true,
+        bool isAdmin = false,
+      }) => campaign.shouldNotifySummary(
+        userId: userId,
+        isOrganization: isOrganization,
+        isAdmin: isAdmin,
+        now: now,
+      );
+
+      expect(should(closed), isTrue);
+      expect(
+        should(closed, userId: 'admin', isOrganization: false, isAdmin: true),
+        isTrue,
+      );
+      expect(should(closed, userId: 'otra'), isFalse);
+      expect(should(_campaign(closeAt: DateTime.utc(2027, 2))), isFalse);
+      expect(
+        should(
+          _campaign(closeAt: DateTime.utc(2027, 1, 1), summaryNotifiedAt: now),
+        ),
+        isFalse,
+      );
+    });
   });
 
   group('validación del borrador', () {

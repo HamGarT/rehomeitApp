@@ -22,9 +22,16 @@ Campaign _campaign({
   DateTime? closeAt,
   int required = 10,
   int contributed = 4,
+  String organizationId = _uid,
+  String? destinationNote,
+  DateTime? summaryNotifiedAt,
 }) => Campaign(
   id: 'campaign-id',
-  organizationId: _uid,
+  organizationId: organizationId,
+  confirmedContributions: 3,
+  contributorsCount: 2,
+  destinationNote: destinationNote,
+  summaryNotifiedAt: summaryNotifiedAt,
   organizationName: 'Organización Solidaria',
   title: 'Abrigo para Cajamarca',
   description: 'Recolectamos ropa de abrigo.',
@@ -175,6 +182,80 @@ void main() {
     await tester.pumpAndSettle();
     await _scrollToEnd(tester);
     expect(find.byKey(const Key('close-campaign-button')), findsNothing);
+  });
+
+  testWidgets('una campaña cerrada muestra el resumen y la dueña puede '
+      'describir el destino', (tester) async {
+    final closed = _campaign(
+      status: CampaignStatus.closed,
+      summaryNotifiedAt: DateTime.utc(2026, 10, 1),
+    );
+    await tester.pumpWidget(
+      _host(
+        child: CampaignDetailPage(initial: closed),
+        detail: closed,
+        access: const CampaignAccess(
+          role: CampaignAccess.organizationRole,
+          organizationName: 'Organización Solidaria',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await _scrollToEnd(tester);
+
+    expect(find.text('Resumen de cierre'), findsOneWidget);
+    expect(find.text('4 de 10'), findsOneWidget);
+    expect(find.text('3 aportes confirmados de 2 personas'), findsOneWidget);
+    expect(find.text('Distrito atendido: Cajamarca'), findsOneWidget);
+    expect(find.byKey(const Key('destination-note-missing')), findsOneWidget);
+    expect(find.text('Describir el destino'), findsOneWidget);
+    // El aviso de la campaña activa ya no aplica.
+    expect(find.textContaining('se publicará un resumen'), findsNothing);
+  });
+
+  testWidgets('un tercero ve el resumen con el destino pero no lo edita', (
+    tester,
+  ) async {
+    final closed = _campaign(
+      status: CampaignStatus.closed,
+      organizationId: 'otra-organizacion',
+      destinationNote: 'Se entregó a familias del caserío.',
+      summaryNotifiedAt: DateTime.utc(2026, 10, 1),
+    );
+    await tester.pumpWidget(
+      _host(
+        child: CampaignDetailPage(initial: closed),
+        detail: closed,
+        access: const CampaignAccess(
+          role: CampaignAccess.userRole,
+          organizationName: 'Persona',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await _scrollToEnd(tester);
+
+    expect(find.text('Se entregó a familias del caserío.'), findsOneWidget);
+    expect(find.byKey(const Key('edit-destination-button')), findsNothing);
+  });
+
+  testWidgets('una campaña activa no muestra el resumen', (tester) async {
+    final active = _campaign();
+    await tester.pumpWidget(
+      _host(
+        child: CampaignDetailPage(initial: active),
+        detail: active,
+        access: const CampaignAccess(
+          role: CampaignAccess.userRole,
+          organizationName: 'Persona',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await _scrollToEnd(tester);
+
+    expect(find.text('Resumen de cierre'), findsNothing);
+    expect(find.textContaining('se publicará un resumen'), findsOneWidget);
   });
 
   testWidgets('el progreso muestra sobreaporte y limita la barra a 100 %', (

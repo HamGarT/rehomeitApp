@@ -188,8 +188,9 @@ class CampaignCard extends StatelessWidget {
               ),
               const SizedBox(height: 8),
               Text(
+                // Las cerradas llevan al resumen (HU17-9).
                 closed
-                    ? 'Campaña cerrada'
+                    ? 'Cerrada · Ver resumen'
                     : _remainingLabel(campaign.daysRemaining(effectiveNow)),
                 style: Theme.of(context).textTheme.labelLarge?.copyWith(
                   color: closed

@@ -95,6 +95,10 @@ class Campaign {
     required this.createdAt,
     required this.updatedAt,
     this.contributions = const {},
+    this.confirmedContributions = 0,
+    this.contributorsCount = 0,
+    this.destinationNote,
+    this.summaryNotifiedAt,
     this.imageUrl,
     this.imageStoragePath,
     this.closedAt,
@@ -118,6 +122,19 @@ class Campaign {
   /// Contador confirmado por necesidad (D08). `needs` conserva la definición y
   /// este mapa el avance, así dos confirmaciones simultáneas no se pisan.
   final Map<String, int> contributions;
+
+  /// Cifras del resumen de cierre (HU17-3) que un tercero no puede derivar
+  /// porque `aportes` no es de lectura pública. Suben al confirmar y quedan
+  /// fijas al cierre, porque ninguna regla admite confirmar después.
+  final int confirmedContributions;
+  final int contributorsCount;
+
+  /// Lo único que la organización escribe tras el cierre (HU17-6, HU17-12).
+  final String? destinationNote;
+
+  /// Cuándo se avisó a quienes aportaron que el resumen está publicado
+  /// (HU17-8). Nulo mientras nadie lo haya hecho.
+  final DateTime? summaryNotifiedAt;
   final CampaignStatus status;
   final DateTime createdAt;
   final DateTime updatedAt;
@@ -177,6 +194,46 @@ class Campaign {
       (isAdmin || (isOrganization && organizationId == userId)) &&
       !isClosedAt(now);
 
+  /// La descripción del destino se escribe solo cerrada y solo por la dueña
+  /// con rol vigente, como exige la regla.
+  bool canEditDestinationNote({
+    required String userId,
+    required bool isOrganization,
+    required DateTime now,
+  }) => isOrganization && organizationId == userId && isClosedAt(now);
+
+  /// Quien puede avisar del resumen (HU17-8) lo hace una vez, con la campaña
+  /// cerrada. Sin aportes confirmados no hay a quién avisar, pero igual se
+  /// marca para no volver a consultarlo.
+  bool shouldNotifySummary({
+    required String userId,
+    required bool isOrganization,
+    required bool isAdmin,
+    required DateTime now,
+  }) =>
+      summaryNotifiedAt == null &&
+      isClosedAt(now) &&
+      (isAdmin || (isOrganization && organizationId == userId));
+
+  /// Resumen de cierre derivado al consultar (D02, HU17-1 y HU17-12): nadie
+  /// lo escribe al vencer la fecha porque nadie está ejecutando nada.
+  CampaignSummary closureSummary() => CampaignSummary(
+    needs: needs
+        .map(
+          (need) => CampaignNeedSummary(
+            id: need.id,
+            name: need.name,
+            requiredQuantity: need.requiredQuantity,
+            contributedQuantity: contributedFor(need.id),
+          ),
+        )
+        .toList(growable: false),
+    confirmedContributions: confirmedContributions,
+    contributorsCount: contributorsCount,
+    district: district,
+    destinationNote: destinationNote,
+  );
+
   Map<String, Object?> toMap() => {
     'organizationId': organizationId,
     'organizationName': organizationName,
@@ -189,6 +246,12 @@ class Campaign {
     'collectionPoint': collectionPoint.toMap(),
     'needs': needs.map((need) => need.toMap()).toList(growable: false),
     'contributions': contributions,
+    'confirmedContributions': confirmedContributions,
+    'contributorsCount': contributorsCount,
+    'destinationNote': destinationNote,
+    'summaryNotifiedAt': summaryNotifiedAt == null
+        ? null
+        : Timestamp.fromDate(summaryNotifiedAt!),
     'status': status.wireValue,
     'createdAt': Timestamp.fromDate(createdAt),
     'updatedAt': Timestamp.fromDate(updatedAt),
@@ -231,12 +294,64 @@ class Campaign {
       createdAt: readFirestoreDate(map['createdAt']) ?? fallback,
       updatedAt: readFirestoreDate(map['updatedAt']) ?? fallback,
       contributions: _contributionsFromMap(map['contributions']),
+      confirmedContributions:
+          (map['confirmedContributions'] as num?)?.toInt() ?? 0,
+      contributorsCount: (map['contributorsCount'] as num?)?.toInt() ?? 0,
+      destinationNote: map['destinationNote'] as String?,
+      summaryNotifiedAt: readFirestoreDate(map['summaryNotifiedAt']),
       closedAt: readFirestoreDate(map['closedAt']),
       closedBy: map['closedBy'] as String?,
       closureReason: map['closureReason'] as String?,
       hasPendingWrites: hasPendingWrites,
     );
   }
+}
+
+class CampaignNeedSummary {
+  const CampaignNeedSummary({
+    required this.id,
+    required this.name,
+    required this.requiredQuantity,
+    required this.contributedQuantity,
+  });
+
+  final String id;
+  final String name;
+  final int requiredQuantity;
+  final int contributedQuantity;
+
+  bool get isCovered => contributedQuantity >= requiredQuantity;
+}
+
+/// Lo que se muestra al cerrar una campaña (HU17-2 a HU17-6). Solo cuenta
+/// lo confirmado (HU17-5) porque sale de contadores que solo suben al
+/// confirmar. No lleva nada de las personas destinatarias (HU17-10).
+class CampaignSummary {
+  const CampaignSummary({
+    required this.needs,
+    required this.confirmedContributions,
+    required this.contributorsCount,
+    required this.district,
+    this.destinationNote,
+  });
+
+  final List<CampaignNeedSummary> needs;
+  final int confirmedContributions;
+  final int contributorsCount;
+
+  /// Distrito de alcance de la campaña. Es el único dato de lugar del modelo;
+  /// los aportes no llevan distrito (HU17-4).
+  final String district;
+  final String? destinationNote;
+
+  int get totalRequired =>
+      needs.fold(0, (total, need) => total + need.requiredQuantity);
+
+  int get totalContributed =>
+      needs.fold(0, (total, need) => total + need.contributedQuantity);
+
+  bool get hasDestinationNote =>
+      destinationNote != null && destinationNote!.trim().isNotEmpty;
 }
 
 Map<String, int> _contributionsFromMap(Object? value) {

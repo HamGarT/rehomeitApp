@@ -49,10 +49,7 @@ class ContributionController extends Notifier<AsyncValue<void>> {
   }) => _run(
     () => ref
         .read(contributionRepositoryProvider)
-        .confirm(
-          contribution: contribution,
-          organizationId: organizationId,
-        ),
+        .confirm(contribution: contribution, organizationId: organizationId),
   );
 
   Future<String?> reject({
@@ -68,6 +65,20 @@ class ContributionController extends Notifier<AsyncValue<void>> {
           reason: reason,
         ),
   );
+
+  /// No pasa por [_run]: es una ronda de avisos de fondo (HU17-8) que no
+  /// debe bloquear los botones ni mostrar error si algo no llega.
+  Future<void> notifySummaryPublished({
+    required Campaign campaign,
+    required String actorId,
+    required bool asAdmin,
+  }) => ref
+      .read(contributionRepositoryProvider)
+      .notifySummaryPublished(
+        campaign: campaign,
+        actorId: actorId,
+        asAdmin: asAdmin,
+      );
 
   Future<String?> _run(Future<void> Function() operation) async {
     if (state.isLoading) return 'Hay otra operación en curso.';

@@ -2,7 +2,7 @@
 
 Decisiones que condicionan la implementación y que no se deducen leyendo las historias de usuario. Cada una registra el problema que resuelve y lo que implica asumirla.
 
-Última actualización: 12 de octubre de 2026.
+Última actualización: 15 de octubre de 2026.
 
 ---
 
@@ -229,3 +229,12 @@ Esta paleta reemplaza desde el 8 de octubre de 2026 a la de marrón y crema del 
 **Consecuencias.** El avance sigue siendo una sola lectura por campaña (D08), pero ahora cada punto de ese avance se puede reconstruir desde `aportes`. Solo la organización dueña de la campaña confirma sus aportes y solo el propio aportante o esa organización leen cada documento. La intención se puede registrar desde una campaña activa y no vencida; una campaña cerrada no admite ni aportes nuevos ni confirmaciones nuevas (HU16-14). Cada confirmación o rechazo deja un aviso al aportante (HU16-11, D01) que se ata al documento del aporte, de modo que no se puede fabricar sin la transición real. El modelo guarda el nombre abreviado del aportante (D07) para no exponer su nombre completo al listar los pendientes. Las dos consultas de `aportes` filtran por un solo campo de igualdad y no usan `orderBy`, igual que `watchOwnCampaigns` (HU15), así que no dependen de índices compuestos: el orden por fecha se resuelve en el cliente. La organización ve sus aportes pendientes tanto en el detalle de la campaña como en un bloque "Aportes por confirmar" de su perfil, que reúne lo pendiente de todas sus campañas.
 
 
+---
+
+## D18 – El resumen de cierre se deriva al consultar y sus cifras viven en la campaña
+
+**Problema.** HU17 pide que al cerrarse una campaña se genere y publique automáticamente un resumen (HU17-1, HU17-12), que sus cifras no cambien después (HU17-11), que sea de consulta pública (HU17-7) y que quienes aportaron reciban un aviso (HU17-8). El cierre más frecuente es por fecha, y en ese momento nadie está ejecutando nada (D02). Además, el total de aportes confirmados y el número de personas no se pueden calcular desde un tercero: `aportes` solo lo leen el aportante, la organización y la moderación (D17).
+
+**Decisión.** Nadie escribe un documento de resumen. El resumen se arma al abrir una campaña cerrada a partir de la propia campaña: el avance por necesidad sale del mapa de contadores (D08), y dos contadores nuevos, `confirmedContributions` y `contributorsCount`, se mantienen en el mismo lote de cada confirmación. La regla exige que el primero suba exactamente 1 y acota el segundo a 0 o 1, porque no puede consultar si la persona ya había aportado; esa comprobación la hace la aplicación antes de confirmar. Las cifras quedan fijas al cierre sin ninguna regla adicional: ninguna confirmación se admite en una campaña cerrada o vencida. El distrito atendido es el de alcance de la campaña, único dato de lugar del modelo. La organización dueña puede escribir y corregir `destinationNote` solo con la campaña cerrada, y es el único campo que cambia tras el cierre. El aviso `resumen_publicado` lo envía quien cierra anticipadamente o la organización la primera vez que abre su campaña ya vencida, una escritura por persona con id fijo (D16); la campaña guarda `summaryNotifiedAt` para no repetir la ronda, y la marca solo se escribe cuando ningún aviso fue rechazado. La moderación también puede enviarla.
+
+**Consecuencias.** El resumen existe desde el instante del cierre, aunque la organización no haya descrito el destino, y una lectura basta para mostrarlo. `contributorsCount` depende de una consulta del cliente al confirmar: sin red, la consulta cae a la caché y puede contar como nueva a una persona que ya aportó; es el margen que se acepta a cambio de no tener funciones de servidor. El aviso a quienes aportaron no es inmediato en un cierre por fecha: llega cuando la organización vuelve a abrir la campaña. Las campañas creadas antes de esta decisión se leen con los contadores en cero.

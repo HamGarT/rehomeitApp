@@ -80,6 +80,15 @@ class CampaignController extends Notifier<AsyncValue<void>> {
         .update(campaign: campaign, draft: draft),
   );
 
+  Future<String?> saveDestinationNote({
+    required String campaignId,
+    required String note,
+  }) => _run(
+    () => ref
+        .read(campaignRepositoryProvider)
+        .saveDestinationNote(campaignId: campaignId, note: note),
+  );
+
   Future<String?> closeEarly({
     required String campaignId,
     required String closedBy,
