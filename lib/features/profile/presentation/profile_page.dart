@@ -123,6 +123,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: ProfileStats(
                 stats: _ownStats(summary),
+                caption: _pendingConfirmationCaption(summary),
                 footer: ImpactSummary(kilograms: summary.avoidedKg),
               ),
             ),
@@ -176,6 +177,16 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
       ),
     );
   }
+
+  /// Sin pendientes no hay línea: "Entregas" y "Confirmadas" ya coinciden y
+  /// repetirlo sería ruido.
+  String? _pendingConfirmationCaption(ProfileSummary summary) =>
+      switch (summary.pendingConfirmation) {
+        0 => null,
+        1 => '1 entrega espera la confirmación de la otra parte.',
+        final count =>
+          '$count entregas esperan la confirmación de la otra parte.',
+      };
 
   List<ProfileStat> _ownStats(ProfileSummary summary) => [
     ProfileStat(
@@ -425,4 +436,3 @@ class _AppearanceSection extends ConsumerWidget {
     );
   }
 }
-

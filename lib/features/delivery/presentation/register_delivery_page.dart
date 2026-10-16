@@ -10,6 +10,7 @@ import '../../../core/constants/cajamarca_districts.dart';
 import '../../../shared/domain/publication.dart';
 import '../../../shared/widgets/app_snack_bar.dart';
 import '../../../shared/widgets/button_spinner.dart';
+import '../../../shared/widgets/image_picking.dart';
 import '../../auth/presentation/auth_controller.dart';
 import '../domain/delivery_draft.dart';
 import 'delivery_controller.dart';
@@ -53,16 +54,12 @@ class _RegisterDeliveryPageState extends ConsumerState<RegisterDeliveryPage> {
             const SizedBox(height: 8),
             _EvidencePreview(photo: _photo),
             const SizedBox(height: 10),
+            // Solo cámara (HU12-3): una foto de la galería no prueba que la
+            // entrega ocurrió.
             OutlinedButton.icon(
-              onPressed: busy ? null : () => _pick(ImageSource.camera),
+              onPressed: busy ? null : _pick,
               icon: const Icon(Icons.photo_camera_outlined),
               label: const Text('Tomar fotografía'),
-            ),
-            const SizedBox(height: 8),
-            OutlinedButton.icon(
-              onPressed: busy ? null : () => _pick(ImageSource.gallery),
-              icon: const Icon(Icons.photo_library_outlined),
-              label: const Text('Elegir de la galería'),
             ),
             const SizedBox(height: 20),
             TextField(
@@ -107,7 +104,7 @@ class _RegisterDeliveryPageState extends ConsumerState<RegisterDeliveryPage> {
     );
   }
 
-  Future<void> _pick(ImageSource source) async {
+  Future<void> _pick() async {
     final accepted = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -128,8 +125,9 @@ class _RegisterDeliveryPageState extends ConsumerState<RegisterDeliveryPage> {
       ),
     );
     if (accepted != true || !mounted) return;
-    final selected = await ImagePicker().pickImage(
-      source: source,
+    final selected = await pickImageOrExplain(
+      context,
+      source: ImageSource.camera,
       maxWidth: 1600,
       imageQuality: 85,
     );

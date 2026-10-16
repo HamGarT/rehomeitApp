@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -21,6 +22,11 @@ class PublishingRepository {
 
   final FirebaseFirestore _firestore;
   final FirebaseStorage _storage;
+
+  /// Sin red, Storage reintenta la subida hasta 10 minutos antes de fallar y
+  /// el botón giraría todo ese tiempo. Mismo corte que las entregas
+  /// (HU03-19, D03).
+  static const _uploadTimeout = Duration(seconds: 25);
 
   Future<Publication> publish({
     required PublishDraft draft,
@@ -48,12 +54,18 @@ class PublishingRepository {
           file: draft.photos[index],
         );
         uploaded.add(reference);
-        await reference.putFile(
+        final upload = reference.putFile(
           draft.photos[index],
           SettableMetadata(
             contentType: imageMimeType(draft.photos[index].path),
           ),
         );
+        try {
+          await upload.timeout(_uploadTimeout);
+        } on TimeoutException {
+          await upload.cancel();
+          rethrow;
+        }
         imageUrls.add(await reference.getDownloadURL());
       }
 
@@ -97,6 +109,12 @@ class PublishingRepository {
     } on FirebaseException catch (error) {
       await _deleteUploaded(uploaded);
       throw PublishingFailure(_friendlyFirebaseError(error));
+    } on TimeoutException {
+      await _deleteUploaded(uploaded);
+      throw const PublishingFailure(_offlineMessage);
+    } on SocketException {
+      await _deleteUploaded(uploaded);
+      throw const PublishingFailure(_offlineMessage);
     } catch (_) {
       await _deleteUploaded(uploaded);
       throw const PublishingFailure(
@@ -160,10 +178,11 @@ class PublishingFailure implements Exception {
   final String message;
 }
 
+const _offlineMessage =
+    'Se requiere conexión a internet para subir las fotografías. Tus datos se conservaron.';
+
 String _friendlyFirebaseError(FirebaseException error) {
-  if (isOfflineFirebaseError(error)) {
-    return 'Se requiere conexión a internet para subir las fotografías. Tus datos se conservaron.';
-  }
+  if (isOfflineFirebaseError(error)) return _offlineMessage;
   if (isPermissionFirebaseError(error)) {
     return 'Tu sesión no permite publicar. Vuelve a iniciar sesión.';
   }

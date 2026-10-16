@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -10,17 +12,42 @@ import 'package:rehomeitapp/core/storage/local_preferences.dart';
 import 'package:rehomeitapp/features/auth/domain/app_user.dart';
 import 'package:rehomeitapp/features/auth/presentation/auth_controller.dart';
 import 'package:rehomeitapp/features/profile/presentation/profile_page.dart';
+import 'package:rehomeitapp/features/publishing/domain/publish_draft.dart';
+import 'package:rehomeitapp/features/publishing/presentation/photos_step.dart';
+import 'package:rehomeitapp/features/publishing/presentation/publish_draft_notifier.dart';
 
 late SharedPreferences _preferences;
 
-ProviderScope _buildApp({AppUser? user}) {
+ProviderScope _buildApp({
+  AppUser? user,
+  PublishDraftNotifier Function()? draft,
+}) {
   return ProviderScope(
     overrides: [
       sharedPreferencesProvider.overrideWithValue(_preferences),
       authStateProvider.overrideWith((ref) => Stream<AppUser?>.value(user)),
+      if (draft != null) publishDraftProvider.overrideWith(draft),
     ],
     child: const RehomeitApp(),
   );
+}
+
+/// Borrador que ya tiene una fotografía, como queda tras una confirmación
+/// fallida por falta de red (HU03-19). La ruta no necesita existir: el shell
+/// solo mira si hay fotos.
+class _DraftWithPhotoNotifier extends PublishDraftNotifier {
+  @override
+  PublishDraft build() => PublishDraft(photos: [File('borrador.jpg')]);
+}
+
+Future<void> _enterHome(WidgetTester tester) async {
+  await tester.pumpAndSettle();
+  await tester.fling(find.byType(PageView), const Offset(-600, 0), 1000);
+  await tester.pumpAndSettle();
+  await tester.fling(find.byType(PageView), const Offset(-600, 0), 1000);
+  await tester.pumpAndSettle();
+  await tester.tap(find.text('Empecemos'));
+  await tester.pumpAndSettle();
 }
 
 void main() {
@@ -135,6 +162,55 @@ void main() {
               .scaffoldBackgroundColor,
       AppColorsDark.background,
     );
+  });
+
+  testWidgets('sin borrador, Publicar abre el paso de fotografías', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      _buildApp(
+        user: const AppUser(uid: 'uid-1', email: 'a@b.com'),
+      ),
+    );
+    await _enterHome(tester);
+
+    await tester.tap(find.text('Publicar'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(PhotosStep), findsOneWidget);
+    expect(find.text('Tienes una publicación sin confirmar'), findsNothing);
+  });
+
+  testWidgets('con un borrador, Publicar pregunta antes de descartarlo', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      _buildApp(
+        user: const AppUser(uid: 'uid-1', email: 'a@b.com'),
+        draft: _DraftWithPhotoNotifier.new,
+      ),
+    );
+    await _enterHome(tester);
+
+    await tester.tap(find.text('Publicar'));
+    await tester.pumpAndSettle();
+    expect(find.text('Tienes una publicación sin confirmar'), findsOneWidget);
+
+    // Cerrar sin elegir conserva el borrador (HU03-19).
+    await tester.tapAt(const Offset(5, 5));
+    await tester.pumpAndSettle();
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(RehomeitApp)),
+    );
+    expect(container.read(publishDraftProvider).photos, hasLength(1));
+    expect(find.byType(PhotosStep), findsNothing);
+
+    await tester.tap(find.text('Publicar'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Empezar de nuevo'));
+    await tester.pumpAndSettle();
+    expect(container.read(publishDraftProvider).photos, isEmpty);
+    expect(find.byType(PhotosStep), findsOneWidget);
   });
 
   testWidgets('el color de acción se invierte junto con el tema', (

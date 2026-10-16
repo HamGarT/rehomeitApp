@@ -1,4 +1,10 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Declarar CAMERA hace que image_picker pida el permiso en tiempo de
+         ejecución antes de abrir la cámara; sin la declaración abre la app de
+         cámara del sistema sin preguntar. La cámara no es obligatoria para
+         que Play no excluya dispositivos sin ella. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
     <application
         android:label="rehomeitapp"
         android:name="${applicationName}"

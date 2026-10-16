@@ -27,9 +27,19 @@ class ProfileStat {
 /// el pie evita además una segunda superficie para el impacto ambiental, que
 /// en la interfaz neutra del perfil se leería como un elemento ajeno.
 class ProfileStats extends StatelessWidget {
-  const ProfileStats({super.key, required this.stats, this.footer});
+  const ProfileStats({
+    super.key,
+    required this.stats,
+    this.caption,
+    this.footer,
+  });
 
   final List<ProfileStat> stats;
+
+  /// Línea breve bajo las cifras que matiza una de ellas, como cuántas
+  /// entregas esperan confirmación (HU13-10). Es texto y no un cuarto
+  /// contador porque HU20-3 fija tres y la fila no da para más.
+  final String? caption;
 
   /// Va bajo los contadores, separado por una línea. El perfil público no lo
   /// pasa: solo enseña contadores (HU20, criterio 18).
@@ -97,6 +107,19 @@ class ProfileStats extends StatelessWidget {
               ],
             ),
           ),
+          if (caption case final caption?) ...[
+            const SizedBox(height: 12),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 18),
+              child: Text(
+                caption,
+                key: const Key('profile-stats-caption'),
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodySmall
+                    ?.copyWith(color: palette.textSecondary, height: 1.35),
+              ),
+            ),
+          ],
           if (footer != null) ...[
             Container(
               height: 1,

@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../../app/theme.dart';
+import '../../../shared/widgets/image_picking.dart';
 import '../../../shared/widgets/image_source_sheet.dart';
 import '../../../shared/widgets/missing_fields_dialog.dart';
 import '../../../shared/widgets/step_app_bar.dart';
@@ -114,7 +115,10 @@ class _PhotosStepState extends ConsumerState<PhotosStep> {
   /// sin saber por qué no avanza.
   void _continue(PublishDraft draft) {
     if (!draft.photosCompleted) {
-      showMissingFieldsDialog(context, fields: const ['Al menos una fotografía']);
+      showMissingFieldsDialog(
+        context,
+        fields: const ['Al menos una fotografía'],
+      );
       return;
     }
     Navigator.of(context)
@@ -147,12 +151,13 @@ class _PhotosStepState extends ConsumerState<PhotosStep> {
   }
 
   Future<void> _takePhoto() async {
-    final picked = await ImagePicker().pickImage(
+    final picked = await pickImageOrExplain(
+      context,
       source: ImageSource.camera,
       maxWidth: _maxWidth,
       imageQuality: _quality,
     );
-    if (picked == null) return;
+    if (picked == null || !mounted) return;
     _addPhotos([picked]);
   }
 
@@ -160,26 +165,26 @@ class _PhotosStepState extends ConsumerState<PhotosStep> {
     final free = _freeSlots;
     if (free <= 0) return;
 
-    final picker = ImagePicker();
-
     // pickMultiImage exige un límite mayor que uno.
     if (free == 1) {
-      final picked = await picker.pickImage(
+      final picked = await pickImageOrExplain(
+        context,
         source: ImageSource.gallery,
         maxWidth: _maxWidth,
         imageQuality: _quality,
       );
-      if (picked == null) return;
+      if (picked == null || !mounted) return;
       _addPhotos([picked]);
       return;
     }
 
-    final picked = await picker.pickMultiImage(
+    final picked = await pickMultiImageOrExplain(
+      context,
       limit: free,
       maxWidth: _maxWidth,
       imageQuality: _quality,
     );
-    if (picked.isEmpty) return;
+    if (picked.isEmpty || !mounted) return;
     _addPhotos(picked);
   }
 
@@ -224,28 +229,33 @@ class _Preview extends StatelessWidget {
       child: photo == null
           ? Padding(
               padding: const EdgeInsets.symmetric(horizontal: 32),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.add_a_photo_outlined,
-                    size: 44,
-                    color: context.appColors.textSecondary,
-                  ),
-                  const SizedBox(height: 14),
-                  Text(
-                    'Agrega hasta 4 fotografías del bien',
-                    textAlign: TextAlign.center,
-                    style: Theme.of(context).textTheme.bodyMedium,
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Mientras mejor se vea, mejor se describe solo',
-                    textAlign: TextAlign.center,
-                    style: Theme.of(context).textTheme.bodySmall
-                        ?.copyWith(color: context.appColors.textSecondary),
-                  ),
-                ],
+              // En pantallas bajas el alto del recuadro no alcanza para el
+              // icono y los dos textos; encoger evita el desbordamiento.
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.add_a_photo_outlined,
+                      size: 44,
+                      color: context.appColors.textSecondary,
+                    ),
+                    const SizedBox(height: 14),
+                    Text(
+                      'Agrega hasta 4 fotografías del bien',
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Mientras mejor se vea, mejor se describe solo',
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.bodySmall
+                          ?.copyWith(color: context.appColors.textSecondary),
+                    ),
+                  ],
+                ),
               ),
             )
           : Image.file(photo!, fit: BoxFit.cover, cacheWidth: 1000),
@@ -337,4 +347,3 @@ class _EmptySlot extends StatelessWidget {
     );
   }
 }
-

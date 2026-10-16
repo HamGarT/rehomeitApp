@@ -2,7 +2,6 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:image_picker/image_picker.dart';
 
 import '../../../app/theme.dart';
 import '../../../core/constants/app_colors.dart';
@@ -11,6 +10,7 @@ import '../../../shared/domain/person_name.dart';
 import '../../../shared/widgets/app_snack_bar.dart';
 import '../../../shared/widgets/button_spinner.dart';
 import '../../../shared/widgets/choice_sheet.dart';
+import '../../../shared/widgets/image_picking.dart';
 import '../../../shared/widgets/image_source_sheet.dart';
 import '../../../shared/widgets/user_avatar.dart';
 import '../../explore/domain/public_profile.dart';
@@ -64,8 +64,9 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
 
   Future<void> _choosePhoto() async {
     final source = await showImageSourceSheet(context);
-    if (source == null) return;
-    final picked = await ImagePicker().pickImage(
+    if (source == null || !mounted) return;
+    final picked = await pickImageOrExplain(
+      context,
       source: source,
       maxWidth: _photoMaxWidth,
       imageQuality: _photoQuality,
@@ -246,17 +247,13 @@ class _EditProfilePageState extends ConsumerState<EditProfilePage> {
               Text(
                 'Los demás te verán como "${PersonName(firstNames: _firstNamesController.text.trim(), lastNames: _lastNamesController.text.trim()).short}". '
                 'Tu correo no se muestra ni se puede cambiar desde aquí.',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: palette.textSecondary,
-                  height: 1.35,
-                ),
+                style: Theme.of(context).textTheme.bodySmall
+                    ?.copyWith(color: palette.textSecondary, height: 1.35),
               ),
               const SizedBox(height: 26),
               FilledButton.icon(
                 onPressed: _saving ? null : _save,
-                icon: _saving
-                    ? const ButtonSpinner()
-                    : const Icon(Icons.check),
+                icon: _saving ? const ButtonSpinner() : const Icon(Icons.check),
                 label: const Text('Guardar cambios'),
               ),
             ],

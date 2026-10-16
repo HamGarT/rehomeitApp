@@ -38,6 +38,9 @@ void main() {
       find.textContaining('Solo se registran las iniciales y el distrito'),
       findsOneWidget,
     );
+    // HU12-3: la evidencia se captura con la cámara; no hay galería.
+    expect(find.text('Tomar fotografía'), findsOneWidget);
+    expect(find.text('Elegir de la galería'), findsNothing);
     await tester.drag(find.byType(ListView), const Offset(0, -600));
     await tester.pumpAndSettle();
     expect(find.textContaining('Iniciales del destinatario'), findsOneWidget);

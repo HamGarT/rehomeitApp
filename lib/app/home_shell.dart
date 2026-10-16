@@ -10,8 +10,11 @@ import '../features/notifications/data/notifications_repository.dart';
 import '../features/messaging/presentation/messages_page.dart';
 import '../features/delivery/data/delivery_repository.dart';
 import '../features/profile/presentation/profile_page.dart';
+import '../features/publishing/presentation/form_step.dart';
+import '../features/publishing/presentation/mode_step.dart';
 import '../features/publishing/presentation/photos_step.dart';
 import '../features/publishing/presentation/publish_draft_notifier.dart';
+import '../shared/widgets/app_dialog.dart';
 
 class HomeShell extends ConsumerStatefulWidget {
   const HomeShell({super.key});
@@ -176,11 +179,47 @@ class _HomeShellState extends ConsumerState<HomeShell>
 
   void _onDestinationSelected(int index) {
     if (index == _publishIndex) {
-      ref.read(publishDraftProvider.notifier).reset();
-      Navigator.of(context)
-          .push(MaterialPageRoute(builder: (_) => const PhotosStep()));
+      _openPublishing();
       return;
     }
     setState(() => _selectedIndex = index);
+  }
+
+  /// Un borrador con fotografías se conserva hasta que la persona decida
+  /// (HU03-19): la confirmación que falló por falta de red se reintenta desde
+  /// el paso donde quedó. Cerrar el diálogo sin elegir no toca nada.
+  Future<void> _openPublishing() async {
+    final navigator = Navigator.of(context);
+    final draft = ref.read(publishDraftProvider);
+    if (draft.photosCompleted) {
+      final resume = await showDialog<bool>(
+        context: context,
+        builder: (context) => AppDialog(
+          title: 'Tienes una publicación sin confirmar',
+          subtitle: 'Puedes continuar donde la dejaste o empezar una nueva.',
+          actions: [
+            OutlinedButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Empezar de nuevo'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Continuar'),
+            ),
+          ],
+        ),
+      );
+      if (!mounted || resume == null) return;
+      if (resume) {
+        // Los tres pasos apilados: se llega al último, donde falló la
+        // confirmación, y "atrás" recorre los anteriores.
+        navigator.push(MaterialPageRoute(builder: (_) => const PhotosStep()));
+        navigator.push(MaterialPageRoute(builder: (_) => const FormStep()));
+        navigator.push(MaterialPageRoute(builder: (_) => const ModeStep()));
+        return;
+      }
+    }
+    ref.read(publishDraftProvider.notifier).reset();
+    navigator.push(MaterialPageRoute(builder: (_) => const PhotosStep()));
   }
 }

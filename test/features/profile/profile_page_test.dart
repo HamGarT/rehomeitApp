@@ -221,6 +221,27 @@ void main() {
       expect(summary.pendingConfirmation, 1);
     });
 
+    test('una cerrada sin confirmación cuenta como registrada pero ya no '
+        'espera confirmación', () {
+      final summary = ProfileSummary.fromPublications([
+        // Vencido el primer plazo sigue confirmable (HU13-9): pendiente.
+        _pub(
+          id: 'a',
+          status: PublicationStatus.delivered,
+          deliveredAt: DateTime.now().toUtc().subtract(
+            const Duration(hours: 50),
+          ),
+        ),
+        _pub(id: 'b', status: PublicationStatus.closedWithoutConfirmation),
+        _pub(id: 'c', status: PublicationStatus.confirmed),
+      ]);
+
+      expect(summary.deliveriesRegistered, 3);
+      expect(summary.deliveriesConfirmed, 1);
+      // La cerrada quedó sin confirmar, pero nadie puede confirmarla ya.
+      expect(summary.pendingConfirmation, 1);
+    });
+
     test('lo entregado como voluntario suma a entregas, confirmadas e '
         'impacto, pero no a publicadas', () {
       final summary = ProfileSummary.fromPublications(
@@ -374,6 +395,42 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Aún no hay operaciones cerradas'), findsOneWidget);
+    });
+
+    testWidgets('las entregas por confirmar se distinguen bajo los '
+        'contadores', (tester) async {
+      await tester.pumpWidget(
+        _hostOwn([
+          _pub(id: 'a', status: PublicationStatus.confirmed),
+          _pub(
+            id: 'b',
+            status: PublicationStatus.delivered,
+            deliveredAt: DateTime.now().toUtc().subtract(
+              const Duration(hours: 2),
+            ),
+          ),
+        ]),
+      );
+      await tester.pumpAndSettle();
+
+      // HU13-10 y HU20-6: confirmadas y pendientes, cada una con su cifra.
+      expect(find.bySemanticsLabel('Entregas registradas: 2'), findsOneWidget);
+      expect(find.bySemanticsLabel('Entregas confirmadas: 1'), findsOneWidget);
+      expect(
+        find.text('1 entrega espera la confirmación de la otra parte.'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('sin entregas por confirmar no aparece la línea', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _hostOwn([_pub(id: 'a', status: PublicationStatus.confirmed)]),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('profile-stats-caption')), findsNothing);
     });
   });
 

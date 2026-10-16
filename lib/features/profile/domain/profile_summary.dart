@@ -14,6 +14,7 @@ class ProfileSummary {
     required this.publishedCount,
     required this.deliveriesRegistered,
     required this.deliveriesConfirmed,
+    required this.pendingConfirmation,
     required this.avoidedKg,
   });
 
@@ -21,6 +22,7 @@ class ProfileSummary {
     : publishedCount = 0,
       deliveriesRegistered = 0,
       deliveriesConfirmed = 0,
+      pendingConfirmation = 0,
       avoidedKg = 0;
 
   /// Publicaciones que cuentan como tales: ni anuladas ni retiradas.
@@ -39,13 +41,13 @@ class ProfileSummary {
   /// justo lo que queda pendiente de confirmar.
   final int deliveriesConfirmed;
 
+  /// Entregas que todavía esperan la confirmación de la otra parte (HU13-10,
+  /// HU20-6). No es "registradas menos confirmadas": una cerrada sin
+  /// confirmación también quedó sin confirmar, pero ya no espera nada.
+  final int pendingConfirmation;
+
   /// Kilogramos estimados de residuos evitados (HU20, criterio 8).
   final double avoidedKg;
-
-  /// Entregas que aún no tienen confirmación de la otra parte. Es la
-  /// diferencia entre lo registrado y lo confirmado, calculada aquí para que
-  /// la pantalla no tenga que restar (HU20, criterio 6).
-  int get pendingConfirmation => deliveriesRegistered - deliveriesConfirmed;
 
   /// Resumen a partir de [items], lo que la persona publicó, y [volunteered],
   /// lo ajeno que entregó como voluntario. Lo segundo suma a entregas,
@@ -67,11 +69,13 @@ class ProfileSummary {
     var published = 0;
     var registered = 0;
     var confirmed = 0;
+    var pending = 0;
     var kg = 0.0;
 
     void countDelivery(PublicationStatus status, String category) {
       if (countsAsDelivery(status)) registered++;
       if (status == PublicationStatus.confirmed) confirmed++;
+      if (awaitsConfirmation(status)) pending++;
       // Solo el ciclo cerrado suma residuos evitados (HU18, criterio 5): las
       // publicadas, comprometidas, anuladas y retiradas no cuentan.
       if (countsAsAvoidedWaste(status)) {
@@ -98,6 +102,7 @@ class ProfileSummary {
       publishedCount: published,
       deliveriesRegistered: registered,
       deliveriesConfirmed: confirmed,
+      pendingConfirmation: pending,
       avoidedKg: kg,
     );
   }
@@ -126,6 +131,12 @@ class ProfileSummary {
     PublicationStatus.confirmed => true,
     _ => false,
   };
+
+  /// Entregada o ya vencido el primer plazo, pero todavía confirmable
+  /// (HU13-9): la otra parte aún puede cerrar el ciclo.
+  static bool awaitsConfirmation(PublicationStatus status) =>
+      status == PublicationStatus.delivered ||
+      status == PublicationStatus.pendingConfirmation;
 
   static bool countsAsAvoidedWaste(PublicationStatus status) =>
       status == PublicationStatus.confirmed ||
