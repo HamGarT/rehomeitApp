@@ -93,6 +93,12 @@ class MessagingRepository {
     final reference = _firestore.collection('conversaciones').doc(id);
 
     try {
+      // Un hilo ya abierto se reabre sin red (HU09-11): `get` cae a la caché,
+      // mientras que la transacción de abajo siempre exige servidor.
+      final cached = await reference.get();
+      if (cached.exists) {
+        return Conversation.fromMap(cached.id, cached.data()!);
+      }
       return await _firestore.runTransaction((transaction) async {
         final existing = await transaction.get(reference);
         if (existing.exists) {
@@ -144,7 +150,7 @@ class MessagingRepository {
     } on MessagingFailure {
       rethrow;
     } on FirebaseException catch (error) {
-      throw MessagingFailure(_friendlyMessage(error));
+      throw MessagingFailure(_friendlyStartMessage(error));
     }
   }
 
@@ -159,21 +165,22 @@ class MessagingRepository {
     final Map<String, Object?>? requested;
     final String requestedId;
     try {
-      proposal = (await _firestore
-              .collection('propuestasIntercambio')
-              .doc(proposalId)
-              .get())
-          .data();
+      proposal =
+          (await _firestore
+                  .collection('propuestasIntercambio')
+                  .doc(proposalId)
+                  .get())
+              .data();
       requestedId = proposal?['requestedPublicationId'] as String? ?? '';
       requested = requestedId.isEmpty
           ? null
           : (await _firestore
-                  .collection('publicaciones')
-                  .doc(requestedId)
-                  .get())
-              .data();
+                    .collection('publicaciones')
+                    .doc(requestedId)
+                    .get())
+                .data();
     } on FirebaseException catch (error) {
-      throw MessagingFailure(_friendlyMessage(error));
+      throw MessagingFailure(_friendlyStartMessage(error));
     }
     if (proposal == null || requested == null) {
       throw const MessagingFailure('La publicación ya no está disponible.');
@@ -260,6 +267,15 @@ class MessagingFailure implements Exception {
   const MessagingFailure(this.message);
 
   final String message;
+}
+
+/// Abrir un hilo nuevo pasa por una transacción y no se encola: el aviso de
+/// "quedará pendiente" sería falso aquí.
+String _friendlyStartMessage(FirebaseException error) {
+  if (isOfflineFirebaseError(error)) {
+    return 'Se requiere conexión para abrir una conversación por primera vez. Las ya abiertas siguen disponibles sin red.';
+  }
+  return _friendlyMessage(error);
 }
 
 String _friendlyMessage(FirebaseException error) {
