@@ -155,7 +155,7 @@ class _HomePageState extends ConsumerState<HomePage> {
         slivers: [
           SliverAppBar(
             title: const Text(
-              'Rehomeit',
+              'ReHomeIt',
               style: TextStyle(fontWeight: FontWeight.w700, fontSize: 22),
             ),
             actions: [
