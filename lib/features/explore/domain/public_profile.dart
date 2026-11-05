@@ -5,6 +5,7 @@ class PublicProfile {
     required this.id,
     required this.shortName,
     required this.district,
+    this.isVerified = false,
     this.joinedAt,
     this.photoUrl,
   });
@@ -12,6 +13,7 @@ class PublicProfile {
   final String id;
   final String shortName;
   final String district;
+  final bool isVerified;
   final DateTime? joinedAt;
   final String? photoUrl;
 
@@ -22,6 +24,7 @@ class PublicProfile {
       id: id,
       shortName: map['nombreCorto'] as String? ?? 'Usuario de ReHomeIt',
       district: map['distrito'] as String? ?? '',
+      isVerified: map['cuentaVerificadaAt'] != null,
       joinedAt: rawDate is Timestamp ? rawDate.toDate() : null,
       photoUrl: photoUrl == null || photoUrl.isEmpty ? null : photoUrl,
     );

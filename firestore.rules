@@ -78,11 +78,13 @@ service cloud.firestore {
           'correo',
           'rol',
           'nombres',
-          'apellidos'
+          'apellidos',
+          'ultimaActividad'
         ])
         && validUserNames(user)
         && user.correo is string
-        && user.rol == 'usuario';
+        && user.rol == 'usuario'
+        && (!('ultimaActividad' in user) || user.ultimaActividad is timestamp);
     }
 
     function validInitialUserAfter(userId) {
@@ -111,11 +113,63 @@ service cloud.firestore {
           'correo',
           'rol',
           'nombres',
-          'apellidos'
+          'apellidos',
+          'ultimaActividad'
         ])
         && validUserNames(after)
         && after.correo == resource.data.correo
-        && after.rol == resource.data.rol;
+        && after.rol == resource.data.rol
+        && (
+          !('ultimaActividad' in after)
+          || after.ultimaActividad == request.time
+          || after.ultimaActividad == resource.data.get('ultimaActividad', null)
+        );
+    }
+
+    // La administración puede marcar una cuenta como revisada/verificada sin
+    // tocar los datos de identidad ni el rol.
+    function validAdminAccountVerification() {
+      let after = request.resource.data;
+      return isAdmin()
+        && after.diff(resource.data).affectedKeys().hasOnly([
+          'cuentaVerificadaAt',
+          'cuentaVerificadaPor'
+        ])
+        && after.cuentaVerificadaAt == request.time
+        && after.cuentaVerificadaPor == request.auth.uid;
+    }
+
+    // Bloqueo, retiro y reactivación. El motivo es obligatorio salvo al
+    // reactivar, y queda firmado con el administrador que hizo el cambio.
+    function validAdminAccountStatusUpdate() {
+      let after = request.resource.data;
+      return isAdmin()
+        && after.diff(resource.data).affectedKeys().hasOnly([
+          'estadoCuenta',
+          'estadoCuentaMotivo',
+          'estadoCuentaAt',
+          'estadoCuentaPor'
+        ])
+        && after.estadoCuenta in ['activa', 'bloqueada', 'retirada']
+        && after.estadoCuentaAt == request.time
+        && after.estadoCuentaPor == request.auth.uid
+        && (
+          after.estadoCuenta == 'activa'
+          || (
+            after.get('estadoCuentaMotivo', '') is string
+            && after.estadoCuentaMotivo.size() >= 3
+            && after.estadoCuentaMotivo.size() <= 300
+          )
+        );
+    }
+
+    // Aviso previo obligatorio antes de retirar una cuenta por inactividad.
+    function validAdminRetirementNotice() {
+      let after = request.resource.data;
+      return isAdmin()
+        && resource.data.get('avisoRetiroAt', null) == null
+        && after.diff(resource.data).affectedKeys().hasOnly(['avisoRetiroAt'])
+        && after.avisoRetiroAt == request.time;
     }
 
     // El dueño edita nombre corto, distrito y foto (HU20-9); la fecha de
@@ -133,7 +187,9 @@ service cloud.firestore {
           'distrito',
           'fechaIngreso',
           'contadores',
-          'fotoUrl'
+          'fotoUrl',
+          'cuentaVerificadaAt',
+          'cuentaVerificadaPor'
         ])
         && after.nombreCorto is string
         && after.nombreCorto.size() > 0
@@ -142,6 +198,10 @@ service cloud.firestore {
         && (after.distrito == '' || isCajamarcaDistrict(after.distrito))
         && after.fechaIngreso == resource.data.fechaIngreso
         && after.contadores == resource.data.contadores
+        && after.get('cuentaVerificadaAt', null)
+          == resource.data.get('cuentaVerificadaAt', null)
+        && after.get('cuentaVerificadaPor', null)
+          == resource.data.get('cuentaVerificadaPor', null)
         && (
           !('fotoUrl' in after)
           || after.fotoUrl == null
@@ -180,6 +240,21 @@ service cloud.firestore {
         && request.resource.data.contadores.donaciones == 0
         && request.resource.data.contadores.intercambios == 0
         && request.resource.data.contadores.voluntariados == 0;
+    }
+
+    function validAdminProfileVerification() {
+      let after = request.resource.data;
+      return isAdmin()
+        && after.diff(resource.data).affectedKeys().hasOnly([
+          'cuentaVerificadaAt',
+          'cuentaVerificadaPor'
+        ])
+        && after.diff(resource.data).affectedKeys().hasAll([
+          'cuentaVerificadaAt',
+          'cuentaVerificadaPor'
+        ])
+        && after.cuentaVerificadaAt == request.time
+        && after.cuentaVerificadaPor == request.auth.uid;
     }
 
     function validPublicationImages() {
@@ -1309,6 +1384,17 @@ service cloud.firestore {
       return validEarlyCampaignClose('Cierre anticipado por administración');
     }
 
+    // La verificación de campañas solo la puede registrar administración y
+    // queda firmada con el UID y la hora del servidor.
+    function validAdminCampaignVerification() {
+      let changed = request.resource.data.diff(resource.data).affectedKeys();
+      return isAdmin()
+        && changed.hasOnly(['verifiedAt', 'verifiedBy'])
+        && changed.hasAll(['verifiedAt', 'verifiedBy'])
+        && request.resource.data.verifiedAt == request.time
+        && request.resource.data.verifiedBy == request.auth.uid;
+    }
+
     function validOrganizationCampaignClose() {
       return resource.data.organizationId == request.auth.uid
         && validEarlyCampaignClose('Cierre anticipado por la organización');
@@ -1535,14 +1621,26 @@ service cloud.firestore {
 
     match /usuarios/{userId} {
       // Nombre completo y correo son privados (D07); el público va en perfiles.
-      allow read: if signedIn() && request.auth.uid == userId;
+      // La administración necesita listarlos para revisar cuentas.
+      allow read: if signedIn()
+        && (request.auth.uid == userId || isAdmin());
       allow create: if signedIn()
         && request.auth.uid == userId
         && validInitialUser();
-      // Solo el nombre es editable; el rol se asigna desde el backend (D06).
+      // El dueño edita su nombre y su última actividad; el rol se asigna desde
+      // el backend (D06). La administración gestiona el estado de la cuenta.
       allow update: if signedIn()
-        && request.auth.uid == userId
-        && validUserEdit();
+        && (
+          (request.auth.uid == userId && validUserEdit())
+          || (
+            isAdmin()
+            && (
+              validAdminAccountVerification()
+              || validAdminAccountStatusUpdate()
+              || validAdminRetirementNotice()
+            )
+          )
+        );
       allow delete: if false;
     }
 
@@ -1554,10 +1652,15 @@ service cloud.firestore {
       // Edición del dueño, o la reparación atómica de AuthRepository cuando
       // falta el documento de usuario pero ya existe el perfil.
       allow update: if signedIn()
-        && request.auth.uid == userId
         && (
-          validProfileEdit()
-          || (validInitialUserAfter(userId) && validInitialProfile())
+          (
+            request.auth.uid == userId
+            && (
+              validProfileEdit()
+              || (validInitialUserAfter(userId) && validInitialProfile())
+            )
+          )
+          || validAdminProfileVerification()
         );
       allow delete: if false;
     }
@@ -1615,7 +1718,8 @@ service cloud.firestore {
           || validSummaryNotifiedMark()
         ))
         || (isAdmin() && (
-          validAdminCampaignClose()
+          validAdminCampaignVerification()
+          || validAdminCampaignClose()
           || validSummaryNotifiedMark()
         ))
       );

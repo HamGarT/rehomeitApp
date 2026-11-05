@@ -34,8 +34,18 @@ class AuthRepository {
   Stream<AppUser?> authStateChanges() async* {
     var restoredSession = true;
     await for (final user in _auth.authStateChanges()) {
-      if (restoredSession && user != null) {
-        unawaited(_ensureUserDocuments(user));
+      if (user != null) {
+        final denial = await _accountDenial(user);
+        if (denial != null) {
+          await _auth.signOut();
+          restoredSession = false;
+          yield null;
+          continue;
+        }
+        if (restoredSession) {
+          unawaited(_ensureUserDocuments(user));
+        }
+        unawaited(_touchActivity(user));
       }
       restoredSession = false;
       yield _fromFirebaseOrNull(user);
@@ -52,7 +62,13 @@ class AuthRepository {
         password: password,
       );
       final user = credential.user!;
+      final denial = await _accountDenial(user);
+      if (denial != null) {
+        await signOut();
+        throw AuthFailure(denial);
+      }
       await _ensureUserDocuments(user);
+      unawaited(_touchActivity(user));
       return AppUser.fromFirebase(user);
     } on FirebaseAuthException catch (error) {
       throw AuthFailure(friendlyAuthError(error));
@@ -98,9 +114,15 @@ class AuthRepository {
       final result = await _auth.signInWithCredential(credential);
       final user = result.user!;
 
+      final denial = await _accountDenial(user);
+      if (denial != null) {
+        await signOut();
+        throw AuthFailure(denial);
+      }
       // Primer acceso con Google: crea los documentos del usuario (D07).
       // Si el correo ya existe, la sesión se inicia sobre la cuenta existente.
       await _ensureUserDocuments(user);
+      unawaited(_touchActivity(user));
       return AppUser.fromFirebase(user);
     } on AuthFailure {
       rethrow;
@@ -144,6 +166,7 @@ class AuthRepository {
       ...names.toUserFields(),
       'correo': user.email ?? '',
       'rol': 'usuario',
+      'ultimaActividad': FieldValue.serverTimestamp(),
     });
     batch.set(_firestore.collection('perfiles').doc(user.uid), {
       'nombreCorto': names.short,
@@ -152,6 +175,39 @@ class AuthRepository {
       'contadores': {'donaciones': 0, 'intercambios': 0, 'voluntariados': 0},
     });
     await commitOfflineTolerant(batch);
+  }
+
+  /// Devuelve el mensaje con el que se debe impedir la sesión, o `null` si la
+  /// cuenta está activa. Un fallo de lectura no bloquea el acceso: el estado
+  /// volverá a comprobarse al iniciar sesión o al reabrir la app.
+  Future<String?> _accountDenial(User user) async {
+    try {
+      final doc = await _firestore
+          .collection('usuarios')
+          .doc(user.uid)
+          .get();
+      final data = doc.data();
+      final status = data?['estadoCuenta'] as String?;
+      if (status != 'bloqueada' && status != 'retirada') return null;
+      final reason = (data?['estadoCuentaMotivo'] as String?)?.trim();
+      final action = status == 'bloqueada' ? 'bloqueada' : 'retirada';
+      if (reason == null || reason.isEmpty) {
+        return 'Tu cuenta fue $action. Contacta a administración para más información.';
+      }
+      return 'Tu cuenta fue $action. Motivo: $reason';
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Mantiene una referencia para que administración pueda detectar cuentas
+  /// inactivas. Se ignora cualquier fallo: no debe impedir el uso de la app.
+  Future<void> _touchActivity(User user) async {
+    try {
+      await _firestore.collection('usuarios').doc(user.uid).update({
+        'ultimaActividad': FieldValue.serverTimestamp(),
+      });
+    } catch (_) {}
   }
 
   /// Garantiza que existan los documentos del usuario, p. ej. al iniciar sesión

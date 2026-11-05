@@ -10,6 +10,7 @@ import '../../../shared/widgets/app_dialog.dart';
 import '../../../shared/widgets/app_snack_bar.dart';
 import '../../../shared/widgets/button_spinner.dart';
 import '../../../shared/widgets/mascot.dart';
+import '../../admin/presentation/admin_page.dart';
 import '../../auth/data/auth_exception.dart';
 import '../../auth/presentation/auth_controller.dart';
 import '../../campaigns/domain/contribution.dart';
@@ -114,6 +115,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
               isOwn: true,
               email: user?.email ?? '',
               photoUrl: profile.value?.photoUrl,
+              isVerified: profile.value?.isVerified ?? false,
               onEdit: () => _edit(userId),
             ),
           ),
@@ -132,6 +134,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
           ..._commitmentSlivers(userId),
           ..._contributionSlivers(userId),
           ..._pendingContributionsSlivers(userId),
+          SliverToBoxAdapter(child: _AdminSection(userId: userId)),
           SliverToBoxAdapter(child: _ModerationSection(userId: userId)),
           const SliverToBoxAdapter(child: _AppearanceSection()),
           const SliverToBoxAdapter(
@@ -328,6 +331,42 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
 String _fullName(String? displayName) {
   final name = displayName?.trim() ?? '';
   return name.isEmpty ? 'Usuario' : name;
+}
+
+/// Entrada al módulo de administración de cuentas y verificación de campañas.
+/// Solo existe para el rol de administrador; para el resto no deja ni un hueco.
+class _AdminSection extends ConsumerWidget {
+  const _AdminSection({required this.userId});
+
+  final String userId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isAdmin = ref.watch(isAdminProvider(userId)).value ?? false;
+    if (!isAdmin) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const ProfileSectionHeader(title: 'Administración'),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          child: OutlinedButton.icon(
+            onPressed: () => pushUnique(
+              context,
+              name: AppRoutes.admin,
+              builder: (_) => const AdminPage(),
+            ),
+            style: OutlinedButton.styleFrom(
+              minimumSize: const Size.fromHeight(52),
+            ),
+            icon: const Icon(Icons.admin_panel_settings_outlined),
+            label: const Text('Cuentas y campañas'),
+          ),
+        ),
+      ],
+    );
+  }
 }
 
 /// Acceso a la consola de moderación (HU19-8). Solo existe para el rol de

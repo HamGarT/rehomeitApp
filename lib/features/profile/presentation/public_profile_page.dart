@@ -70,6 +70,7 @@ class PublicProfilePage extends ConsumerWidget {
                 joinedAt: profile.value?.joinedAt,
                 isOwn: false,
                 photoUrl: profile.value?.photoUrl,
+                isVerified: profile.value?.isVerified ?? false,
               ),
             ),
             const SliverToBoxAdapter(child: SizedBox(height: 16)),

@@ -11,6 +11,7 @@ import '../../../shared/widgets/app_snack_bar.dart';
 import '../../../shared/widgets/button_spinner.dart';
 import '../../../shared/widgets/publication_image.dart';
 import '../../../shared/widgets/user_avatar.dart';
+import '../../../shared/widgets/verified_name.dart';
 import '../../auth/presentation/auth_controller.dart';
 import '../../exchange/presentation/exchange_activity_page.dart';
 import '../../exchange/presentation/exchange_controller.dart';
@@ -274,10 +275,11 @@ class _AuthorRow extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      shortName.isEmpty ? 'Usuario de ReHomeIt' : shortName,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                    VerifiedName(
+                      name: shortName.isEmpty
+                          ? 'Usuario de ReHomeIt'
+                          : shortName,
+                      isVerified: owner?.isVerified ?? false,
                       style: Theme.of(context).textTheme.titleSmall,
                     ),
                     if (district.isNotEmpty)

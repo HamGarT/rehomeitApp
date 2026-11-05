@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../../core/constants/app_colors.dart';
 import '../../../../shared/widgets/user_avatar.dart';
+import '../../../../shared/widgets/verified_name.dart';
 
 /// Cabecera de perfil: quién es la persona, de dónde es y desde cuándo está.
 ///
@@ -23,6 +24,7 @@ class ProfileHeader extends StatelessWidget {
     this.email,
     this.photoUrl,
     this.onEdit,
+    this.isVerified = false,
   });
 
   final String name;
@@ -41,6 +43,7 @@ class ProfileHeader extends StatelessWidget {
 
   /// Abre la edición del perfil (HU20-9). Solo el perfil propio lo pasa.
   final VoidCallback? onEdit;
+  final bool isVerified;
 
   @override
   Widget build(BuildContext context) {
@@ -74,10 +77,10 @@ class ProfileHeader extends StatelessWidget {
               ),
               const SizedBox(width: 16),
               Expanded(
-                child: Text(
-                  name,
+                child: VerifiedName(
+                  name: name,
+                  isVerified: isVerified,
                   maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
                   style: texts.titleLarge?.copyWith(
                     color: Colors.black,
                     fontWeight: FontWeight.w700,

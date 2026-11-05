@@ -13,6 +13,7 @@ abstract final class AppRoutes {
   static String campaign(String id) => 'campaign/$id';
   static const exchanges = 'exchanges';
   static const moderation = 'moderation';
+  static const admin = 'admin';
 }
 
 /// Lleva la cuenta de los nombres de ruta abiertos. Hay que registrarlo en

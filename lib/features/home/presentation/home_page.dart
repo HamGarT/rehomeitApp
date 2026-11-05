@@ -7,6 +7,7 @@ import '../../../core/navigation/app_routes.dart';
 import '../../../core/utils/date_format.dart';
 import '../../../shared/domain/publication.dart';
 import '../../../shared/widgets/user_avatar.dart';
+import '../../../shared/widgets/verified_name.dart';
 import '../../../shared/widgets/mascot.dart';
 import '../../../shared/widgets/publication_mode_badge.dart';
 import '../../auth/presentation/auth_controller.dart';
@@ -474,10 +475,9 @@ class _PostHeader extends ConsumerWidget {
                   ),
                   const SizedBox(width: 10),
                   Expanded(
-                    child: Text(
-                      isOwn ? 'Tú' : _authorName(profile),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                    child: VerifiedName(
+                      name: isOwn ? 'Tú' : _authorName(profile),
+                      isVerified: profile.value?.isVerified ?? false,
                       style: Theme.of(context).textTheme.titleSmall
                           ?.copyWith(fontWeight: FontWeight.w700),
                     ),

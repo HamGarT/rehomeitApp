@@ -104,6 +104,8 @@ class Campaign {
     this.closedAt,
     this.closedBy,
     this.closureReason,
+    this.verifiedAt,
+    this.verifiedBy,
     this.hasPendingWrites = false,
   });
 
@@ -141,7 +143,11 @@ class Campaign {
   final DateTime? closedAt;
   final String? closedBy;
   final String? closureReason;
+  final DateTime? verifiedAt;
+  final String? verifiedBy;
   final bool hasPendingWrites;
+
+  bool get isVerified => verifiedAt != null;
 
   /// Avance confirmado de una necesidad. Recurre al valor almacenado en la
   /// necesidad cuando el mapa no lo trae, para documentos anteriores a D08.
@@ -302,6 +308,8 @@ class Campaign {
       closedAt: readFirestoreDate(map['closedAt']),
       closedBy: map['closedBy'] as String?,
       closureReason: map['closureReason'] as String?,
+      verifiedAt: readFirestoreDate(map['verifiedAt']),
+      verifiedBy: map['verifiedBy'] as String?,
       hasPendingWrites: hasPendingWrites,
     );
   }
