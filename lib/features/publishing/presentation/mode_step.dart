@@ -117,21 +117,27 @@ class ModeStep extends ConsumerWidget {
       return;
     }
 
-    final error = await ref
+    final outcome = await ref
         .read(publishControllerProvider.notifier)
         .publish(draft: draft, authorId: user.uid);
     if (!context.mounted) return;
-    if (error != null) {
+    if (outcome.error case final error?) {
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
         ..showSnackBar(SnackBar(content: Text(error)));
       return;
     }
+    final result = outcome.result;
+    if (result == null) return;
 
     ref.read(publishDraftProvider.notifier).reset();
     // Se descartan los tres pasos y queda solo la celebración sobre Inicio.
     Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(builder: (_) => const PublishSuccessPage()),
+      MaterialPageRoute(
+        builder: (_) => PublishSuccessPage(
+          pending: result == PublishSubmissionResult.pending,
+        ),
+      ),
       (route) => route.isFirst,
     );
   }

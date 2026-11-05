@@ -10,6 +10,7 @@ import '../features/notifications/data/notifications_repository.dart';
 import '../features/messaging/presentation/messages_page.dart';
 import '../features/delivery/data/delivery_repository.dart';
 import '../features/profile/presentation/profile_page.dart';
+import '../features/publishing/data/publishing_repository.dart';
 import '../features/publishing/presentation/form_step.dart';
 import '../features/publishing/presentation/mode_step.dart';
 import '../features/publishing/presentation/photos_step.dart';
@@ -34,8 +35,9 @@ class _HomeShellState extends ConsumerState<HomeShell>
   int _selectedIndex = 0;
   final Set<String> _displayedNotifications = {};
   Timer? _pendingSyncTimer;
-  bool _syncingPendingDelivery = false;
+  bool _syncingPendingOperations = false;
   bool _pendingDeliveryNoticeShown = false;
+  bool _pendingPublicationNoticeShown = false;
 
   static const _sections = <({String title, String pending})>[
     (title: 'Inicio', pending: ''),
@@ -49,10 +51,12 @@ class _HomeShellState extends ConsumerState<HomeShell>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    WidgetsBinding.instance.addPostFrameCallback((_) => _syncPendingDelivery());
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => _syncPendingOperations(),
+    );
     _pendingSyncTimer = Timer.periodic(
       const Duration(minutes: 2),
-      (_) => _syncPendingDelivery(),
+      (_) => _syncPendingOperations(),
     );
   }
 
@@ -65,7 +69,7 @@ class _HomeShellState extends ConsumerState<HomeShell>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) _syncPendingDelivery();
+    if (state == AppLifecycleState.resumed) _syncPendingOperations();
   }
 
   @override
@@ -138,42 +142,63 @@ class _HomeShellState extends ConsumerState<HomeShell>
     );
   }
 
-  Future<void> _syncPendingDelivery() async {
-    if (_syncingPendingDelivery) return;
+  /// Reintenta las colas en disco: entregas y publicaciones. Cada una avisa
+  /// lo que logró y, una vez por sesión, lo que sigue esperando red.
+  Future<void> _syncPendingOperations() async {
+    if (_syncingPendingOperations) return;
     final userId = ref.read(authStateProvider).value?.uid;
     if (userId == null) return;
-    _syncingPendingDelivery = true;
+    _syncingPendingOperations = true;
     try {
-      final repository = ref.read(deliveryRepositoryProvider);
-      final count = await repository.synchronizePending(userId);
-      final remaining = await repository.pendingCount(userId);
-      if (count > 0 && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              count == 1
-                  ? 'La entrega pendiente se sincronizó correctamente.'
-                  : 'Se sincronizaron $count entregas pendientes.',
-            ),
-          ),
-        );
-      }
-      if (remaining > 0 && !_pendingDeliveryNoticeShown && mounted) {
-        _pendingDeliveryNoticeShown = true;
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Tienes una entrega pendiente de sincronización. Conservaremos sus datos y fotografía en este dispositivo.',
-            ),
-          ),
-        );
-      } else if (remaining == 0) {
-        _pendingDeliveryNoticeShown = false;
-      }
+      final deliveries = ref.read(deliveryRepositoryProvider);
+      await _reportSync(
+        synchronized: await deliveries.synchronizePending(userId),
+        remaining: await deliveries.pendingCount(userId),
+        noticeShown: _pendingDeliveryNoticeShown,
+        onNoticeShown: (shown) => _pendingDeliveryNoticeShown = shown,
+        synchronizedMessage: (count) => count == 1
+            ? 'La entrega pendiente se sincronizó correctamente.'
+            : 'Se sincronizaron $count entregas pendientes.',
+        pendingMessage: 'Tienes una entrega pendiente de sincronización. Conservaremos sus datos y fotografía en este dispositivo.',
+      );
+      final publications = ref.read(publishingRepositoryProvider);
+      await _reportSync(
+        synchronized: await publications.synchronizePending(userId),
+        remaining: await publications.pendingCount(userId),
+        noticeShown: _pendingPublicationNoticeShown,
+        onNoticeShown: (shown) => _pendingPublicationNoticeShown = shown,
+        synchronizedMessage: (count) => count == 1
+            ? 'Tu publicación pendiente ya está en Explorar.'
+            : 'Tus $count publicaciones pendientes ya están en Explorar.',
+        pendingMessage: 'Tienes una publicación pendiente. Conservaremos sus datos y fotografías en este dispositivo y se publicará al reconectar.',
+      );
     } catch (_) {
       // La operación permanece en disco para el siguiente reintento.
     } finally {
-      _syncingPendingDelivery = false;
+      _syncingPendingOperations = false;
+    }
+  }
+
+  Future<void> _reportSync({
+    required int synchronized,
+    required int remaining,
+    required bool noticeShown,
+    required ValueChanged<bool> onNoticeShown,
+    required String Function(int count) synchronizedMessage,
+    required String pendingMessage,
+  }) async {
+    if (!mounted) return;
+    if (synchronized > 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(synchronizedMessage(synchronized))),
+      );
+    }
+    if (remaining > 0 && !noticeShown) {
+      onNoticeShown(true);
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(pendingMessage)));
+    } else if (remaining == 0) {
+      onNoticeShown(false);
     }
   }
 

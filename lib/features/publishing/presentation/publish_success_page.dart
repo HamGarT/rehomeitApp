@@ -10,7 +10,11 @@ import 'publish_draft_notifier.dart';
 /// Cierre del flujo de publicación. Un momento de celebración en lugar de un
 /// aviso pasajero: es cuando la persona acaba de dar algo.
 class PublishSuccessPage extends ConsumerWidget {
-  const PublishSuccessPage({super.key});
+  const PublishSuccessPage({super.key, this.pending = false});
+
+  /// Sin red la publicación quedó guardada en el teléfono y se enviará sola;
+  /// la celebración es la misma, el texto dice la verdad.
+  final bool pending;
 
   static const _entrance = Duration(milliseconds: 700);
 
@@ -46,7 +50,9 @@ class PublishSuccessPage extends ConsumerWidget {
               ),
               const SizedBox(height: 8),
               Text(
-                'Tu bien ya está publicado y aparece en Explorar para quien lo necesite.',
+                pending
+                    ? 'Guardamos tu bien en este teléfono. Se publicará solo en cuanto haya conexión.'
+                    : 'Tu bien ya está publicado y aparece en Explorar para quien lo necesite.',
                 textAlign: TextAlign.center,
                 style: texts.bodyLarge?.copyWith(
                   fontSize: 17,

@@ -6,29 +6,40 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/firebase/firebase_errors.dart';
-import '../../../core/utils/image_mime_type.dart';
+import '../../../core/firebase/firestore_commit.dart';
 import '../../../shared/domain/publication.dart';
 import '../domain/publish_draft.dart';
+import 'pending_publication_store.dart';
 
 final publishingRepositoryProvider = Provider<PublishingRepository>((ref) {
   return PublishingRepository(
     FirebaseFirestore.instance,
     FirebaseStorage.instance,
+    PendingPublicationStore(),
   );
 });
 
+enum PublishSubmissionResult { synchronized, pending }
+
 class PublishingRepository {
-  PublishingRepository(this._firestore, this._storage);
+  PublishingRepository(this._firestore, this._storage, this._pendingStore);
 
   final FirebaseFirestore _firestore;
   final FirebaseStorage _storage;
+  final PendingPublicationStore _pendingStore;
 
   /// Sin red, Storage reintenta la subida hasta 10 minutos antes de fallar y
   /// el botón giraría todo ese tiempo. Mismo corte que las entregas
   /// (HU03-19, D03).
   static const _uploadTimeout = Duration(seconds: 25);
 
-  Future<Publication> publish({
+  /// Consultar metadatos o la URL de descarga reintenta hasta 2 minutos sin
+  /// red; un corte corto deja la publicación pendiente en vez de bloquear.
+  static const _storageLookupTimeout = Duration(seconds: 8);
+
+  /// Guarda la publicación en el dispositivo y la sube si hay red. Si no la
+  /// hay, queda pendiente y `synchronizePending` la termina al reconectar.
+  Future<PublishSubmissionResult> publish({
     required PublishDraft draft,
     required String authorId,
   }) async {
@@ -41,24 +52,74 @@ class PublishingRepository {
       );
     }
 
-    final document = _firestore.collection('publicaciones').doc();
-    final uploaded = <Reference>[];
-
+    final pending = await _pendingStore.save(
+      publicationId: _firestore.collection('publicaciones').doc().id,
+      authorId: authorId,
+      draft: draft,
+    );
     try {
-      final imageUrls = <String>[];
-      for (var index = 0; index < draft.photos.length; index++) {
-        final reference = _imageReference(
-          authorId: authorId,
-          publicationId: document.id,
-          index: index,
-          file: draft.photos[index],
-        );
-        uploaded.add(reference);
+      await _synchronize(pending);
+      return PublishSubmissionResult.synchronized;
+    } on FirebaseException catch (error) {
+      if (isOfflineFirebaseError(error)) return PublishSubmissionResult.pending;
+      await _discard(pending);
+      throw PublishingFailure(_friendlyFirebaseError(error));
+    } on TimeoutException {
+      return PublishSubmissionResult.pending;
+    } on SocketException {
+      return PublishSubmissionResult.pending;
+    } on PublishingFailure {
+      await _discard(pending);
+      rethrow;
+    } catch (_) {
+      await _discard(pending);
+      throw const PublishingFailure(
+        'No se pudo registrar la publicación. Inténtalo nuevamente.',
+      );
+    }
+  }
+
+  Future<int> synchronizePending(String authorId) async {
+    final pending = await _pendingStore.readAll(authorId: authorId);
+    var synchronized = 0;
+    for (final operation in pending) {
+      try {
+        await _synchronize(operation);
+        synchronized++;
+      } on FirebaseException catch (error) {
+        // Un rechazo de reglas no se arregla reintentando; la pendiente se
+        // descarta para que no vuelva en cada arranque.
+        if (!isOfflineFirebaseError(error)) await _discard(operation);
+      } on PublishingFailure {
+        await _discard(operation);
+      } catch (_) {
+        // Sin red o con corte: se conserva para el siguiente intento.
+      }
+    }
+    return synchronized;
+  }
+
+  Future<int> pendingCount(String authorId) async {
+    return (await _pendingStore.readAll(authorId: authorId)).length;
+  }
+
+  /// Idempotente: cada foto se sube solo si no está en Storage y el
+  /// documento solo se escribe si no existe. El id fijo de la pendiente es
+  /// lo que hace que repetir la pasada no duplique nada.
+  Future<void> _synchronize(PendingPublication pending) async {
+    final imageUrls = <String>[];
+    for (final photo in pending.photos) {
+      final reference = _imageReference(pending, photo);
+      if (!await _exists(reference)) {
+        final file = File(photo.localPath);
+        if (!await file.exists()) {
+          throw const PublishingFailure(
+            'Las fotografías de la publicación pendiente ya no están en el dispositivo.',
+          );
+        }
         final upload = reference.putFile(
-          draft.photos[index],
-          SettableMetadata(
-            contentType: imageMimeType(draft.photos[index].path),
-          ),
+          file,
+          SettableMetadata(contentType: photo.contentType),
         );
         try {
           await upload.timeout(_uploadTimeout);
@@ -66,61 +127,42 @@ class PublishingRepository {
           await upload.cancel();
           rethrow;
         }
-        imageUrls.add(await reference.getDownloadURL());
       }
-
-      final publication = Publication(
-        id: document.id,
-        authorId: authorId,
-        title: draft.title.trim(),
-        category: draft.category!,
-        condition: draft.condition!,
-        description: draft.description.trim(),
-        details: draft.details
-            .map(
-              (detail) => ItemDetail(
-                name: detail.name.trim(),
-                value: detail.value.trim(),
-              ),
-            )
-            .where(
-              (detail) => detail.name.isNotEmpty && detail.value.isNotEmpty,
-            )
-            .toList(growable: false),
-        district: draft.district!,
-        mode: draft.mode!,
-        deliveryType: draft.mode == PublicationMode.donation
-            ? draft.deliveryMethod
-            : null,
-        status: PublicationStatus.published,
-        images: imageUrls,
-        publishedAt: DateTime.now().toUtc(),
-        statusDates: {PublicationStatus.published: DateTime.now().toUtc()},
-      );
-
-      await document.set({
-        ...publication.toMap(),
-        'publishedAt': FieldValue.serverTimestamp(),
-        'statusDates': {
-          PublicationStatus.published.wireValue: FieldValue.serverTimestamp(),
-        },
-      });
-      return publication;
-    } on FirebaseException catch (error) {
-      await _deleteUploaded(uploaded);
-      throw PublishingFailure(_friendlyFirebaseError(error));
-    } on TimeoutException {
-      await _deleteUploaded(uploaded);
-      throw const PublishingFailure(_offlineMessage);
-    } on SocketException {
-      await _deleteUploaded(uploaded);
-      throw const PublishingFailure(_offlineMessage);
-    } catch (_) {
-      await _deleteUploaded(uploaded);
-      throw const PublishingFailure(
-        'No se pudo registrar la publicación. Inténtalo nuevamente.',
+      imageUrls.add(
+        await reference.getDownloadURL().timeout(_storageLookupTimeout),
       );
     }
+
+    final document = _firestore
+        .collection('publicaciones')
+        .doc(pending.publicationId);
+    // Si la escritura anterior se encoló y expiró el corte, aquí aparece
+    // desde la caché y la pendiente se descarta sin escribir de nuevo.
+    final snapshot = await document.get().timeout(firestoreCommitTimeout);
+    if (snapshot.exists) {
+      await _pendingStore.remove(pending);
+      return;
+    }
+    await document
+        .set({
+          'authorId': pending.authorId,
+          'title': pending.title,
+          'category': pending.category,
+          'condition': pending.condition,
+          'description': pending.description,
+          'details': pending.details.map((detail) => detail.toMap()).toList(),
+          'district': pending.district,
+          'mode': pending.mode.wireValue,
+          'deliveryType': pending.deliveryType?.wireValue,
+          'status': PublicationStatus.published.wireValue,
+          'images': imageUrls,
+          'publishedAt': FieldValue.serverTimestamp(),
+          'statusDates': {
+            PublicationStatus.published.wireValue: FieldValue.serverTimestamp(),
+          },
+        })
+        .timeout(firestoreCommitTimeout);
+    await _pendingStore.remove(pending);
   }
 
   /// Anula una publicación propia (HU03-18). La regla de Firestore solo
@@ -141,34 +183,33 @@ class PublishingRepository {
     }
   }
 
-  Reference _imageReference({
-    required String authorId,
-    required String publicationId,
-    required int index,
-    required File file,
-  }) {
-    final safeExtension = _imageExtension(file.path);
+  Reference _imageReference(PendingPublication pending, PendingPhoto photo) {
     return _storage.ref(
-      'publicaciones/$authorId/$publicationId/foto_$index.$safeExtension',
+      'publicaciones/${pending.authorId}/${pending.publicationId}/foto_${photo.index}.${photo.extension}',
     );
   }
 
-  Future<void> _deleteUploaded(List<Reference> references) async {
-    for (final reference in references) {
+  Future<bool> _exists(Reference reference) async {
+    try {
+      await reference.getMetadata().timeout(_storageLookupTimeout);
+      return true;
+    } on FirebaseException catch (error) {
+      if (error.code == 'object-not-found') return false;
+      rethrow;
+    }
+  }
+
+  /// Fallo definitivo: se quita la pendiente del disco y se limpian las fotos
+  /// que alcanzaron a subir, para no dejar archivos sin publicación.
+  Future<void> _discard(PendingPublication pending) async {
+    await _pendingStore.remove(pending);
+    for (final photo in pending.photos) {
       try {
-        await reference.delete();
+        await _imageReference(pending, photo).delete();
       } catch (_) {
         // Limpieza de mejor esfuerzo; nunca oculta el error original.
       }
     }
-  }
-
-  String _imageExtension(String path) {
-    final extension = path.split('.').last.toLowerCase();
-    return switch (extension) {
-      'jpg' || 'jpeg' || 'png' || 'webp' || 'heic' || 'heif' => extension,
-      _ => 'jpg',
-    };
   }
 }
 
@@ -178,11 +219,7 @@ class PublishingFailure implements Exception {
   final String message;
 }
 
-const _offlineMessage =
-    'Se requiere conexión a internet para subir las fotografías. Tus datos se conservaron.';
-
 String _friendlyFirebaseError(FirebaseException error) {
-  if (isOfflineFirebaseError(error)) return _offlineMessage;
   if (isPermissionFirebaseError(error)) {
     return 'Tu sesión no permite publicar. Vuelve a iniciar sesión.';
   }

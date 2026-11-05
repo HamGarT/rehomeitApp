@@ -318,7 +318,8 @@ class DeliveryRepository {
     final evidenceRef = _storage.ref(storagePath);
     var exists = false;
     try {
-      await evidenceRef.getMetadata();
+      // Sin corte, Storage reintenta la consulta hasta 2 minutos sin red.
+      await evidenceRef.getMetadata().timeout(firestoreCommitTimeout);
       exists = true;
     } on FirebaseException catch (error) {
       if (error.code != 'object-not-found') rethrow;
@@ -347,10 +348,11 @@ class DeliveryRepository {
     if (data == null) {
       throw const DeliveryFailure('La publicación ya no existe.');
     }
-    final currentStatus = data['status'] as String?;
+    // Basta con que la evidencia ya sea esta: si el donante confirmó el
+    // cierre entre el envío y el reintento, el estado ya avanzó y comparar
+    // contra el objetivo dejaba la pendiente atascada para siempre.
     final currentEvidence = data['deliveryEvidence'];
-    if (currentStatus == targetStatus.wireValue &&
-        currentEvidence is Map &&
+    if (currentEvidence is Map &&
         currentEvidence['storagePath'] == storagePath) {
       await _pendingStore.remove(pending);
       return;
@@ -379,8 +381,7 @@ class DeliveryRepository {
         notificationPayload(
           recipientId: authorId,
           type: 'entrega_destinatario',
-          message:
-              'La entrega al destinatario fue registrada. Revisa la evidencia y confirma el cierre.',
+          message: 'La entrega al destinatario fue registrada. Revisa la evidencia y confirma el cierre.',
           publicationId: pending.publicationId,
           actorId: pending.userId,
         ),

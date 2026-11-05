@@ -26,13 +26,13 @@ Decisiones que condicionan la implementación y que no se deducen leyendo las hi
 
 ---
 
-## D03 – Las operaciones con fotografía requieren conexión
+## D03 – Las operaciones con fotografía llevan una cola propia en el dispositivo
 
-**Problema.** HU03-19 y HU12-12 planteaban originalmente que la publicación y el registro de entrega se guardaran localmente y se enviaran solos al recuperar la conexión. Firestore sincroniza sus datos sin conexión de forma automática, pero Cloud Storage no: una subida de archivo sin red falla y no existe cola de reintento.
+**Problema.** HU03-19 y HU12-12 piden que la publicación y el registro de entrega se guarden localmente y se envíen solos al recuperar la conexión. Firestore sincroniza sus datos sin conexión de forma automática, pero Cloud Storage no: una subida de archivo sin red falla y no existe cola de reintento.
 
-**Decisión.** Las operaciones que incluyen fotografías exigen conexión. La aplicación lo informa, conserva los datos ingresados y las fotografías capturadas, y permite completar la operación al restablecerse la red.
+**Decisión.** Cada operación con fotografía tiene su propia cola en el almacenamiento de la app (`PendingDeliveryStore`, `PendingPublicationStore`): al confirmar, los datos y una copia de las fotografías se escriben en disco antes de intentar nada, y la sincronización se reintenta al abrir la app, al volver del segundo plano y cada dos minutos. La sincronización es idempotente: el identificador se fija al encolar, cada fotografía se sube solo si no está en Storage y el documento se escribe solo si no existe, de modo que repetir la pasada no duplica nada. Las dos colas son clases paralelas con la misma forma, no un almacén genérico; se extraerá una base común si aparece una tercera operación.
 
-**Consecuencias.** No se pierde el trabajo del usuario, solo se pospone el envío bajo su control, y se evita programar y mantener una cola de subida propia. La consulta sin conexión se mantiene intacta (HU08-12, HU09-11, HU14-16), igual que las operaciones sin fotografía que sí admiten envío diferido (HU11-10, HU16-16).
+**Consecuencias.** La persona ve la pantalla de éxito con o sin red y no tiene que recordar reintentar. El costo es mantener dos colas pequeñas y sus avisos de sincronización. Hasta el 5 de noviembre de 2026 publicar exigía conexión y solo las entregas tenían cola; desde esa fecha ambas la tienen. La consulta sin conexión se mantiene intacta (HU08-12, HU09-11, HU14-16), igual que las operaciones sin fotografía que delegan en la caché de Firestore (HU11-10, HU16-16).
 
 ---
 
