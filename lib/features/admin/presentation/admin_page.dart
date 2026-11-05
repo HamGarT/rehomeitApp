@@ -349,7 +349,7 @@ class _UserTile extends ConsumerWidget {
                     value: _UserAction.verify,
                     child: Text(
                       user.isVerified
-                          ? 'Actualizar check público'
+                          ? 'Renovar verificación'
                           : 'Marcar como verificada',
                     ),
                   ),
