@@ -3,14 +3,17 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../app/theme.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../core/navigation/app_routes.dart';
 import '../../../core/utils/date_format.dart';
 import '../../../shared/widgets/app_badge.dart';
+import '../../../shared/widgets/app_chip.dart';
 import '../../../shared/widgets/app_dialog.dart';
 import '../../../shared/widgets/app_snack_bar.dart';
 import '../../../shared/widgets/verified_name.dart';
 import '../../auth/presentation/auth_controller.dart';
 import '../../campaigns/domain/campaign.dart';
 import '../../campaigns/presentation/campaign_controller.dart';
+import '../../campaigns/presentation/campaign_detail_page.dart';
 import '../../moderation/presentation/moderation_controller.dart';
 import '../domain/admin_user.dart';
 import 'admin_controller.dart';
@@ -37,7 +40,9 @@ class AdminPage extends ConsumerWidget {
         body: const Center(
           child: Padding(
             padding: EdgeInsets.all(32),
-            child: Text('Esta sección solo está disponible para administración.'),
+            child: Text(
+              'Esta sección solo está disponible para administración.',
+            ),
           ),
         ),
       );
@@ -130,20 +135,17 @@ class _UsersTabState extends ConsumerState<_UsersTab> {
                 ),
               ),
             ),
-            SizedBox(
-              height: 52,
-              child: ListView(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 16),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 8,
                 children: [
                   for (final filter in _UserFilter.values)
-                    Padding(
-                      padding: const EdgeInsets.only(right: 8),
-                      child: FilterChip(
-                        label: Text(_filterLabel(filter)),
-                        selected: _filter == filter,
-                        onSelected: (_) => setState(() => _filter = filter),
-                      ),
+                    AppChip(
+                      label: _filterLabel(filter),
+                      selected: _filter == filter,
+                      onTap: () => setState(() => _filter = filter),
                     ),
                 ],
               ),
@@ -153,7 +155,9 @@ class _UsersTabState extends ConsumerState<_UsersTab> {
                   ? const Center(
                       child: Padding(
                         padding: EdgeInsets.all(32),
-                        child: Text('No hay cuentas que coincidan con el filtro.'),
+                        child: Text(
+                          'No hay cuentas que coincidan con el filtro.',
+                        ),
                       ),
                     )
                   : RefreshIndicator(
@@ -169,7 +173,9 @@ class _UsersTabState extends ConsumerState<_UsersTab> {
                         itemBuilder: (context, index) => _UserTile(
                           user: filtered[index],
                           adminId: widget.adminId,
-                          isDuplicate: duplicateIds.contains(filtered[index].id),
+                          isDuplicate: duplicateIds.contains(
+                            filtered[index].id,
+                          ),
                         ),
                       ),
                     ),
@@ -326,7 +332,9 @@ class _UserTile extends ConsumerWidget {
                         ? 'Sin actividad registrada'
                         : 'Última actividad: ${timeAgo(user.lastSeenAt!)}',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: inactive ? AppColors.warning : palette.textSecondary,
+                      color: inactive
+                          ? AppColors.warning
+                          : palette.textSecondary,
                     ),
                   ),
                 ],
@@ -360,9 +368,7 @@ class _UserTile extends ConsumerWidget {
                     PopupMenuItem(
                       value: _UserAction.retire,
                       child: Text(
-                        inactive
-                            ? 'Retirar cuenta inactiva'
-                            : 'Retirar cuenta',
+                        inactive ? 'Retirar cuenta inactiva' : 'Retirar cuenta',
                       ),
                     ),
                   if (user.status != AccountStatus.active)
@@ -404,11 +410,7 @@ class _UserTile extends ConsumerWidget {
           context,
           () => ref
               .read(adminControllerProvider.notifier)
-              .blockAccount(
-                userId: user.id,
-                adminId: adminId,
-                reason: reason,
-              ),
+              .blockAccount(userId: user.id, adminId: adminId, reason: reason),
           success: 'La cuenta fue bloqueada y se avisó a la persona.',
         );
         break;
@@ -423,11 +425,7 @@ class _UserTile extends ConsumerWidget {
           context,
           () => ref
               .read(adminControllerProvider.notifier)
-              .retireAccount(
-                userId: user.id,
-                adminId: adminId,
-                reason: reason,
-              ),
+              .retireAccount(userId: user.id, adminId: adminId, reason: reason),
           success: 'La cuenta fue retirada y se avisó a la persona.',
         );
         break;
@@ -463,10 +461,7 @@ class _UserTile extends ConsumerWidget {
           context,
           () => ref
               .read(adminControllerProvider.notifier)
-              .notifyInactivityRetirement(
-                userId: user.id,
-                adminId: adminId,
-              ),
+              .notifyInactivityRetirement(userId: user.id, adminId: adminId),
           success: 'Aviso de retiro enviado.',
         );
         break;
@@ -524,9 +519,8 @@ class _CampaignsTab extends ConsumerWidget {
                   pending == 0
                       ? 'Todas las campañas están verificadas.'
                       : '$pending ${pending == 1 ? 'campaña pendiente' : 'campañas pendientes'} de verificación.',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: context.appColors.textSecondary,
-                  ),
+                  style: Theme.of(context).textTheme.bodyMedium
+                      ?.copyWith(color: context.appColors.textSecondary),
                 );
               }
               final campaign = sorted[index - 1];
@@ -554,73 +548,95 @@ class _CampaignVerificationTile extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final palette = context.appColors;
+    final closed = campaign.isClosedAt(DateTime.now().toUtc());
+    // La tarjeta abre el detalle: ahí el administrador revisa la campaña
+    // completa y puede cerrarla anticipadamente (HU15-13), acción que no se
+    // duplica aquí. Borrar no existe: aportes y avisos la referencian.
     return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    campaign.title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: Theme.of(context).textTheme.titleSmall
-                        ?.copyWith(fontWeight: FontWeight.w700),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(18),
+        onTap: () => pushUnique(
+          context,
+          name: AppRoutes.campaign(campaign.id),
+          builder: (_) => CampaignDetailPage(initial: campaign),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      campaign.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.titleSmall
+                          ?.copyWith(fontWeight: FontWeight.w700),
+                    ),
+                  ),
+                  AppBadge(
+                    label: campaign.isVerified ? 'Verificada' : 'Sin verificar',
+                    background: campaign.isVerified
+                        ? AppColors.success.withValues(alpha: 0.18)
+                        : AppColors.warning.withValues(alpha: 0.18),
+                    foreground: campaign.isVerified
+                        ? AppColors.success
+                        : AppColors.warning,
+                  ),
+                  if (closed) ...[
+                    const SizedBox(width: 6),
+                    AppBadge(
+                      label: 'Cerrada',
+                      background: AppColors.error.withValues(alpha: 0.18),
+                      foreground: AppColors.error,
+                    ),
+                  ],
+                ],
+              ),
+              const SizedBox(height: 4),
+              Text(
+                '${campaign.organizationName} · ${campaign.district}',
+                style: Theme.of(context).textTheme.bodySmall
+                    ?.copyWith(color: palette.textSecondary),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                closed
+                    ? 'Cerrada el ${formatDateTime(campaign.closeAt)} · Toca para ver el resumen'
+                    : 'Cierra el ${formatDateTime(campaign.closeAt)} · Toca para ver el detalle',
+                style: Theme.of(context).textTheme.bodySmall
+                    ?.copyWith(color: palette.textSecondary),
+              ),
+              if (!campaign.isVerified) ...[
+                const SizedBox(height: 10),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: FilledButton.icon(
+                    onPressed: () async {
+                      final error = await ref
+                          .read(adminControllerProvider.notifier)
+                          .verifyCampaign(
+                            campaignId: campaign.id,
+                            adminId: adminId,
+                          );
+                      if (!context.mounted) return;
+                      showAppSnackBar(
+                        context,
+                        error ?? 'Campaña verificada.',
+                        kind: error == null
+                            ? AppSnackBarKind.success
+                            : AppSnackBarKind.error,
+                      );
+                    },
+                    icon: const Icon(Icons.verified_outlined),
+                    label: const Text('Verificar'),
                   ),
                 ),
-                AppBadge(
-                  label: campaign.isVerified ? 'Verificada' : 'Sin verificar',
-                  background: campaign.isVerified
-                      ? AppColors.success.withValues(alpha: 0.18)
-                      : AppColors.warning.withValues(alpha: 0.18),
-                  foreground: campaign.isVerified
-                      ? AppColors.success
-                      : AppColors.warning,
-                ),
               ],
-            ),
-            const SizedBox(height: 4),
-            Text(
-              '${campaign.organizationName} · ${campaign.district}',
-              style: Theme.of(context).textTheme.bodySmall
-                  ?.copyWith(color: palette.textSecondary),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'Cierra el ${formatDateTime(campaign.closeAt)}',
-              style: Theme.of(context).textTheme.bodySmall
-                  ?.copyWith(color: palette.textSecondary),
-            ),
-            if (!campaign.isVerified) ...[
-              const SizedBox(height: 10),
-              Align(
-                alignment: Alignment.centerRight,
-                child: FilledButton.icon(
-                  onPressed: () async {
-                    final error = await ref
-                        .read(adminControllerProvider.notifier)
-                        .verifyCampaign(
-                          campaignId: campaign.id,
-                          adminId: adminId,
-                        );
-                    if (!context.mounted) return;
-                    showAppSnackBar(
-                      context,
-                      error ?? 'Campaña verificada.',
-                      kind: error == null
-                          ? AppSnackBarKind.success
-                          : AppSnackBarKind.error,
-                    );
-                  },
-                  icon: const Icon(Icons.verified_outlined),
-                  label: const Text('Verificar'),
-                ),
-              ),
             ],
-          ],
+          ),
         ),
       ),
     );

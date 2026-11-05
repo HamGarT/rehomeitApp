@@ -242,14 +242,13 @@ service cloud.firestore {
         && request.resource.data.contadores.voluntariados == 0;
     }
 
+    // Espejo de `validAdminAccountVerification` para el perfil público. Solo
+    // exige que no cambie nada más: al volver a verificar, el mismo
+    // administrador solo mueve la fecha y `cuentaVerificadaPor` queda igual.
     function validAdminProfileVerification() {
       let after = request.resource.data;
       return isAdmin()
         && after.diff(resource.data).affectedKeys().hasOnly([
-          'cuentaVerificadaAt',
-          'cuentaVerificadaPor'
-        ])
-        && after.diff(resource.data).affectedKeys().hasAll([
           'cuentaVerificadaAt',
           'cuentaVerificadaPor'
         ])

@@ -42,9 +42,7 @@ class AdminRepository {
       var profiles = <String, Map<String, dynamic>>{};
       try {
         final profileSnapshot = await _profiles.get();
-        profiles = {
-          for (final doc in profileSnapshot.docs) doc.id: doc.data(),
-        };
+        profiles = {for (final doc in profileSnapshot.docs) doc.id: doc.data()};
       } catch (_) {
         // Sin perfiles la lista sigue siendo útil: se muestra "sin registro"
         // y el administrador puede revisar la cuenta manualmente.
@@ -59,9 +57,9 @@ class AdminRepository {
             ),
           )
           .toList();
-      users.sort((a, b) => a.fullName.toLowerCase().compareTo(
-        b.fullName.toLowerCase(),
-      ));
+      users.sort(
+        (a, b) => a.fullName.toLowerCase().compareTo(b.fullName.toLowerCase()),
+      );
       return users;
     });
   }
@@ -227,7 +225,8 @@ String _friendlyError(FirebaseException error) {
     return 'Sin conexión. La acción se enviará cuando vuelvas a estar en línea.';
   }
   if (isPermissionFirebaseError(error)) {
-    return 'Tu cuenta no tiene permiso para administrar cuentas.';
+    return 'Las reglas rechazaron la acción. Revisa el estado de la cuenta '
+        'e inténtalo de nuevo.';
   }
   return 'No se pudo completar la acción. Inténtalo nuevamente.';
 }

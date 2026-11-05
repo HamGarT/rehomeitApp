@@ -2684,3 +2684,59 @@ test('HU17: una campaña nueva nace con los contadores del resumen en cero', asy
 });
 
 
+
+async function seedVerifiableUser(userId = 'verifiable-user') {
+  const db = firestoreFor(userId);
+  const batch = writeBatch(db);
+  batch.set(doc(db, 'usuarios', userId), {
+    nombreCompleto: 'Cuenta Verificable',
+    nombres: 'Cuenta',
+    apellidos: 'Verificable',
+    correo: 'verificable@example.test',
+    rol: 'usuario',
+  });
+  batch.set(doc(db, 'perfiles', userId), {
+    nombreCorto: 'Cuenta V.',
+    distrito: '',
+    fechaIngreso: serverTimestamp(),
+    contadores: { donaciones: 0, intercambios: 0, voluntariados: 0 },
+  });
+  await assertSucceeds(batch.commit());
+  return userId;
+}
+
+function accountVerification(verifiedBy = adminId) {
+  return {
+    cuentaVerificadaAt: serverTimestamp(),
+    cuentaVerificadaPor: verifiedBy,
+  };
+}
+
+function verifyAccountBatch(actorId, userId, verifiedBy = actorId) {
+  const db = firestoreFor(actorId);
+  const batch = writeBatch(db);
+  batch.update(doc(db, 'usuarios', userId), accountVerification(verifiedBy));
+  batch.update(doc(db, 'perfiles', userId), accountVerification(verifiedBy));
+  return batch.commit();
+}
+
+test('administración verifica una cuenta y puede volver a marcarla', async () => {
+  await seedAdmin();
+  const userId = await seedVerifiableUser();
+  await assertSucceeds(verifyAccountBatch(adminId, userId));
+  // Segunda verificación por el mismo administrador: solo cambia la fecha.
+  await assertSucceeds(verifyAccountBatch(adminId, userId));
+});
+
+test('la verificación de cuenta la firma solo el administrador que la hace', async () => {
+  await seedAdmin();
+  const userId = await seedVerifiableUser();
+  await assertFails(verifyAccountBatch(userId, userId));
+  await assertFails(verifyAccountBatch('stranger', userId));
+  await assertFails(verifyAccountBatch(adminId, userId, 'other-admin'));
+  const adminDb = firestoreFor(adminId);
+  await assertFails(updateDoc(doc(adminDb, 'usuarios', userId), {
+    ...accountVerification(),
+    rol: 'administrador',
+  }));
+});
