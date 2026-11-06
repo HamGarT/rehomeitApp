@@ -96,7 +96,7 @@ void main() {
     await tester.pumpAndSettle();
     // La pestaña de inicio es el feed, con el buscador tras la lupa de la
     // cabecera y los filtros en una fila de chips.
-    expect(find.text('Rehomeit'), findsOneWidget);
+    expect(find.text('ReHomeIt'), findsOneWidget);
     expect(find.text('Inicio'), findsOneWidget);
     expect(find.text('¡Hola de nuevo!'), findsNothing);
   });
