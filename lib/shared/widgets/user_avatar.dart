@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import 'publication_image.dart';
 
 /// Avatar de una persona: su foto si la tiene, y si no, la inicial del nombre.
 /// Lo comparten la cabecera del perfil, el feed y el detalle (D10), así la
 /// foto de HU20-9 aparece en todos los sitios donde hoy va la inicial.
-class UserAvatar extends StatelessWidget {
+class UserAvatar extends ConsumerWidget {
   const UserAvatar({
     super.key,
     required this.name,
@@ -22,13 +25,13 @@ class UserAvatar extends StatelessWidget {
   final TextStyle? textStyle;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final url = photoUrl;
     if (url != null && url.isNotEmpty) {
       return CircleAvatar(
         radius: radius,
         backgroundColor: backgroundColor,
-        foregroundImage: NetworkImage(url),
+        foregroundImage: ref.watch(networkImageFactoryProvider)(url),
         // Mientras carga, o si falla, se ve la inicial y no un hueco.
         child: _Initial(name: name, color: foregroundColor, style: textStyle),
       );
@@ -57,6 +60,9 @@ class _Initial extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Text(avatarInitial(name), style: (style ?? const TextStyle()).copyWith(color: color));
+    return Text(
+      avatarInitial(name),
+      style: (style ?? const TextStyle()).copyWith(color: color),
+    );
   }
 }

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../app/theme.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/navigation/app_routes.dart';
+import '../../../shared/widgets/publication_image.dart';
 import '../../auth/presentation/auth_controller.dart';
 import '../domain/campaign.dart';
 import 'campaign_controller.dart';
@@ -160,11 +161,7 @@ class CampaignCard extends StatelessWidget {
                   borderRadius: BorderRadius.circular(14),
                   child: AspectRatio(
                     aspectRatio: 16 / 9,
-                    child: Image.network(
-                      url,
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, _, _) => const _ImageFallback(),
-                    ),
+                    child: PublicationImage(url: url),
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -242,16 +239,6 @@ class _StatusBadge extends StatelessWidget {
         fontWeight: FontWeight.w700,
       ),
     ),
-  );
-}
-
-class _ImageFallback extends StatelessWidget {
-  const _ImageFallback();
-
-  @override
-  Widget build(BuildContext context) => ColoredBox(
-    color: context.appColors.border,
-    child: const Center(child: Icon(Icons.image_not_supported_outlined)),
   );
 }
 

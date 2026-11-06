@@ -10,6 +10,7 @@ import 'package:rehomeitapp/features/explore/domain/public_profile.dart';
 import 'package:rehomeitapp/features/explore/presentation/explore_controller.dart';
 import 'package:rehomeitapp/features/home/presentation/home_page.dart';
 import 'package:rehomeitapp/shared/domain/publication.dart';
+import 'package:rehomeitapp/shared/widgets/publication_image.dart';
 
 Publication _post(String id, List<String> images) => Publication(
   id: id,
@@ -38,6 +39,9 @@ Widget _host(List<Publication> posts, {String authorName = 'Ana T.'}) {
       authStateProvider.overrideWith(
         (ref) => Stream.value(const AppUser(uid: 'userone', email: 'a@b.com')),
       ),
+      // La caché en disco necesita plugins que no existen en las pruebas;
+      // `NetworkImage` recibe el 400 del entorno y resuelve al instante.
+      networkImageFactoryProvider.overrideWithValue(NetworkImage.new),
       // La cabecera del post lee el perfil público del autor. Sin este
       // override la tarjeta pediría el documento a Firestore de verdad.
       publicProfileProvider.overrideWith(
@@ -146,9 +150,7 @@ void main() {
     expect(find.byKey(const Key('photo-dots')), findsNothing);
   });
 
-  testWidgets('la lupa despliega el buscador y la X lo cierra', (
-    tester,
-  ) async {
+  testWidgets('la lupa despliega el buscador y la X lo cierra', (tester) async {
     await tester.pumpWidget(
       _host([
         _post('a', ['https://example.test/1.jpg']),
@@ -167,23 +169,24 @@ void main() {
     expect(find.byKey(const Key('feed-search-field')), findsNothing);
   });
 
-  testWidgets('los filtros rápidos y el distintivo de modalidad están en el feed', (
-    tester,
-  ) async {
-    await tester.pumpWidget(
-      _host([
-        _post('a', ['https://example.test/1.jpg']),
-      ]),
-    );
-    await tester.pumpAndSettle();
+  testWidgets(
+    'los filtros rápidos y el distintivo de modalidad están en el feed',
+    (tester) async {
+      await tester.pumpWidget(
+        _host([
+          _post('a', ['https://example.test/1.jpg']),
+        ]),
+      );
+      await tester.pumpAndSettle();
 
-    expect(find.text('Todo'), findsOneWidget);
-    expect(find.text('Intercambio'), findsOneWidget);
-    expect(find.text('Distrito'), findsOneWidget);
-    // "Donación" aparece dos veces: el chip del filtro y el distintivo de la
-    // publicación de prueba, que es una donación.
-    expect(find.text('Donación'), findsNWidgets(2));
-  });
+      expect(find.text('Todo'), findsOneWidget);
+      expect(find.text('Intercambio'), findsOneWidget);
+      expect(find.text('Distrito'), findsOneWidget);
+      // "Donación" aparece dos veces: el chip del filtro y el distintivo de la
+      // publicación de prueba, que es una donación.
+      expect(find.text('Donación'), findsNWidgets(2));
+    },
+  );
 
   testWidgets('el cta de publicar se oculta al tener publicaciones propias', (
     tester,
@@ -200,31 +203,27 @@ void main() {
     expect(find.textContaining('aún no has publicado nada'), findsNothing);
   });
 
-  testWidgets(
-    'la tarjeta muestra categoría, estado y distrito como hashtags',
-    (tester) async {
-      await tester.pumpWidget(
-        _host([
-          _post('a', ['https://example.test/1.jpg']).copyWithHashtags(
-            category: 'Ropa de cama y abrigo',
-            district: 'La Encañada',
-            mode: PublicationMode.exchange,
-            condition: 'Como nuevo',
-          ),
-        ]),
-      );
-      await tester.pumpAndSettle();
+  testWidgets('la tarjeta muestra categoría, estado y distrito como hashtags', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _host([
+        _post('a', ['https://example.test/1.jpg']).copyWithHashtags(
+          category: 'Ropa de cama y abrigo',
+          district: 'La Encañada',
+          mode: PublicationMode.exchange,
+          condition: 'Como nuevo',
+        ),
+      ]),
+    );
+    await tester.pumpAndSettle();
 
-      // Sin tildes, minúsculas y sin espacios: los hashtags no pueden llevar
-      // espacios, y la categoría de prueba los trae. La modalidad no va como
-      // hashtag: la muestra el distintivo junto al título.
-      expect(
-        find.text('#ropadecamayabrigo  #comonuevo  #laencanada'),
-        findsOne,
-      );
-      expect(find.text('Intercambio'), findsNWidgets(2));
-    },
-  );
+    // Sin tildes, minúsculas y sin espacios: los hashtags no pueden llevar
+    // espacios, y la categoría de prueba los trae. La modalidad no va como
+    // hashtag: la muestra el distintivo junto al título.
+    expect(find.text('#ropadecamayabrigo  #comonuevo  #laencanada'), findsOne);
+    expect(find.text('Intercambio'), findsNWidgets(2));
+  });
   testWidgets(
     'la descripción larga termina en ..más y se despliega al tocarla',
     (tester) async {

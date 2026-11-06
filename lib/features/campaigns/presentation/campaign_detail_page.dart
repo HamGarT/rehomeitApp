@@ -6,6 +6,7 @@ import '../../../core/constants/app_colors.dart';
 import '../../../core/utils/date_format.dart';
 import '../../../shared/widgets/app_dialog.dart';
 import '../../../shared/widgets/app_snack_bar.dart';
+import '../../../shared/widgets/publication_image.dart';
 import '../../auth/presentation/auth_controller.dart';
 import '../domain/campaign.dart';
 import '../domain/contribution.dart';
@@ -112,16 +113,7 @@ class _CampaignDetailPageState extends ConsumerState<CampaignDetailPage> {
               borderRadius: BorderRadius.circular(18),
               child: AspectRatio(
                 aspectRatio: 16 / 9,
-                child: Image.network(
-                  url,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, _, _) => ColoredBox(
-                    color: context.appColors.border,
-                    child: const Center(
-                      child: Icon(Icons.image_not_supported_outlined),
-                    ),
-                  ),
-                ),
+                child: PublicationImage(url: url),
               ),
             ),
             const SizedBox(height: 18),
