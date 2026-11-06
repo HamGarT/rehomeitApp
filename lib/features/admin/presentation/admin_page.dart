@@ -228,7 +228,14 @@ String _filterLabel(_UserFilter filter) => switch (filter) {
   _UserFilter.retired => 'Retiradas',
 };
 
-enum _UserAction { verify, block, retire, reactivate, notifyRetirement }
+enum _UserAction {
+  verify,
+  removeVerification,
+  block,
+  retire,
+  reactivate,
+  notifyRetirement,
+}
 
 class _UserTile extends ConsumerWidget {
   const _UserTile({
@@ -345,14 +352,16 @@ class _UserTile extends ConsumerWidget {
                 tooltip: 'Acciones de la cuenta',
                 onSelected: (action) => _handleAction(context, ref, action),
                 itemBuilder: (_) => [
-                  PopupMenuItem(
-                    value: _UserAction.verify,
-                    child: Text(
-                      user.isVerified
-                          ? 'Renovar verificación'
-                          : 'Marcar como verificada',
+                  if (user.isVerified)
+                    const PopupMenuItem(
+                      value: _UserAction.removeVerification,
+                      child: Text('Quitar verificación'),
+                    )
+                  else
+                    const PopupMenuItem(
+                      value: _UserAction.verify,
+                      child: Text('Marcar como verificada'),
                     ),
-                  ),
                   if (user.status == AccountStatus.active)
                     const PopupMenuItem(
                       value: _UserAction.block,
@@ -397,6 +406,25 @@ class _UserTile extends ConsumerWidget {
               .read(adminControllerProvider.notifier)
               .verifyAccount(userId: user.id, adminId: adminId),
           success: 'Cuenta marcada como verificada.',
+        );
+        break;
+      case _UserAction.removeVerification:
+        final confirmed = await showAppConfirmDialog(
+          context,
+          title: 'Quitar verificación',
+          subtitle:
+              'El distintivo dejará de verse en su perfil y en sus '
+              'publicaciones. Puedes volver a marcarla cuando quieras.',
+          confirmLabel: 'Quitar',
+          icon: Icons.verified_outlined,
+        );
+        if (!confirmed || !context.mounted) return;
+        await _run(
+          context,
+          () => ref
+              .read(adminControllerProvider.notifier)
+              .removeAccountVerification(userId: user.id),
+          success: 'Se quitó la verificación de la cuenta.',
         );
         break;
       case _UserAction.block:
@@ -609,36 +637,59 @@ class _CampaignVerificationTile extends ConsumerWidget {
                 style: Theme.of(context).textTheme.bodySmall
                     ?.copyWith(color: palette.textSecondary),
               ),
-              if (!campaign.isVerified) ...[
-                const SizedBox(height: 10),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: FilledButton.icon(
-                    onPressed: () async {
-                      final error = await ref
-                          .read(adminControllerProvider.notifier)
-                          .verifyCampaign(
-                            campaignId: campaign.id,
-                            adminId: adminId,
-                          );
-                      if (!context.mounted) return;
-                      showAppSnackBar(
-                        context,
-                        error ?? 'Campaña verificada.',
-                        kind: error == null
-                            ? AppSnackBarKind.success
-                            : AppSnackBarKind.error,
-                      );
-                    },
-                    icon: const Icon(Icons.verified_outlined),
-                    label: const Text('Verificar'),
-                  ),
-                ),
-              ],
+              const SizedBox(height: 10),
+              Align(
+                alignment: Alignment.centerRight,
+                child: campaign.isVerified
+                    ? OutlinedButton.icon(
+                        onPressed: () => _removeVerification(context, ref),
+                        icon: const Icon(Icons.remove_circle_outline),
+                        label: const Text('Quitar verificación'),
+                      )
+                    : FilledButton.icon(
+                        onPressed: () => _verify(context, ref),
+                        icon: const Icon(Icons.verified_outlined),
+                        label: const Text('Verificar'),
+                      ),
+              ),
             ],
           ),
         ),
       ),
+    );
+  }
+
+  Future<void> _verify(BuildContext context, WidgetRef ref) async {
+    final error = await ref
+        .read(adminControllerProvider.notifier)
+        .verifyCampaign(campaignId: campaign.id, adminId: adminId);
+    if (!context.mounted) return;
+    _report(context, error, success: 'Campaña verificada.');
+  }
+
+  Future<void> _removeVerification(BuildContext context, WidgetRef ref) async {
+    final confirmed = await showAppConfirmDialog(
+      context,
+      title: 'Quitar verificación',
+      subtitle:
+          'La campaña dejará de mostrarse como verificada. Puedes volver a '
+          'verificarla cuando quieras.',
+      confirmLabel: 'Quitar',
+      icon: Icons.verified_outlined,
+    );
+    if (!confirmed || !context.mounted) return;
+    final error = await ref
+        .read(adminControllerProvider.notifier)
+        .removeCampaignVerification(campaignId: campaign.id);
+    if (!context.mounted) return;
+    _report(context, error, success: 'Se quitó la verificación de la campaña.');
+  }
+
+  void _report(BuildContext context, String? error, {required String success}) {
+    showAppSnackBar(
+      context,
+      error ?? success,
+      kind: error == null ? AppSnackBarKind.success : AppSnackBarKind.error,
     );
   }
 }

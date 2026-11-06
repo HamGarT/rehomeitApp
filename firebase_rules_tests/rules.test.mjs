@@ -2740,3 +2740,147 @@ test('la verificación de cuenta la firma solo el administrador que la hace', as
     rol: 'administrador',
   }));
 });
+
+function removeAccountVerificationBatch(actorId, userId) {
+  const db = firestoreFor(actorId);
+  const batch = writeBatch(db);
+  const removal = {
+    cuentaVerificadaAt: deleteField(),
+    cuentaVerificadaPor: deleteField(),
+  };
+  batch.update(doc(db, 'usuarios', userId), removal);
+  batch.update(doc(db, 'perfiles', userId), removal);
+  return batch.commit();
+}
+
+test('administración quita la verificación de una cuenta y nadie más puede', async () => {
+  await seedAdmin();
+  const userId = await seedVerifiableUser();
+  await assertSucceeds(verifyAccountBatch(adminId, userId));
+  await assertFails(removeAccountVerificationBatch(userId, userId));
+  await assertFails(removeAccountVerificationBatch('stranger', userId));
+  // Quitar solo la firma dejaría una fecha sin administrador detrás.
+  await assertFails(updateDoc(doc(firestoreFor(adminId), 'usuarios', userId), {
+    cuentaVerificadaPor: deleteField(),
+  }));
+  await assertSucceeds(removeAccountVerificationBatch(adminId, userId));
+  await assertSucceeds(verifyAccountBatch(adminId, userId));
+});
+
+function campaignVerification(verifiedBy = adminId) {
+  return { verifiedAt: serverTimestamp(), verifiedBy };
+}
+
+const campaignVerificationRemoval = {
+  verifiedAt: deleteField(),
+  verifiedBy: deleteField(),
+};
+
+test('administración verifica una campaña, la renueva y le quita la verificación', async () => {
+  await seedAdmin();
+  await seedCampaign('verifiable-campaign', initialCampaign());
+  const campaignRef = doc(
+    firestoreFor(adminId),
+    'campanias',
+    'verifiable-campaign',
+  );
+  await assertSucceeds(updateDoc(campaignRef, campaignVerification()));
+  // Renovar por el mismo administrador solo mueve la fecha.
+  await assertSucceeds(updateDoc(campaignRef, campaignVerification()));
+  await assertSucceeds(updateDoc(campaignRef, campaignVerificationRemoval));
+  await assertSucceeds(updateDoc(campaignRef, campaignVerification()));
+});
+
+test('la verificación de campaña la firma solo administración y no toca otros campos', async () => {
+  await seedAdmin();
+  await seedCampaignActor(
+    'campaign-org',
+    'organizacion',
+    'Organización Solidaria',
+  );
+  await seedCampaign('verifiable-campaign', initialCampaign());
+  const orgRef = doc(
+    firestoreFor('campaign-org'),
+    'campanias',
+    'verifiable-campaign',
+  );
+  const adminRef = doc(
+    firestoreFor(adminId),
+    'campanias',
+    'verifiable-campaign',
+  );
+  await assertFails(updateDoc(orgRef, campaignVerification('campaign-org')));
+  await assertFails(updateDoc(adminRef, campaignVerification('other-admin')));
+  await assertFails(updateDoc(adminRef, {
+    ...campaignVerification(),
+    title: 'Otro título',
+  }));
+  await assertSucceeds(updateDoc(adminRef, campaignVerification()));
+  await assertFails(updateDoc(orgRef, campaignVerificationRemoval));
+  // Quitar solo la firma dejaría una fecha sin administrador detrás.
+  await assertFails(updateDoc(adminRef, { verifiedBy: deleteField() }));
+});
+
+function tenNeeds(prefix = 'Necesidad') {
+  return Array.from({ length: 10 }, (_, index) => ({
+    id: `need-${index}`,
+    name: `${prefix} ${index + 1}`,
+    requiredQuantity: 5,
+    contributedQuantity: 0,
+  }));
+}
+
+// El formulario admite diez necesidades (HU15) y la regla valida cada
+// posición sin iteradores: es la escritura legítima más cara del proyecto
+// y la que primero toca el límite de 1000 expresiones por petición. Se
+// prueba el peor caso (portada, campos opcionales y edición de todos los
+// campos a la vez); medido el 6 de noviembre de 2026, a diez necesidades
+// queda entre un 10 y un 20 % de presupuesto, así que cualquier expresión
+// que se agregue a la actualización de `campanias` debe volver a medirse.
+test('HU15: una campaña con las diez necesidades del formulario se crea y se edita completa', async () => {
+  await seedCampaignActor(
+    'campaign-org',
+    'organizacion',
+    'Organización Solidaria',
+  );
+  const campaignRef = doc(firestoreFor('campaign-org'), 'campanias', 'ten-needs');
+  await assertSucceeds(setDoc(
+    campaignRef,
+    initialCampaign({
+      overrides: {
+        needs: tenNeeds(),
+        imageUrl: 'https://example.test/cover.jpg',
+        imageStoragePath: 'campanias/ten-needs/campaign-org/cover.jpg',
+        confirmedContributions: 0,
+        contributorsCount: 0,
+        destinationNote: null,
+        summaryNotifiedAt: null,
+      },
+    }),
+  ));
+  // Renombrar las diez a la vez obliga a validar todas en una sola petición.
+  await assertSucceeds(updateDoc(campaignRef, {
+    needs: tenNeeds('Prioridad'),
+    updatedAt: serverTimestamp(),
+  }));
+  await assertSucceeds(updateDoc(campaignRef, {
+    title: 'Abrigo para Cajamarca, segunda edición',
+    description: 'Ampliamos la recolección a toda la provincia.',
+    district: 'Jesús',
+    closeAt: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
+    imageUrl: 'https://example.test/cover-2.jpg',
+    imageStoragePath: 'campanias/ten-needs/campaign-org/cover.png',
+    collectionPoint: {
+      name: 'Otro local',
+      address: 'Av. Principal 456',
+      openingHours: 'Lunes a viernes, 8 a 18 h',
+    },
+    needs: tenNeeds('Prioridad final'),
+    updatedAt: serverTimestamp(),
+  }));
+  // Una necesidad existente no cambia de id ni resetea lo aportado.
+  await assertFails(updateDoc(campaignRef, {
+    needs: [{ ...tenNeeds()[0], id: 'otro-id' }, ...tenNeeds().slice(1)],
+    updatedAt: serverTimestamp(),
+  }));
+});

@@ -23,6 +23,12 @@ class AdminController extends Notifier<AsyncValue<void>> {
         .verifyAccount(userId: userId, adminId: adminId),
   );
 
+  Future<String?> removeAccountVerification({required String userId}) => _run(
+    () => ref
+        .read(adminRepositoryProvider)
+        .removeAccountVerification(userId: userId),
+  );
+
   Future<String?> blockAccount({
     required String userId,
     required String adminId,
@@ -69,6 +75,13 @@ class AdminController extends Notifier<AsyncValue<void>> {
         .read(adminRepositoryProvider)
         .verifyCampaign(campaignId: campaignId, adminId: adminId),
   );
+
+  Future<String?> removeCampaignVerification({required String campaignId}) =>
+      _run(
+        () => ref
+            .read(adminRepositoryProvider)
+            .removeCampaignVerification(campaignId: campaignId),
+      );
 
   Future<String?> _run(Future<void> Function() operation) async {
     if (state.isLoading) return 'Hay otra operación en curso.';

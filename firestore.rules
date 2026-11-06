@@ -126,8 +126,11 @@ service cloud.firestore {
         );
     }
 
-    // La administración puede marcar una cuenta como revisada/verificada sin
-    // tocar los datos de identidad ni el rol.
+    // La administración marca o quita la verificación de una cuenta sin
+    // tocar los datos de identidad ni el rol. Vale para `usuarios` y para
+    // `perfiles`, que llevan los mismos dos campos. Al marcar, la fecha es la
+    // del servidor y la firma la de quien la pone; al quitar, los dos campos
+    // desaparecen juntos para que nunca quede una fecha sin firma.
     function validAdminAccountVerification() {
       let after = request.resource.data;
       return isAdmin()
@@ -135,8 +138,12 @@ service cloud.firestore {
           'cuentaVerificadaAt',
           'cuentaVerificadaPor'
         ])
-        && after.cuentaVerificadaAt == request.time
-        && after.cuentaVerificadaPor == request.auth.uid;
+        && (
+          (after.cuentaVerificadaAt == request.time
+            && after.cuentaVerificadaPor == request.auth.uid)
+          || (!('cuentaVerificadaAt' in after)
+            && !('cuentaVerificadaPor' in after))
+        );
     }
 
     // Bloqueo, retiro y reactivación. El motivo es obligatorio salvo al
@@ -240,20 +247,6 @@ service cloud.firestore {
         && request.resource.data.contadores.donaciones == 0
         && request.resource.data.contadores.intercambios == 0
         && request.resource.data.contadores.voluntariados == 0;
-    }
-
-    // Espejo de `validAdminAccountVerification` para el perfil público. Solo
-    // exige que no cambie nada más: al volver a verificar, el mismo
-    // administrador solo mueve la fecha y `cuentaVerificadaPor` queda igual.
-    function validAdminProfileVerification() {
-      let after = request.resource.data;
-      return isAdmin()
-        && after.diff(resource.data).affectedKeys().hasOnly([
-          'cuentaVerificadaAt',
-          'cuentaVerificadaPor'
-        ])
-        && after.cuentaVerificadaAt == request.time
-        && after.cuentaVerificadaPor == request.auth.uid;
     }
 
     function validPublicationImages() {
@@ -366,79 +359,115 @@ service cloud.firestore {
         && evidence.recordedAt == request.time;
     }
 
+    // Firestore corta la evaluación a las 1000 expresiones por petición y
+    // deniega. Cuando una escritura no encaja en la primera rama de
+    // `publicaciones`, se evalúan todas las demás, así que el estado actual
+    // y el tipo de entrega eligen la transición antes de validarla: las que
+    // no aplican cuestan una comparación. Cada transición vive en su propia
+    // función para que su `diff` solo se calcule si se llega a ella.
     function validDonationPublicationTransition(publicationId) {
-      let changed = request.resource.data.diff(resource.data).affectedKeys();
-      let datesChanged = request.resource.data.statusDates
-        .diff(resource.data.statusDates).affectedKeys();
-      let assume = resource.data.deliveryType == 'voluntario'
-        && resource.data.status == 'publicada'
+      let before = resource.data;
+      let after = request.resource.data;
+      return after.authorId == before.authorId
+        && after.mode == before.mode
+        && after.deliveryType == before.deliveryType
+        && (
+          (before.status == 'publicada' && (
+            (before.deliveryType == 'voluntario' && donationAssume())
+            || (before.deliveryType == 'donante'
+              && donationDirectDelivery(publicationId))
+          ))
+          || (before.deliveryType == 'voluntario' && (
+            (before.status == 'comprometida'
+              && (donationRelease() || donationPickedUp()))
+            || (before.status == 'recogida'
+              && donationDelivered(publicationId))
+            || (before.status == 'entregada' && donationCloseConfirmed())
+          ))
+        );
+    }
+
+    function donationAssume() {
+      let after = request.resource.data;
+      return after.status == 'comprometida'
         && request.auth.uid != resource.data.authorId
-        && request.resource.data.status == 'comprometida'
-        && request.resource.data.volunteerId == request.auth.uid
-        && request.resource.data.committedAt == request.time
-        && request.resource.data.statusDates.comprometida == request.time
-        && datesChanged.hasOnly(['comprometida'])
-        && changed.hasOnly([
+        && after.volunteerId == request.auth.uid
+        && after.committedAt == request.time
+        && after.statusDates.comprometida == request.time
+        && after.statusDates.diff(resource.data.statusDates).affectedKeys()
+          .hasOnly(['comprometida'])
+        && after.diff(resource.data).affectedKeys().hasOnly([
           'status', 'volunteerId', 'committedAt', 'statusDates'
         ]);
-      let release = resource.data.deliveryType == 'voluntario'
-        && resource.data.status == 'comprometida'
+    }
+
+    function donationRelease() {
+      let after = request.resource.data;
+      return after.status == 'publicada'
         && request.auth.uid in [
           resource.data.authorId,
           resource.data.volunteerId
         ]
-        && request.resource.data.status == 'publicada'
-        && !('volunteerId' in request.resource.data)
-        && !('committedAt' in request.resource.data)
-        && request.resource.data.statusDates == resource.data.statusDates
-        && changed.hasOnly(['status', 'volunteerId', 'committedAt']);
-      let pickedUp = resource.data.deliveryType == 'voluntario'
-        && resource.data.status == 'comprometida'
+        && !('volunteerId' in after)
+        && !('committedAt' in after)
+        && after.statusDates == resource.data.statusDates
+        && after.diff(resource.data).affectedKeys()
+          .hasOnly(['status', 'volunteerId', 'committedAt']);
+    }
+
+    function donationPickedUp() {
+      let after = request.resource.data;
+      return after.status == 'recogida'
         && request.auth.uid == resource.data.authorId
         && resource.data.volunteerId is string
-        && request.resource.data.status == 'recogida'
-        && request.resource.data.volunteerId == resource.data.volunteerId
-        && request.resource.data.pickedUpAt == request.time
-        && request.resource.data.statusDates.recogida == request.time
-        && datesChanged.hasOnly(['recogida'])
-        && changed.hasOnly(['status', 'pickedUpAt', 'statusDates']);
-      let delivered = resource.data.deliveryType == 'voluntario'
-        && resource.data.status == 'recogida'
+        && after.volunteerId == resource.data.volunteerId
+        && after.pickedUpAt == request.time
+        && after.statusDates.recogida == request.time
+        && after.statusDates.diff(resource.data.statusDates).affectedKeys()
+          .hasOnly(['recogida'])
+        && after.diff(resource.data).affectedKeys()
+          .hasOnly(['status', 'pickedUpAt', 'statusDates']);
+    }
+
+    function donationDelivered(publicationId) {
+      let after = request.resource.data;
+      return after.status == 'entregada'
         && request.auth.uid == resource.data.volunteerId
-        && request.resource.data.status == 'entregada'
-        && request.resource.data.deliveredAt == request.time
-        && request.resource.data.statusDates.entregada == request.time
-        && datesChanged.hasOnly(['entregada'])
+        && after.deliveredAt == request.time
+        && after.statusDates.entregada == request.time
+        && after.statusDates.diff(resource.data.statusDates).affectedKeys()
+          .hasOnly(['entregada'])
         && validDeliveryEvidence(publicationId, request.auth.uid)
-        && changed.hasOnly([
+        && after.diff(resource.data).affectedKeys().hasOnly([
           'status', 'deliveredAt', 'statusDates', 'deliveryEvidence'
         ]);
-      let closeConfirmed = resource.data.deliveryType == 'voluntario'
-        && resource.data.status == 'entregada'
+    }
+
+    function donationCloseConfirmed() {
+      let after = request.resource.data;
+      return after.status == 'confirmada'
         && request.auth.uid == resource.data.authorId
-        && request.resource.data.status == 'confirmada'
-        && request.resource.data.statusDates.confirmada == request.time
-        && datesChanged.hasOnly(['confirmada'])
+        && after.statusDates.confirmada == request.time
+        && after.statusDates.diff(resource.data.statusDates).affectedKeys()
+          .hasOnly(['confirmada'])
         && request.time < resource.data.statusDates.entregada
           + duration.value(120, 'h')
-        && changed.hasOnly(['status', 'statusDates']);
-      let directDelivery = resource.data.deliveryType == 'donante'
-        && resource.data.status == 'publicada'
+        && after.diff(resource.data).affectedKeys()
+          .hasOnly(['status', 'statusDates']);
+    }
+
+    function donationDirectDelivery(publicationId) {
+      let after = request.resource.data;
+      return after.status == 'confirmada'
         && request.auth.uid == resource.data.authorId
-        && request.resource.data.status == 'confirmada'
-        && request.resource.data.deliveredAt == request.time
-        && request.resource.data.statusDates.confirmada == request.time
-        && datesChanged.hasOnly(['confirmada'])
+        && after.deliveredAt == request.time
+        && after.statusDates.confirmada == request.time
+        && after.statusDates.diff(resource.data.statusDates).affectedKeys()
+          .hasOnly(['confirmada'])
         && validDeliveryEvidence(publicationId, request.auth.uid)
-        && changed.hasOnly([
+        && after.diff(resource.data).affectedKeys().hasOnly([
           'status', 'deliveredAt', 'statusDates', 'deliveryEvidence'
         ]);
-      return resource.data.mode == 'donacion'
-        && request.resource.data.authorId == resource.data.authorId
-        && request.resource.data.mode == resource.data.mode
-        && request.resource.data.deliveryType == resource.data.deliveryType
-        && (assume || release || pickedUp || delivered || closeConfirmed
-          || directDelivery);
     }
 
     // Retiro por moderación (HU19-10). Solo desde publicada o comprometida:
@@ -642,42 +671,51 @@ service cloud.firestore {
         && offered.statusDates[status] == request.time;
     }
 
+    // Mismo criterio que en las donaciones: lo común a las tres transiciones
+    // (quién firma, propuesta aceptada y que la publicación sea una de las
+    // dos de la propuesta) se comprueba una vez, y el estado actual decide
+    // cuál se valida.
     function validExchangePublicationTransition(publicationId) {
       let proposal = proposalAfter(request.resource.data.exchangeProposalId);
-      let isParticipant = request.auth.uid in proposal.participantIds;
-      let belongsToProposal = publicationId == proposal.requestedPublicationId
-        || publicationId == proposal.offeredPublicationId;
-      let validOwner = (
-        publicationId == proposal.requestedPublicationId
-        && resource.data.authorId == proposal.requestedOwnerId
-      ) || (
-        publicationId == proposal.offeredPublicationId
-        && resource.data.authorId == proposal.offeredOwnerId
-      );
-      let validCounterpart = (
-        publicationId == proposal.requestedPublicationId
-        && request.resource.data.counterpartPublicationId
-          == proposal.offeredPublicationId
-        && request.resource.data.counterpartUserId == proposal.offeredOwnerId
-      ) || (
-        publicationId == proposal.offeredPublicationId
-        && request.resource.data.counterpartPublicationId
-          == proposal.requestedPublicationId
-        && request.resource.data.counterpartUserId == proposal.requestedOwnerId
-      );
-      let accepted = proposal.status == 'aceptada';
-      let confirmationCount =
-        (proposal.requestedOwnerConfirmedAt is timestamp ? 1 : 0)
+      return request.auth.uid in proposal.participantIds
+        && proposal.status == 'aceptada'
+        && (
+          (publicationId == proposal.requestedPublicationId
+            && resource.data.authorId == proposal.requestedOwnerId)
+          || (publicationId == proposal.offeredPublicationId
+            && resource.data.authorId == proposal.offeredOwnerId)
+        )
+        && (
+          (resource.data.status == 'publicada'
+            && exchangeAccepting(publicationId, proposal))
+          || (resource.data.status == 'comprometida'
+            && exchangeFirstConfirmation(proposal))
+          || (resource.data.status == 'entregada'
+            && exchangeFinalConfirmation(proposal))
+        );
+    }
+
+    function exchangeConfirmationCount(proposal) {
+      return (proposal.requestedOwnerConfirmedAt is timestamp ? 1 : 0)
         + (proposal.offeredOwnerConfirmedAt is timestamp ? 1 : 0);
-      let accepting = resource.data.status == 'publicada'
-        && resource.data.mode == 'intercambio'
-        && request.resource.data.status == 'comprometida'
-        && request.resource.data.committedAt == request.time
-        && request.resource.data.statusDates.comprometida == request.time
-        && request.resource.data.statusDates.diff(resource.data.statusDates)
-          .affectedKeys().hasOnly(['comprometida'])
-        && validCounterpart
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+    }
+
+    function exchangeAccepting(publicationId, proposal) {
+      let after = request.resource.data;
+      return after.status == 'comprometida'
+        && after.committedAt == request.time
+        && after.statusDates.comprometida == request.time
+        && after.statusDates.diff(resource.data.statusDates).affectedKeys()
+          .hasOnly(['comprometida'])
+        && (
+          (publicationId == proposal.requestedPublicationId
+            && after.counterpartPublicationId == proposal.offeredPublicationId
+            && after.counterpartUserId == proposal.offeredOwnerId)
+          || (publicationId == proposal.offeredPublicationId
+            && after.counterpartPublicationId == proposal.requestedPublicationId
+            && after.counterpartUserId == proposal.requestedOwnerId)
+        )
+        && after.diff(resource.data).affectedKeys().hasOnly([
           'status',
           'exchangeProposalId',
           'counterpartPublicationId',
@@ -685,34 +723,35 @@ service cloud.firestore {
           'committedAt',
           'statusDates'
         ]);
-      // La primera confirmación deja constancia de quién la hizo, así el
-      // recorrido puede decir qué confirmación falta o faltó (HU07-15 y 19).
-      let firstConfirmation = resource.data.status == 'comprometida'
-        && request.resource.data.status == 'entregada'
-        && request.resource.data.statusDates.entregada == request.time
-        && request.resource.data.statusDates.diff(resource.data.statusDates)
-          .affectedKeys().hasOnly(['entregada'])
-        && request.resource.data.firstConfirmedBy == request.auth.uid
-        && confirmationCount == 1
-        && request.resource.data.diff(resource.data).affectedKeys()
+    }
+
+    // La primera confirmación deja constancia de quién la hizo, así el
+    // recorrido puede decir qué confirmación falta o faltó (HU07-15 y 19).
+    function exchangeFirstConfirmation(proposal) {
+      let after = request.resource.data;
+      return after.status == 'entregada'
+        && after.statusDates.entregada == request.time
+        && after.statusDates.diff(resource.data.statusDates).affectedKeys()
+          .hasOnly(['entregada'])
+        && after.firstConfirmedBy == request.auth.uid
+        && exchangeConfirmationCount(proposal) == 1
+        && after.diff(resource.data).affectedKeys()
           .hasOnly(['status', 'statusDates', 'firstConfirmedBy']);
-      // Pasadas las 120 h desde la primera confirmación el cierre sin
-      // confirmación es definitivo (HU07-19), como en HU13.
-      let finalConfirmation = resource.data.status == 'entregada'
-        && request.resource.data.status == 'confirmada'
-        && request.resource.data.statusDates.confirmada == request.time
-        && request.resource.data.statusDates.diff(resource.data.statusDates)
-          .affectedKeys().hasOnly(['confirmada'])
+    }
+
+    // Pasadas las 120 h desde la primera confirmación el cierre sin
+    // confirmación es definitivo (HU07-19), como en HU13.
+    function exchangeFinalConfirmation(proposal) {
+      let after = request.resource.data;
+      return after.status == 'confirmada'
+        && after.statusDates.confirmada == request.time
+        && after.statusDates.diff(resource.data.statusDates).affectedKeys()
+          .hasOnly(['confirmada'])
         && request.time < resource.data.statusDates.entregada
           + duration.value(120, 'h')
-        && confirmationCount == 2
-        && request.resource.data.diff(resource.data).affectedKeys()
+        && exchangeConfirmationCount(proposal) == 2
+        && after.diff(resource.data).affectedKeys()
           .hasOnly(['status', 'statusDates']);
-      return isParticipant
-        && belongsToProposal
-        && validOwner
-        && accepted
-        && (accepting || firstConfirmation || finalConfirmation);
     }
 
     function validInitialProposal() {
@@ -1141,49 +1180,38 @@ service cloud.firestore {
         && (confirmed || rejected);
     }
 
+    // Los mapas anidados se validan con el mínimo de expresiones: el tamaño
+    // del mapa fija exactamente las claves que después se leen, y cada texto
+    // se acota con una sola expresión regular, que además falla si el valor
+    // no es texto. Si falta una clave la lectura falla y la regla deniega
+    // igual. Las dos listas de claves y los tres chequeos por texto costaban
+    // el triple, y en las necesidades eso se multiplica por diez.
     function validCampaignCollectionPoint(point) {
-      return point is map
-        && point.keys().hasAll(['name', 'address', 'openingHours'])
-        && point.keys().hasOnly(['name', 'address', 'openingHours'])
-        && point.name is string
-        && point.name.size() > 0
-        && point.name.size() <= 120
-        && point.address is string
-        && point.address.size() > 0
-        && point.address.size() <= 240
-        && point.openingHours is string
-        && point.openingHours.size() > 0
-        && point.openingHours.size() <= 160;
+      return point.size() == 3
+        && point.name.matches('[\\s\\S]{1,120}')
+        && point.address.matches('[\\s\\S]{1,240}')
+        && point.openingHours.matches('[\\s\\S]{1,160}');
     }
 
-    function validCampaignNeed(need) {
-      return need is map
-        && need.keys().hasAll([
-          'id', 'name', 'requiredQuantity', 'contributedQuantity'
-        ])
-        && need.keys().hasOnly([
-          'id', 'name', 'requiredQuantity', 'contributedQuantity'
-        ])
-        && need.id is string
-        && need.id.size() > 0
-        && need.id.size() <= 100
-        && need.name is string
-        && need.name.size() > 0
-        && need.name.size() <= 120
+    // Una necesidad nueva, al crear la campaña o al agregarla después, nace
+    // sin aportes.
+    function validNewCampaignNeed(need) {
+      return need.size() == 4
+        && need.id.matches('[\\s\\S]{1,100}')
+        && need.name.matches('[\\s\\S]{1,120}')
         && need.requiredQuantity is int
         && need.requiredQuantity > 0
-        && need.contributedQuantity is int
-        && need.contributedQuantity >= 0;
+        && need.contributedQuantity == 0;
     }
 
     // Firestore Rules no tiene iteradores. HU15 acota el formulario a diez
     // necesidades y valida explícitamente cada posición para no dejar huecos
-    // de esquema ni permitir contribuciones iniciales falsas.
-    function validInitialCampaignNeedAt(index) {
-      let needs = request.resource.data.needs;
-      return needs.size() <= index
-        || (validCampaignNeed(needs[index])
-          && needs[index].contributedQuantity == 0);
+    // de esquema ni permitir contribuciones iniciales falsas. Cada posición
+    // cuenta para el límite de 1000 expresiones por petición (con la
+    // validación anterior la creación fallaba desde seis necesidades), por
+    // eso la lista llega como argumento en vez de releerse en cada posición.
+    function validInitialCampaignNeedAt(needs, index) {
+      return needs.size() <= index || validNewCampaignNeed(needs[index]);
     }
 
     function validInitialCampaignNeeds() {
@@ -1191,31 +1219,33 @@ service cloud.firestore {
       return needs is list
         && needs.size() >= 1
         && needs.size() <= 10
-        && validInitialCampaignNeedAt(0)
-        && validInitialCampaignNeedAt(1)
-        && validInitialCampaignNeedAt(2)
-        && validInitialCampaignNeedAt(3)
-        && validInitialCampaignNeedAt(4)
-        && validInitialCampaignNeedAt(5)
-        && validInitialCampaignNeedAt(6)
-        && validInitialCampaignNeedAt(7)
-        && validInitialCampaignNeedAt(8)
-        && validInitialCampaignNeedAt(9);
+        && validInitialCampaignNeedAt(needs, 0)
+        && validInitialCampaignNeedAt(needs, 1)
+        && validInitialCampaignNeedAt(needs, 2)
+        && validInitialCampaignNeedAt(needs, 3)
+        && validInitialCampaignNeedAt(needs, 4)
+        && validInitialCampaignNeedAt(needs, 5)
+        && validInitialCampaignNeedAt(needs, 6)
+        && validInitialCampaignNeedAt(needs, 7)
+        && validInitialCampaignNeedAt(needs, 8)
+        && validInitialCampaignNeedAt(needs, 9);
     }
 
-    function validEditedCampaignNeedAt(index) {
-      let before = resource.data.needs;
-      let after = request.resource.data.needs;
-      return after.size() <= index
-        || (validCampaignNeed(after[index])
-          && (
-            (before.size() > index
-              && after[index].id == before[index].id
-              && after[index].contributedQuantity
-                == before[index].contributedQuantity)
-            || (before.size() <= index
-              && after[index].contributedQuantity == 0)
-          ));
+    // En una necesidad existente solo pueden cambiar el nombre y la cantidad
+    // requerida: el `diff` con la versión guardada garantiza que el id, lo
+    // aportado y el esquema siguen intactos, así que solo se revalidan esos
+    // dos campos. Una posición nueva pasa la validación completa; la guarda
+    // `before.size() <= index` impide que una existente inválida se cuele
+    // como nueva.
+    function validEditedCampaignNeedAt(before, after, index) {
+      return (before.size() > index
+          && after[index].diff(before[index]).affectedKeys()
+            .hasOnly(['name', 'requiredQuantity'])
+          && after[index].name.matches('[\\s\\S]{1,120}')
+          && after[index].requiredQuantity is int
+          && after[index].requiredQuantity > 0)
+        || after.size() <= index
+        || (before.size() <= index && validNewCampaignNeed(after[index]));
     }
 
     function validEditedCampaignNeeds() {
@@ -1224,16 +1254,16 @@ service cloud.firestore {
       return after is list
         && after.size() >= before.size()
         && after.size() <= 10
-        && validEditedCampaignNeedAt(0)
-        && validEditedCampaignNeedAt(1)
-        && validEditedCampaignNeedAt(2)
-        && validEditedCampaignNeedAt(3)
-        && validEditedCampaignNeedAt(4)
-        && validEditedCampaignNeedAt(5)
-        && validEditedCampaignNeedAt(6)
-        && validEditedCampaignNeedAt(7)
-        && validEditedCampaignNeedAt(8)
-        && validEditedCampaignNeedAt(9);
+        && validEditedCampaignNeedAt(before, after, 0)
+        && validEditedCampaignNeedAt(before, after, 1)
+        && validEditedCampaignNeedAt(before, after, 2)
+        && validEditedCampaignNeedAt(before, after, 3)
+        && validEditedCampaignNeedAt(before, after, 4)
+        && validEditedCampaignNeedAt(before, after, 5)
+        && validEditedCampaignNeedAt(before, after, 6)
+        && validEditedCampaignNeedAt(before, after, 7)
+        && validEditedCampaignNeedAt(before, after, 8)
+        && validEditedCampaignNeedAt(before, after, 9);
     }
 
     function validCampaignImage(campaignId, campaign) {
@@ -1251,10 +1281,10 @@ service cloud.firestore {
         );
     }
 
+    // La descripción conserva los tres chequeos: RE2 no admite repeticiones
+    // mayores de 1000 y su tope es 3000.
     function validCampaignFields(campaignId, campaign) {
-      return campaign.title is string
-        && campaign.title.size() > 0
-        && campaign.title.size() <= 160
+      return campaign.title.matches('[\\s\\S]{1,160}')
         && campaign.description is string
         && campaign.description.size() > 0
         && campaign.description.size() <= 3000
@@ -1264,30 +1294,16 @@ service cloud.firestore {
         && validCampaignImage(campaignId, campaign);
     }
 
+    // El rol se lee del mismo documento que da el nombre de la organización,
+    // así la creación no paga dos veces la lectura de `usuarios`. No hay
+    // `hasAll`: cada clave obligatoria se lee más abajo y, si falta, la
+    // lectura falla y la regla deniega.
     function validInitialCampaign(campaignId) {
       let campaign = request.resource.data;
       let user = get(
         /databases/$(database)/documents/usuarios/$(request.auth.uid)
       ).data;
-      return campaign.keys().hasAll([
-          'organizationId',
-          'organizationName',
-          'title',
-          'description',
-          'district',
-          'closeAt',
-          'imageUrl',
-          'imageStoragePath',
-          'collectionPoint',
-          'needs',
-          'contributions',
-          'status',
-          'createdAt',
-          'updatedAt',
-          'closedAt',
-          'closedBy',
-          'closureReason'
-        ])
+      return user.rol == 'organizacion'
         && campaign.keys().hasOnly([
           'organizationId',
           'organizationName',
@@ -1335,18 +1351,11 @@ service cloud.firestore {
     function validOrganizationCampaignEdit(campaignId) {
       let after = request.resource.data;
       let changed = after.diff(resource.data).affectedKeys();
+      // `changed` va primero: las demás escrituras de la organización
+      // (cierre, confirmación, destino) salen aquí con una comparación.
       return resource.data.organizationId == request.auth.uid
         && resource.data.status == 'active'
         && request.time < resource.data.closeAt
-        && after.organizationId == resource.data.organizationId
-        && after.organizationName == resource.data.organizationName
-        && after.createdAt == resource.data.createdAt
-        && after.status == 'active'
-        && after.closedAt == resource.data.closedAt
-        && after.closedBy == resource.data.closedBy
-        && after.closureReason == resource.data.closureReason
-        && after.updatedAt == request.time
-        && after.closeAt > request.time
         && changed.hasOnly([
           'title',
           'description',
@@ -1358,6 +1367,9 @@ service cloud.firestore {
           'needs',
           'updatedAt'
         ])
+        && after.status == 'active'
+        && after.updatedAt == request.time
+        && after.closeAt > request.time
         && validCampaignFields(campaignId, after)
         && validEditedCampaignNeeds();
     }
@@ -1383,15 +1395,18 @@ service cloud.firestore {
       return validEarlyCampaignClose('Cierre anticipado por administración');
     }
 
-    // La verificación de campañas solo la puede registrar administración y
-    // queda firmada con el UID y la hora del servidor.
+    // Marcar o quitar la verificación de una campaña, con el mismo criterio
+    // que en las cuentas: fecha del servidor y firma de quien la pone, o los
+    // dos campos fuera a la vez. Solo se llama desde la rama de administración.
     function validAdminCampaignVerification() {
-      let changed = request.resource.data.diff(resource.data).affectedKeys();
-      return isAdmin()
-        && changed.hasOnly(['verifiedAt', 'verifiedBy'])
-        && changed.hasAll(['verifiedAt', 'verifiedBy'])
-        && request.resource.data.verifiedAt == request.time
-        && request.resource.data.verifiedBy == request.auth.uid;
+      let after = request.resource.data;
+      return after.diff(resource.data).affectedKeys()
+          .hasOnly(['verifiedAt', 'verifiedBy'])
+        && (
+          (after.verifiedAt == request.time
+            && after.verifiedBy == request.auth.uid)
+          || (!('verifiedAt' in after) && !('verifiedBy' in after))
+        );
     }
 
     function validOrganizationCampaignClose() {
@@ -1659,7 +1674,7 @@ service cloud.firestore {
               || (validInitialUserAfter(userId) && validInitialProfile())
             )
           )
-          || validAdminProfileVerification()
+          || validAdminAccountVerification()
         );
       allow delete: if false;
     }
@@ -1692,10 +1707,14 @@ service cloud.firestore {
             .hasOnly(['status'])
         )
         || (
-          'exchangeProposalId' in request.resource.data
+          resource.data.mode == 'intercambio'
+          && 'exchangeProposalId' in request.resource.data
           && validExchangePublicationTransition(publicationId)
         )
-        || validDonationPublicationTransition(publicationId)
+        || (
+          resource.data.mode == 'donacion'
+          && validDonationPublicationTransition(publicationId)
+        )
         || (
           isAdmin()
           && (validAdminRemoval() || validAdminExchangeRelease())
@@ -1706,16 +1725,27 @@ service cloud.firestore {
 
     match /campanias/{campaignId} {
       allow read: if signedIn();
-      allow create: if isOrganization()
-        && validInitialCampaign(campaignId);
+      allow create: if signedIn() && validInitialCampaign(campaignId);
+      // Ser la dueña se comprueba antes del rol porque no cuesta una lectura
+      // y toda rama de organización lo exige; el incremento solo se evalúa
+      // cuando el lote cambia `lastContributionId`, así las demás escrituras
+      // no pagan sus dos lecturas del aporte.
       allow update: if signedIn() && (
-        (isOrganization() && (
-          validOrganizationCampaignEdit(campaignId)
-          || validOrganizationCampaignClose()
-          || validContributionIncrement(campaignId)
-          || validDestinationNote()
-          || validSummaryNotifiedMark()
-        ))
+        (
+          resource.data.organizationId == request.auth.uid
+          && isOrganization()
+          && (
+            validOrganizationCampaignEdit(campaignId)
+            || validOrganizationCampaignClose()
+            || (
+              request.resource.data.diff(resource.data).affectedKeys()
+                .hasAny(['lastContributionId'])
+              && validContributionIncrement(campaignId)
+            )
+            || validDestinationNote()
+            || validSummaryNotifiedMark()
+          )
+        )
         || (isAdmin() && (
           validAdminCampaignVerification()
           || validAdminCampaignClose()

@@ -80,6 +80,17 @@ class AdminRepository {
     await _commit(batch);
   }
 
+  Future<void> removeAccountVerification({required String userId}) async {
+    final batch = _firestore.batch();
+    final removal = <String, Object?>{
+      'cuentaVerificadaAt': FieldValue.delete(),
+      'cuentaVerificadaPor': FieldValue.delete(),
+    };
+    batch.update(_users.doc(userId), removal);
+    batch.update(_profiles.doc(userId), removal);
+    await _commit(batch);
+  }
+
   Future<void> blockAccount({
     required String userId,
     required String adminId,
@@ -178,6 +189,15 @@ class AdminRepository {
     batch.update(_campaigns.doc(campaignId), {
       'verifiedAt': FieldValue.serverTimestamp(),
       'verifiedBy': adminId,
+    });
+    await _commit(batch);
+  }
+
+  Future<void> removeCampaignVerification({required String campaignId}) async {
+    final batch = _firestore.batch();
+    batch.update(_campaigns.doc(campaignId), {
+      'verifiedAt': FieldValue.delete(),
+      'verifiedBy': FieldValue.delete(),
     });
     await _commit(batch);
   }
