@@ -59,12 +59,25 @@ after(async () => {
   }
 });
 
+// Las reglas exigen el correo verificado en todo salvo en crear y leer los
+// propios documentos de la cuenta; el token de prueba lo trae verificado y
+// `unverifiedFirestoreFor` simula la cuenta recién registrada.
 function firestoreFor(userId) {
-  return testEnv.authenticatedContext(userId).firestore();
+  return testEnv
+    .authenticatedContext(userId, { email_verified: true })
+    .firestore();
+}
+
+function unverifiedFirestoreFor(userId) {
+  return testEnv
+    .authenticatedContext(userId, { email_verified: false })
+    .firestore();
 }
 
 function storageFor(userId) {
-  return testEnv.authenticatedContext(userId).storage();
+  return testEnv
+    .authenticatedContext(userId, { email_verified: true })
+    .storage();
 }
 
 function initialPublication({
@@ -264,6 +277,38 @@ test('permite crear un usuario y perfil legítimos con el esquema real', async (
     contadores: { donaciones: 0, intercambios: 0, voluntariados: 0 },
   });
   await assertSucceeds(batch.commit());
+});
+
+test('una cuenta sin verificar el correo crea y lee sus documentos y nada más', async () => {
+  const db = unverifiedFirestoreFor('unverified-user');
+  const batch = writeBatch(db);
+  batch.set(doc(db, 'usuarios', 'unverified-user'), {
+    nombreCompleto: 'Sin Verificar',
+    nombres: 'Sin',
+    apellidos: 'Verificar',
+    correo: 'sin-verificar@example.test',
+    rol: 'usuario',
+  });
+  batch.set(doc(db, 'perfiles', 'unverified-user'), {
+    nombreCorto: 'Sin V.',
+    distrito: '',
+    fechaIngreso: serverTimestamp(),
+    contadores: { donaciones: 0, intercambios: 0, voluntariados: 0 },
+  });
+  await assertSucceeds(batch.commit());
+  // La app lee su documento al abrir la sesión para saber si la cuenta
+  // está bloqueada; el resto espera a la verificación.
+  await assertSucceeds(getDoc(doc(db, 'usuarios', 'unverified-user')));
+  await assertFails(getDoc(doc(db, 'perfiles', 'unverified-user')));
+  await assertFails(getDocs(collection(db, 'publicaciones')));
+  await assertFails(setDoc(
+    doc(db, 'publicaciones', 'unverified-publication'),
+    initialPublication({
+      authorId: 'unverified-user',
+      mode: 'donacion',
+      deliveryType: 'donante',
+    }),
+  ));
 });
 
 test('conserva la reparación segura si existe perfil pero falta usuario', async () => {
@@ -1023,6 +1068,8 @@ test('HU09: participante envía y no puede falsificar senderId', async () => {
   ));
   const db = firestoreFor(volunteerId);
   const messageId = 'message-1';
+  // El cuerpo viaja cifrado por la app (D19): prefijo `enc1:` y base64.
+  const storedBody = `enc1:${'Q29vcmRpbmFy'.repeat(5)}==`;
   const batch = writeBatch(db);
   batch.set(
     doc(db, 'conversaciones', conversationId, 'mensajes', messageId),
@@ -1030,13 +1077,13 @@ test('HU09: participante envía y no puede falsificar senderId', async () => {
       conversationId,
       publicationId: donationPublicationId,
       senderId: volunteerId,
-      body: 'Coordinaré el recojo mañana.',
+      body: storedBody,
       queuedAt: new Date('2026-01-01T00:00:00Z'),
       sentAt: serverTimestamp(),
     },
   );
   batch.update(doc(db, 'conversaciones', conversationId), {
-    lastMessage: 'Coordinaré el recojo mañana.',
+    lastMessage: storedBody,
     lastSenderId: volunteerId,
     lastMessageId: messageId,
     updatedAt: serverTimestamp(),
@@ -1072,6 +1119,7 @@ test('HU09: participante envía y no puede falsificar senderId', async () => {
   ));
 
   const forgedId = 'forged-message';
+  const forgedBody = `enc1:${'RmFsc28='.repeat(6)}`;
   const forged = writeBatch(db);
   forged.set(
     doc(db, 'conversaciones', conversationId, 'mensajes', forgedId),
@@ -1079,18 +1127,40 @@ test('HU09: participante envía y no puede falsificar senderId', async () => {
       conversationId,
       publicationId: donationPublicationId,
       senderId: donorId,
-      body: 'Mensaje falsificado',
+      body: forgedBody,
       queuedAt: new Date('2026-01-01T00:00:00Z'),
       sentAt: serverTimestamp(),
     },
   );
   forged.update(doc(db, 'conversaciones', conversationId), {
-    lastMessage: 'Mensaje falsificado',
+    lastMessage: forgedBody,
     lastSenderId: donorId,
     lastMessageId: forgedId,
     updatedAt: serverTimestamp(),
   });
   await assertFails(forged.commit());
+
+  // Un cliente manipulado no puede guardar texto plano.
+  const plainId = 'plain-message';
+  const plain = writeBatch(db);
+  plain.set(
+    doc(db, 'conversaciones', conversationId, 'mensajes', plainId),
+    {
+      conversationId,
+      publicationId: donationPublicationId,
+      senderId: volunteerId,
+      body: 'Coordinaré el recojo mañana.',
+      queuedAt: new Date('2026-01-01T00:00:00Z'),
+      sentAt: serverTimestamp(),
+    },
+  );
+  plain.update(doc(db, 'conversaciones', conversationId), {
+    lastMessage: 'Coordinaré el recojo mañana.',
+    lastSenderId: volunteerId,
+    lastMessageId: plainId,
+    updatedAt: serverTimestamp(),
+  });
+  await assertFails(plain.commit());
 });
 
 test('HU10: propietario no puede asumir su propio recojo', async () => {

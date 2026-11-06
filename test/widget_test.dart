@@ -101,6 +101,25 @@ void main() {
     expect(find.text('¡Hola de nuevo!'), findsNothing);
   });
 
+  testWidgets(
+    'una cuenta con el correo sin verificar no pasa de la verificación',
+    (WidgetTester tester) async {
+      await tester.pumpWidget(
+        _buildApp(
+          user: const AppUser(
+            uid: 'uid-1',
+            email: 'a@b.com',
+            needsEmailVerification: true,
+          ),
+        ),
+      );
+      await _enterHome(tester);
+      expect(find.text('Verifica tu correo'), findsOneWidget);
+      expect(find.text('Ya lo verifiqué'), findsOneWidget);
+      expect(find.text('Inicio'), findsNothing);
+    },
+  );
+
   testWidgets('el modo oscuro se puede cambiar desde Perfil y se guarda', (
     WidgetTester tester,
   ) async {

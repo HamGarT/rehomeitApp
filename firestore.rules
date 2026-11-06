@@ -2,8 +2,18 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
-    function signedIn() {
+    // Hay sesión, verificada o no. Solo sirve para que una cuenta recién
+    // creada escriba y lea sus propios documentos mientras verifica el correo.
+    function authenticated() {
       return request.auth != null;
+    }
+
+    // Todo lo demás exige el correo verificado: un registro con un correo
+    // inventado o ajeno no puede publicar, escribir ni aportar aunque
+    // manipule la app. Google entrega el correo ya verificado.
+    function signedIn() {
+      return request.auth != null
+        && request.auth.token.email_verified == true;
     }
 
     // El administrador se reconoce por el campo `rol` de su documento de
@@ -613,9 +623,13 @@ service cloud.firestore {
         && conversation.lastSenderId == request.auth.uid
         && conversation.lastMessage == request.resource.data.body
         && conversation.updatedAt == request.time
-        && request.resource.data.body is string
-        && request.resource.data.body.size() > 0
-        && request.resource.data.body.size() <= 1000
+        // El cuerpo llega cifrado por la app (D19): el prefijo y el base64
+        // impiden que un cliente manipulado guarde texto plano. El texto
+        // original se limita a 1000 caracteres en la app; cifrado y en
+        // base64 cabe de sobra en 8000.
+        && request.resource.data.body
+          .matches('enc1:[A-Za-z0-9+/]{24,}={0,2}')
+        && request.resource.data.body.size() <= 8000
         && request.resource.data.queuedAt is timestamp
         && request.resource.data.queuedAt <= request.time
         && request.resource.data.sentAt == request.time;
@@ -1636,9 +1650,9 @@ service cloud.firestore {
     match /usuarios/{userId} {
       // Nombre completo y correo son privados (D07); el público va en perfiles.
       // La administración necesita listarlos para revisar cuentas.
-      allow read: if signedIn()
+      allow read: if authenticated()
         && (request.auth.uid == userId || isAdmin());
-      allow create: if signedIn()
+      allow create: if authenticated()
         && request.auth.uid == userId
         && validInitialUser();
       // El dueño edita su nombre y su última actividad; el rol se asigna desde
@@ -1660,7 +1674,7 @@ service cloud.firestore {
 
     match /perfiles/{userId} {
       allow read: if signedIn();
-      allow create: if signedIn()
+      allow create: if authenticated()
         && request.auth.uid == userId
         && validInitialProfile();
       // Edición del dueño, o la reparación atómica de AuthRepository cuando

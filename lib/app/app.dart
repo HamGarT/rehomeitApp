@@ -5,6 +5,7 @@ import '../core/constants/app_colors.dart';
 import '../core/navigation/app_routes.dart';
 import '../features/auth/presentation/auth_controller.dart';
 import '../features/auth/presentation/pages/login_page.dart';
+import '../features/auth/presentation/pages/verify_email_page.dart';
 import '../features/auth/presentation/widgets/auth_widgets.dart';
 import '../features/onboarding/presentation/onboarding_notifier.dart';
 import '../features/onboarding/presentation/onboarding_page.dart';
@@ -28,7 +29,13 @@ class RehomeitApp extends ConsumerWidget {
       child = const _SessionLoadingScreen();
     } else {
       final user = auth.value;
-      child = user == null ? const LoginPage() : const HomeShell();
+      if (user == null) {
+        child = const LoginPage();
+      } else if (user.needsEmailVerification) {
+        child = const VerifyEmailPage();
+      } else {
+        child = const HomeShell();
+      }
     }
 
     return MaterialApp(

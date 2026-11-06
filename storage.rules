@@ -2,6 +2,13 @@ rules_version = '2';
 
 service firebase.storage {
   match /b/{bucket}/o {
+    // Igual que en Firestore: ninguna subida ni lectura sin el correo
+    // verificado.
+    function signedIn() {
+      return request.auth != null
+        && request.auth.token.email_verified == true;
+    }
+
     function validPublicationId(publicationId) {
       return publicationId.matches('[A-Za-z0-9]{20}');
     }
@@ -66,7 +73,7 @@ service firebase.storage {
     }
 
     function isOrganization(organizationId) {
-      return request.auth != null
+      return signedIn()
         && request.auth.uid == organizationId
         && firestore.get(
           /databases/(default)/documents/usuarios/$(organizationId)
@@ -102,8 +109,8 @@ service firebase.storage {
     }
 
     match /publicaciones/{authorId}/{publicationId}/{fileName} {
-      allow read: if request.auth != null;
-      allow create: if request.auth != null
+      allow read: if signedIn();
+      allow create: if signedIn()
         && request.auth.uid == authorId
         && resource == null
         && validPublicationId(publicationId)
@@ -112,7 +119,7 @@ service firebase.storage {
       allow update: if false;
       // Permite la limpieza tras un fallo, limitada al namespace y a los
       // nombres válidos del propio usuario.
-      allow delete: if request.auth != null
+      allow delete: if signedIn()
         && request.auth.uid == authorId
         && validPublicationId(publicationId)
         && fileName.matches('foto_[0-3]\\.(jpg|jpeg|png|webp|heic|heif)');
@@ -121,13 +128,13 @@ service firebase.storage {
     // Foto de perfil (HU20-9). Siempre JPEG porque la app la recomprime antes
     // de subirla; se admite sobrescribir para cambiarla sin acumular archivos.
     match /perfiles/{userId}/{fileName} {
-      allow read: if request.auth != null;
-      allow create, update: if request.auth != null
+      allow read: if signedIn();
+      allow create, update: if signedIn()
         && request.auth.uid == userId
         && fileName == 'avatar.jpg'
         && request.resource.contentType == 'image/jpeg'
         && request.resource.size < 5 * 1024 * 1024;
-      allow delete: if request.auth != null
+      allow delete: if signedIn()
         && request.auth.uid == userId
         && fileName == 'avatar.jpg';
     }
@@ -136,7 +143,7 @@ service firebase.storage {
     // comprobación de rol es imprescindible: uid en la ruta, por sí solo, no
     // distingue una organización habilitada de una cuenta normal.
     match /campanias/{campaignId}/{organizationId}/{fileName} {
-      allow read: if request.auth != null;
+      allow read: if signedIn();
       allow create, update: if isOrganization(organizationId)
         && campaignId.matches('[A-Za-z0-9]{20}')
         && validCampaignCover(fileName)
@@ -149,8 +156,8 @@ service firebase.storage {
     }
 
     match /entregas/{publicationId}/{actorId}/{fileName} {
-      allow read: if request.auth != null;
-      allow create: if request.auth != null
+      allow read: if signedIn();
+      allow create: if signedIn()
         && resource == null
         && validPublicationId(publicationId)
         && validEvidence(fileName)

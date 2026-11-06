@@ -55,7 +55,10 @@ class _RegisterPageState extends ConsumerState<RegisterPage> {
       showAppSnackBar(context, error, kind: AppSnackBarKind.error);
       return;
     }
-    showAppSnackBar(context, 'Tu cuenta está lista. ¡Bienvenido!');
+    showAppSnackBar(
+      context,
+      'Tu cuenta está creada. Te enviamos un correo para verificarla.',
+    );
     Navigator.of(context).popUntil((route) => route.isFirst);
   }
 

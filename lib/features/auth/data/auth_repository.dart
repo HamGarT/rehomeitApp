@@ -31,9 +31,13 @@ class AuthRepository {
   /// vienen de un registro o inicio de sesión en curso, que ya escriben sus
   /// documentos; repararlos a la vez haría llegar una segunda escritura como
   /// actualización y las reglas la rechazarían.
+  ///
+  /// Se escucha `userChanges` y no `authStateChanges` porque el primero
+  /// también emite al recargar el usuario: así la pantalla de verificación
+  /// de correo da paso al inicio en cuanto Auth confirma la verificación.
   Stream<AppUser?> authStateChanges() async* {
     var restoredSession = true;
-    await for (final user in _auth.authStateChanges()) {
+    await for (final user in _auth.userChanges()) {
       if (user != null) {
         final denial = await _accountDenial(user);
         if (denial != null) {
@@ -98,7 +102,40 @@ class AuthRepository {
         await user.updateDisplayName(names.full);
       } on FirebaseAuthException catch (_) {}
       await _createUserDocuments(user, names: names);
+      // Si el envío falla la cuenta igual queda creada: la pantalla de
+      // verificación ofrece reenviarlo.
+      try {
+        await user.sendEmailVerification();
+      } on FirebaseAuthException catch (_) {}
       return AppUser.fromFirebase(user);
+    } on FirebaseAuthException catch (error) {
+      throw AuthFailure(friendlyAuthError(error));
+    }
+  }
+
+  Future<void> sendVerificationEmail() async {
+    final user = _auth.currentUser;
+    if (user == null) return;
+    try {
+      await user.sendEmailVerification();
+    } on FirebaseAuthException catch (error) {
+      throw AuthFailure(friendlyAuthError(error));
+    }
+  }
+
+  /// Vuelve a leer el usuario en Auth y, si ya verificó, renueva el token de
+  /// sesión: las reglas leen `email_verified` del token y el anterior sigue
+  /// valiendo hasta una hora, así que sin renovarlo la primera escritura
+  /// sería rechazada. La recarga hace emitir `userChanges`, que reenruta.
+  Future<bool> refreshEmailVerification() async {
+    final user = _auth.currentUser;
+    if (user == null) return false;
+    try {
+      await user.reload();
+      final refreshed = _auth.currentUser;
+      if (refreshed == null || !refreshed.emailVerified) return false;
+      await refreshed.getIdToken(true);
+      return true;
     } on FirebaseAuthException catch (error) {
       throw AuthFailure(friendlyAuthError(error));
     }
@@ -182,10 +219,7 @@ class AuthRepository {
   /// volverá a comprobarse al iniciar sesión o al reabrir la app.
   Future<String?> _accountDenial(User user) async {
     try {
-      final doc = await _firestore
-          .collection('usuarios')
-          .doc(user.uid)
-          .get();
+      final doc = await _firestore.collection('usuarios').doc(user.uid).get();
       final data = doc.data();
       final status = data?['estadoCuenta'] as String?;
       if (status != 'bloqueada' && status != 'retirada') return null;

@@ -57,6 +57,13 @@ class AuthController extends Notifier<AsyncValue<AppUser?>> {
   /// indicador de progreso.
   Future<void> signOut() => _repository.signOut();
 
+  /// `true` si Auth ya tiene el correo verificado. Lanza [AuthFailure] si no
+  /// se pudo consultar.
+  Future<bool> refreshEmailVerification() =>
+      _repository.refreshEmailVerification();
+
+  Future<void> sendVerificationEmail() => _repository.sendVerificationEmail();
+
   /// Ejecuta una acción y devuelve `null` si tuvo éxito (o fue cancelada) o un
   /// mensaje amigable listo para mostrar si falló.
   Future<String?> _run(Future<AppUser> Function() action) async {
