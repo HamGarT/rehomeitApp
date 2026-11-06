@@ -56,3 +56,6 @@ app.*.map.json
 # Local AI tooling
 .codex/
 codex/
+
+# Clave de cifrado de mensajes (--dart-define-from-file); ver secrets.example.json
+secrets.json

@@ -2,7 +2,7 @@
 
 Decisiones que condicionan la implementación y que no se deducen leyendo las historias de usuario. Cada una registra el problema que resuelve y lo que implica asumirla.
 
-Última actualización: 15 de octubre de 2026.
+Última actualización: 6 de noviembre de 2026.
 
 ---
 
@@ -238,3 +238,23 @@ Esta paleta reemplaza desde el 8 de octubre de 2026 a la de marrón y crema del 
 **Decisión.** Nadie escribe un documento de resumen. El resumen se arma al abrir una campaña cerrada a partir de la propia campaña: el avance por necesidad sale del mapa de contadores (D08), y dos contadores nuevos, `confirmedContributions` y `contributorsCount`, se mantienen en el mismo lote de cada confirmación. La regla exige que el primero suba exactamente 1 y acota el segundo a 0 o 1, porque no puede consultar si la persona ya había aportado; esa comprobación la hace la aplicación antes de confirmar. Las cifras quedan fijas al cierre sin ninguna regla adicional: ninguna confirmación se admite en una campaña cerrada o vencida. El distrito atendido es el de alcance de la campaña, único dato de lugar del modelo. La organización dueña puede escribir y corregir `destinationNote` solo con la campaña cerrada, y es el único campo que cambia tras el cierre. El aviso `resumen_publicado` lo envía quien cierra anticipadamente o la organización la primera vez que abre su campaña ya vencida, una escritura por persona con id fijo (D16); la campaña guarda `summaryNotifiedAt` para no repetir la ronda, y la marca solo se escribe cuando ningún aviso fue rechazado. La moderación también puede enviarla.
 
 **Consecuencias.** El resumen existe desde el instante del cierre, aunque la organización no haya descrito el destino, y una lectura basta para mostrarlo. `contributorsCount` depende de una consulta del cliente al confirmar: sin red, la consulta cae a la caché y puede contar como nueva a una persona que ya aportó; es el margen que se acepta a cambio de no tener funciones de servidor. El aviso a quienes aportaron no es inmediato en un cierre por fecha: llega cuando la organización vuelve a abrir la campaña. Las campañas creadas antes de esta decisión se leen con los contadores en cero.
+
+---
+
+## D19 – El correo se verifica con el enlace de Firebase Auth y las reglas lo exigen
+
+**Problema.** Registrarse con correo y contraseña (HU01) creaba una cuenta operativa con cualquier dirección, existiera o no. Una persona podía publicar, escribir y aportar con un correo inventado o ajeno, y la administración no tenía forma de contactarla. Enviar un código de verificación propio exige un componente de servidor que envíe correos (Cloud Functions más un proveedor), que el proyecto no tiene (D01, D02).
+
+**Decisión.** Al registrarse con correo, la aplicación pide a Firebase Auth que envíe su enlace de verificación y deja la sesión en una pantalla de verificación hasta que Auth confirme que el enlace se abrió. Esa pantalla solo vuelve a consultar, reenvía el enlace con una espera de 60 segundos entre envíos y permite salir para usar otra cuenta. Las reglas de Firestore y Storage exigen `email_verified` en el token para toda lectura y escritura, salvo crear y leer los propios documentos de `usuarios` y `perfiles`, que el registro escribe antes de la verificación y la pantalla necesita para saber si la cuenta está bloqueada. Google entrega el correo ya verificado y no pasa por la pantalla.
+
+**Consecuencias.** Un correo falso no puede hacer nada aunque manipule la aplicación, porque el bloqueo vive en las reglas y no solo en la interfaz. Al verificar, la aplicación renueva el token de sesión porque las reglas leen el anterior hasta una hora. La sesión escucha `userChanges` en vez de `authStateChanges` para enterarse de la recarga del usuario. Las cuentas creadas antes de esta decisión quedan en la pantalla de verificación hasta que abran el enlace; se asumió porque la base se vacía antes de repartir la aplicación.
+
+---
+
+## D20 – Los mensajes se guardan cifrados con una clave de la aplicación
+
+**Problema.** El texto de las conversaciones (HU09) se guardaba en claro en `mensajes.body` y en la vista previa `conversaciones.lastMessage`: cualquiera con acceso a la consola de Firebase o a una exportación podía leer conversaciones privadas entre dos personas. Un cifrado de extremo a extremo, con claves por persona en cada teléfono, impediría leer el historial desde otro dispositivo con la misma cuenta, y resolverlo exige un respaldo de claves con un secreto propio o un servidor que las custodie; ninguna opción encaja con el alcance.
+
+**Decisión.** La aplicación cifra el texto antes de escribirlo y lo descifra al leerlo, con AES-GCM de 256 bits y una única clave de la aplicación que no vive en el repositorio: entra al compilar con `--dart-define-from-file=secrets.json`. El mensaje y la vista previa guardan el mismo texto cifrado, con prefijo `enc1:` y base64, y las reglas exigen ese formato para que un cliente manipulado no pueda guardar texto plano. El límite de 1000 caracteres se valida en la aplicación sobre el texto original; la regla admite hasta 8000 sobre el cifrado. Las notificaciones de mensaje nuevo no copian el texto. Una compilación sin clave no envía mensajes y muestra los existentes como "no disponibles".
+
+**Consecuencias.** Es cifrado en reposo del lado del cliente, no de extremo a extremo: protege frente a quien lea la base de datos, y funciona en cualquier teléfono con la cuenta; quien descompile el paquete puede extraer la clave. Cambiar la clave vuelve ilegibles los mensajes anteriores. Los mensajes se descifran al recibir cada instantánea, uno por uno, antes de llegar a la interfaz.

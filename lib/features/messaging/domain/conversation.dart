@@ -12,6 +12,7 @@ class Conversation {
     required this.updatedAt,
     this.publicationImageUrl,
     this.lastMessage = '',
+    this.lastMessageUnreadable = false,
     this.lastSenderId,
   });
 
@@ -21,7 +22,12 @@ class Conversation {
   final PublicationMode publicationMode;
   final String? publicationImageUrl;
   final List<String> participantIds;
+
+  /// Vista previa del último mensaje ya descifrada; vacía si no hay mensajes.
   final String lastMessage;
+
+  /// Hay un último mensaje pero esta compilación no pudo descifrarlo.
+  final bool lastMessageUnreadable;
   final String? lastSenderId;
   final DateTime createdAt;
   final DateTime updatedAt;
@@ -35,6 +41,25 @@ class Conversation {
     return null;
   }
 
+  /// [plainText] nulo significa que el texto guardado no se pudo descifrar.
+  Conversation withLastMessage(String? plainText) {
+    return Conversation(
+      id: id,
+      publicationId: publicationId,
+      publicationTitle: publicationTitle,
+      publicationMode: publicationMode,
+      participantIds: participantIds,
+      createdAt: createdAt,
+      updatedAt: updatedAt,
+      publicationImageUrl: publicationImageUrl,
+      lastMessage: plainText ?? '',
+      lastMessageUnreadable: plainText == null,
+      lastSenderId: lastSenderId,
+    );
+  }
+
+  /// `lastMessage` llega tal como está guardado, cifrado; el repositorio lo
+  /// descifra con [withLastMessage] antes de entregarlo.
   factory Conversation.fromMap(String id, Map<String, Object?> map) {
     final createdAt = readFirestoreDate(map['createdAt']);
     return Conversation(
@@ -71,16 +96,35 @@ class ChatMessage {
     required this.body,
     required this.sentAt,
     required this.isPending,
+    this.isUnreadable = false,
   });
 
   final String id;
   final String conversationId;
   final String publicationId;
   final String senderId;
+
+  /// Texto ya descifrado; vacío cuando [isUnreadable].
   final String body;
   final DateTime sentAt;
   final bool isPending;
+  final bool isUnreadable;
 
+  /// [plainText] nulo significa que el texto guardado no se pudo descifrar.
+  ChatMessage withBody(String? plainText) {
+    return ChatMessage(
+      id: id,
+      conversationId: conversationId,
+      publicationId: publicationId,
+      senderId: senderId,
+      body: plainText ?? '',
+      sentAt: sentAt,
+      isPending: isPending,
+      isUnreadable: plainText == null,
+    );
+  }
+
+  /// `body` llega cifrado; el repositorio lo descifra con [withBody].
   factory ChatMessage.fromMap(
     String id,
     Map<String, Object?> map, {

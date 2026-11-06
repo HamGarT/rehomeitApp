@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/crypto/message_cipher.dart';
 import '../../../core/firebase/firebase_errors.dart';
 import '../../../core/firebase/firestore_commit.dart';
 import '../../../shared/data/notification_payload.dart';
@@ -10,13 +11,17 @@ import '../../../shared/domain/publication.dart';
 import '../domain/conversation.dart';
 
 final messagingRepositoryProvider = Provider<MessagingRepository>((ref) {
-  return MessagingRepository(FirebaseFirestore.instance);
+  return MessagingRepository(
+    FirebaseFirestore.instance,
+    ref.watch(messageCipherProvider),
+  );
 });
 
 class MessagingRepository {
-  MessagingRepository(this._firestore);
+  MessagingRepository(this._firestore, this._cipher);
 
   final FirebaseFirestore _firestore;
+  final MessageCipher _cipher;
 
   static String conversationId({
     required String publicationId,
@@ -33,10 +38,10 @@ class MessagingRepository {
         .where('participantIds', arrayContains: userId)
         .orderBy('updatedAt', descending: true)
         .snapshots()
-        .map(
-          (snapshot) => snapshot.docs
-              .map((doc) => Conversation.fromMap(doc.id, doc.data()))
-              .toList(growable: false),
+        .asyncMap(
+          (snapshot) => Future.wait(
+            snapshot.docs.map((doc) => _readConversation(doc.id, doc.data())),
+          ),
         );
   }
 
@@ -47,16 +52,17 @@ class MessagingRepository {
         .collection('mensajes')
         .orderBy('sentAt', descending: true)
         .snapshots(includeMetadataChanges: true)
-        .map(
-          (snapshot) => snapshot.docs
-              .map(
-                (doc) => ChatMessage.fromMap(
-                  doc.id,
-                  doc.data(),
-                  isPending: doc.metadata.hasPendingWrites,
-                ),
-              )
-              .toList(growable: false),
+        .asyncMap(
+          (snapshot) => Future.wait(
+            snapshot.docs.map((doc) async {
+              final message = ChatMessage.fromMap(
+                doc.id,
+                doc.data(),
+                isPending: doc.metadata.hasPendingWrites,
+              );
+              return message.withBody(await _cipher.decrypt(message.body));
+            }),
+          ),
         );
   }
 
@@ -66,8 +72,21 @@ class MessagingRepository {
         .doc(conversationId)
         .get();
     return snapshot.exists
-        ? Conversation.fromMap(snapshot.id, snapshot.data()!)
+        ? _readConversation(snapshot.id, snapshot.data()!)
         : null;
+  }
+
+  /// Una conversación sin mensajes lleva la vista previa vacía y no hay nada
+  /// que descifrar.
+  Future<Conversation> _readConversation(
+    String id,
+    Map<String, Object?> data,
+  ) async {
+    final conversation = Conversation.fromMap(id, data);
+    if (conversation.lastMessage.isEmpty) return conversation;
+    return conversation.withLastMessage(
+      await _cipher.decrypt(conversation.lastMessage),
+    );
   }
 
   /// Abre, o crea si no existe, la conversación de [publication] entre su
@@ -97,12 +116,12 @@ class MessagingRepository {
       // mientras que la transacción de abajo siempre exige servidor.
       final cached = await reference.get();
       if (cached.exists) {
-        return Conversation.fromMap(cached.id, cached.data()!);
+        return await _readConversation(cached.id, cached.data()!);
       }
       return await _firestore.runTransaction((transaction) async {
         final existing = await transaction.get(reference);
         if (existing.exists) {
-          return Conversation.fromMap(existing.id, existing.data()!);
+          return _readConversation(existing.id, existing.data()!);
         }
         final publicationReference = _firestore
             .collection('publicaciones')
@@ -213,6 +232,14 @@ class MessagingRepository {
       throw const MessagingFailure('No se encontró al otro participante.');
     }
     final recipientId = recipients.first;
+    if (!_cipher.isAvailable) {
+      throw const MessagingFailure(
+        'Esta compilación no tiene la clave de mensajería. Vuelve a compilar con secrets.json.',
+      );
+    }
+    // El mismo texto cifrado va en el mensaje y en la vista previa: las
+    // reglas exigen que coincidan.
+    final storedBody = await _cipher.encrypt(text);
 
     final conversationRef = _firestore
         .collection('conversaciones')
@@ -226,12 +253,12 @@ class MessagingRepository {
       'conversationId': conversation.id,
       'publicationId': conversation.publicationId,
       'senderId': senderId,
-      'body': text,
+      'body': storedBody,
       'queuedAt': Timestamp.now(),
       'sentAt': FieldValue.serverTimestamp(),
     });
     batch.update(conversationRef, {
-      'lastMessage': text,
+      'lastMessage': storedBody,
       'lastSenderId': senderId,
       'lastMessageId': messageRef.id,
       'updatedAt': FieldValue.serverTimestamp(),

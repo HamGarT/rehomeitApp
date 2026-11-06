@@ -186,9 +186,8 @@ class _PublicationHeader extends StatelessWidget {
                     ),
                     Text(
                       conversation.publicationMode.label,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: context.appColors.textSecondary,
-                      ),
+                      style: Theme.of(context).textTheme.bodySmall
+                          ?.copyWith(color: context.appColors.textSecondary),
                     ),
                   ],
                 ),
@@ -226,7 +225,20 @@ class _MessageBubble extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
-            Align(alignment: Alignment.centerLeft, child: Text(message.body)),
+            Align(
+              alignment: Alignment.centerLeft,
+              // Sin la clave de esta compilación, o con un texto alterado, el
+              // mensaje existe pero no se puede leer (D19).
+              child: message.isUnreadable
+                  ? Text(
+                      'Mensaje no disponible en esta versión de la app.',
+                      style: TextStyle(
+                        fontStyle: FontStyle.italic,
+                        color: context.appColors.textSecondary,
+                      ),
+                    )
+                  : Text(message.body),
+            ),
             const SizedBox(height: 3),
             Row(
               mainAxisSize: MainAxisSize.min,

@@ -1,17 +1,24 @@
-# rehomeitapp
+# ReHomeIt
 
-A new Flutter project.
+Aplicación Flutter sobre Firebase para donar, intercambiar y reutilizar bienes en Cajamarca. Las historias de usuario están en `docs/historias-usuario.md` y las decisiones técnicas en `docs/decisiones-tecnicas.md`.
 
-## Getting Started
+## Compilar y correr
 
-This project is a starting point for a Flutter application.
+Los mensajes se cifran con una clave que no está en el repositorio (D20). Copia `secrets.example.json` a `secrets.json`, pon la clave real que comparte el equipo y pásala en cada comando:
 
-A few resources to get you started if this is your first Flutter project:
+```bash
+flutter run --dart-define-from-file=secrets.json
+flutter build apk --release --dart-define-from-file=secrets.json
+```
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+Sin la clave la app compila, pero no envía mensajes y muestra los existentes como no disponibles.
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+## Pruebas
+
+```bash
+flutter analyze
+flutter test
+cd firebase_rules_tests && npm test
+```
+
+Las pruebas de reglas levantan el emulador de Firestore y Storage y necesitan JDK 21.

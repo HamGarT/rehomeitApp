@@ -65,7 +65,9 @@ class _ConversationTile extends ConsumerWidget {
     final counterpart = counterpartId == null
         ? null
         : ref.watch(publicProfileProvider(counterpartId)).value?.shortName;
-    final lastMessage = conversation.lastMessage.isEmpty
+    final lastMessage = conversation.lastMessageUnreadable
+        ? 'Mensaje no disponible'
+        : conversation.lastMessage.isEmpty
         ? 'Conversación iniciada'
         : conversation.lastMessage;
 
