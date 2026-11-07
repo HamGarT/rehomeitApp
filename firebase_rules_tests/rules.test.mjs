@@ -25,7 +25,12 @@ import {
   where,
   writeBatch,
 } from 'firebase/firestore';
-import { deleteObject, ref, uploadBytes } from 'firebase/storage';
+import {
+  deleteObject,
+  getBytes,
+  ref,
+  uploadBytes,
+} from 'firebase/storage';
 
 const testDirectory = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(testDirectory, '..');
@@ -2953,4 +2958,54 @@ test('HU15: una campaña con las diez necesidades del formulario se crea y se ed
     needs: [{ ...tenNeeds()[0], id: 'otro-id' }, ...tenNeeds().slice(1)],
     updatedAt: serverTimestamp(),
   }));
+});
+
+test('deniega accesos no autenticados a Firestore y Storage', async () => {
+  const publicationId = 'AbCdEfGhIjKlMnOpQrSt';
+  const ownerId = 'authenticated-owner';
+  const bytes = new Uint8Array([0xff, 0xd8, 0xff, 0xd9]);
+
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), 'publicaciones', publicationId), {
+      ...initialPublication({
+        authorId: ownerId,
+        mode: 'donacion',
+        deliveryType: 'donante',
+      }),
+      publishedAt: new Date('2026-01-01T00:00:00Z'),
+      statusDates: { publicada: new Date('2026-01-01T00:00:00Z') },
+    });
+    await setDoc(doc(context.firestore(), 'campanias', publicationId), {
+      organizationId: ownerId,
+      title: 'Campaña privada',
+      status: 'active',
+    });
+  });
+
+  const anonymous = testEnv.unauthenticatedContext();
+  const anonymousDb = anonymous.firestore();
+
+  await assertFails(getDoc(doc(anonymousDb, 'publicaciones', publicationId)));
+  await assertFails(getDoc(doc(anonymousDb, 'campanias', publicationId)));
+  await assertFails(setDoc(
+    doc(anonymousDb, 'reportes', `anon_${publicationId}`),
+    initialReport({ reporterId: 'anon', publicationId }),
+  ));
+
+  const storagePath =
+    `publicaciones/${ownerId}/${publicationId}/foto_0.jpg`;
+  const authenticatedStorage = storageFor(ownerId);
+  await assertSucceeds(uploadBytes(
+    ref(authenticatedStorage, storagePath),
+    bytes,
+    { contentType: 'image/jpeg' },
+  ));
+
+  const anonymousStorage = anonymous.storage();
+  await assertFails(getBytes(ref(anonymousStorage, storagePath)));
+  await assertFails(uploadBytes(
+    ref(anonymousStorage, storagePath),
+    bytes,
+    { contentType: 'image/jpeg' },
+  ));
 });
