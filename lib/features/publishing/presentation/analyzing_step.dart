@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/constants/app_colors.dart';
 import '../../../app/theme.dart';
+import '../../../shared/widgets/app_dialog.dart';
 import '../../../shared/widgets/mascot.dart';
 import 'form_step.dart';
 import 'publish_draft_notifier.dart';
@@ -61,13 +62,37 @@ class _AnalyzingStepState extends ConsumerState<AnalyzingStep>
     // rápida ni se corta con una lenta.
     final analysis = ref.read(publishDraftProvider.notifier).analyzePhotos();
     await Future<void>.delayed(_analysisDuration());
-    final failureMessage = await analysis;
+    final outcome = await analysis;
     if (!mounted) return;
 
-    if (failureMessage != null) {
+    if (outcome.blocked) {
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogContext) => AppDialog(
+          title: 'No podemos publicar este bien',
+          subtitle: outcome.message,
+          header: const AppDialogIcon(
+            icon: Icons.gpp_bad_outlined,
+            color: AppColors.error,
+          ),
+          actions: [
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Revisar fotografías'),
+            ),
+          ],
+        ),
+      );
+      if (!mounted) return;
+      Navigator.of(context).pop();
+      return;
+    }
+
+    if (outcome.message != null) {
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
-        ..showSnackBar(SnackBar(content: Text(failureMessage)));
+        ..showSnackBar(SnackBar(content: Text(outcome.message!)));
     }
     Navigator.of(context)
         .pushReplacement(MaterialPageRoute(builder: (_) => const FormStep()));

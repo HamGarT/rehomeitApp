@@ -90,6 +90,11 @@ class ItemAnalysisService {
       throw const ItemAnalysisException.unavailable();
     }
 
+    if (suggestion.prohibitedContent.isNotEmpty) {
+      throw ItemAnalysisException.prohibitedContent(
+        suggestion.prohibitedContent,
+      );
+    }
     if (!suggestion.recognized) {
       throw const ItemAnalysisException.unrecognized();
     }
@@ -142,6 +147,14 @@ class ItemAnalysisService {
       'recognized': Schema.boolean(
         description: 'true solo si las fotografías muestran un bien físico identificable.',
       ),
+      'prohibitedContent': Schema.array(
+        items: Schema.enumString(
+          enumValues: [
+            for (final content in ProhibitedContent.values) content.wireValue,
+          ],
+          description: 'Datos sensibles o peligrosos visibles en las fotografías. Vacío si no hay ninguno.',
+        ),
+      ),
       'title': Schema.string(
         description: 'Nombre corto del bien, máximo 60 caracteres.',
       ),
@@ -162,6 +175,7 @@ class ItemAnalysisService {
     },
     propertyOrdering: [
       'recognized',
+      'prohibitedContent',
       'title',
       'category',
       'condition',
@@ -174,6 +188,12 @@ class ItemAnalysisService {
 Eres el asistente de una aplicación de donación e intercambio de bienes de segunda mano.
 Analizas fotografías de un mismo bien y completas su ficha de publicación en español.
 Reglas:
+- Antes que nada, revisa si aparece contenido prohibido y complétalo en prohibitedContent:
+  - "documento_identidad" si se ve un DNI, carné, pasaporte, licencia de conducir, partida de nacimiento o cualquier documento con datos personales.
+  - "tarjeta_pago" si se ve una tarjeta de crédito, débito o similar, aunque solo sea una parte.
+  - "arma" si se ve un arma de fuego, munición o un arma blanca diseñada para atacar. No marques utensilios de cocina, herramientas ni juguetes evidentes.
+  - "rostro" si se ve la cara o el rostro de cualquier persona, aunque sea parcial o aparezca de fondo. No lo marques si solo se ven manos o personas de espaldas.
+- Si hay contenido prohibido, devuélvelo en prohibitedContent y deja recognized=false y los demás campos vacíos. No describas ni transcribas los datos sensibles.
 - Si las fotografías no muestran un bien físico identificable, devuelve recognized=false y deja los demás campos vacíos.
 - El título es breve y concreto, sin adjetivos de venta.
 - El estado se deduce de lo visible: "Nuevo" con etiqueta o empaque, "Como nuevo" sin marcas de uso, "Usado" con señales de uso.
@@ -186,23 +206,33 @@ Reglas:
 }
 
 class ItemAnalysisException implements Exception {
-  const ItemAnalysisException(this.message);
+  const ItemAnalysisException(this.message, {this.blocksPublishing = false});
+
+  ItemAnalysisException.prohibitedContent(List<ProhibitedContent> content)
+    : message =
+          'No puedes publicar este bien: las fotografías muestran ${content.map((it) => it.label).join(', ')}. '
+          'Retira esas imágenes e inténtalo de nuevo.',
+      blocksPublishing = true;
 
   const ItemAnalysisException.timeout()
     : message =
-          'El análisis tardó demasiado. Puedes completar la ficha manualmente.';
+          'El análisis tardó demasiado. Puedes completar la ficha manualmente.',
+      blocksPublishing = false;
 
   const ItemAnalysisException.unrecognized()
-    : message =
-          'No se reconoció el bien en las fotografías. Puedes completar la ficha manualmente.';
+    : message = 'No se reconoció el bien en las fotografías. Puedes completar la ficha manualmente.',
+      blocksPublishing = false;
 
   const ItemAnalysisException.offline()
-    : message =
-          'Sin conexión, no se pudo analizar las fotografías. Puedes completar la ficha manualmente.';
+    : message = 'Sin conexión, no se pudo analizar las fotografías. Puedes completar la ficha manualmente.',
+      blocksPublishing = false;
 
   const ItemAnalysisException.unavailable()
-    : message =
-          'No se pudo analizar las fotografías. Puedes completar la ficha manualmente.';
+    : message = 'No se pudo analizar las fotografías. Puedes completar la ficha manualmente.',
+      blocksPublishing = false;
 
   final String message;
+
+  /// `true` cuando el contenido detectado impide continuar con la publicación.
+  final bool blocksPublishing;
 }

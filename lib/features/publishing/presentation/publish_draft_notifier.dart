@@ -11,6 +11,17 @@ final publishDraftProvider =
       PublishDraftNotifier.new,
     );
 
+class PhotoAnalysisOutcome {
+  const PhotoAnalysisOutcome.succeeded() : message = null, blocked = false;
+
+  const PhotoAnalysisOutcome.failed(this.message, {this.blocked = false});
+
+  final String? message;
+
+  /// `true` si las fotografías muestran contenido que impide publicar.
+  final bool blocked;
+}
+
 class PublishDraftNotifier extends Notifier<PublishDraft> {
   @override
   PublishDraft build() => const PublishDraft();
@@ -80,20 +91,24 @@ class PublishDraftNotifier extends Notifier<PublishDraft> {
     state = state.copyWith(details: details);
   }
 
-  /// Analiza las fotografías del borrador y aplica la sugerencia. Devuelve
-  /// `null` si se aplicó, o el mensaje a mostrar si no hubo sugerencia; en
-  /// ese caso los campos sugeridos se presentan vacíos para el ingreso manual
-  /// (HU04-7 y HU05-8) y lo que la persona ya escribió se conserva.
-  Future<String?> analyzePhotos() async {
+  /// Analiza las fotografías del borrador y aplica la sugerencia. Si no hubo
+  /// sugerencia, los campos sugeridos se presentan vacíos para el ingreso
+  /// manual (HU04-7 y HU05-8) y lo que la persona ya escribió se conserva.
+  /// Cuando se detecta contenido prohibido, [PhotoAnalysisOutcome.blocked] es
+  /// `true` y no debe continuarse al formulario.
+  Future<PhotoAnalysisOutcome> analyzePhotos() async {
     try {
       final suggestion = await ref
           .read(itemAnalysisServiceProvider)
           .analyze(state.photos);
       applyAiSuggestion(suggestion);
-      return null;
+      return const PhotoAnalysisOutcome.succeeded();
     } on ItemAnalysisException catch (error) {
       discardAiSuggestion();
-      return error.message;
+      return PhotoAnalysisOutcome.failed(
+        error.message,
+        blocked: error.blocksPublishing,
+      );
     }
   }
 
