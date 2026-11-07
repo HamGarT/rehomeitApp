@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/firebase/firebase_errors.dart';
 import '../../../core/firebase/firestore_commit.dart';
+import '../../../shared/data/photo_screening_service.dart';
 import '../../../shared/domain/publication.dart';
 import '../domain/publish_draft.dart';
 import 'pending_publication_store.dart';
@@ -16,17 +17,24 @@ final publishingRepositoryProvider = Provider<PublishingRepository>((ref) {
     FirebaseFirestore.instance,
     FirebaseStorage.instance,
     PendingPublicationStore(),
+    ref.watch(photoScreeningServiceProvider),
   );
 });
 
 enum PublishSubmissionResult { synchronized, pending }
 
 class PublishingRepository {
-  PublishingRepository(this._firestore, this._storage, this._pendingStore);
+  PublishingRepository(
+    this._firestore,
+    this._storage,
+    this._pendingStore,
+    this._screening,
+  );
 
   final FirebaseFirestore _firestore;
   final FirebaseStorage _storage;
   final PendingPublicationStore _pendingStore;
+  final PhotoScreeningService _screening;
 
   /// Sin red, Storage reintenta la subida hasta 10 minutos antes de fallar y
   /// el botón giraría todo ese tiempo. Mismo corte que las entregas
@@ -37,8 +45,9 @@ class PublishingRepository {
   /// red; un corte corto deja la publicación pendiente en vez de bloquear.
   static const _storageLookupTimeout = Duration(seconds: 8);
 
-  /// Guarda la publicación en el dispositivo y la sube si hay red. Si no la
-  /// hay, queda pendiente y `synchronizePending` la termina al reconectar.
+  /// Revisa las fotografías si el análisis de HU04 no lo hizo, guarda la
+  /// publicación en el dispositivo y la sube. Si la red cae después del
+  /// veredicto, queda pendiente y `synchronizePending` la termina al reconectar.
   Future<PublishSubmissionResult> publish({
     required PublishDraft draft,
     required String authorId,
@@ -51,6 +60,7 @@ class PublishingRepository {
         'Revisa los datos obligatorios antes de publicar.',
       );
     }
+    if (!draft.photosScreened) await _screenPhotos(draft.photos);
 
     final pending = await _pendingStore.save(
       publicationId: _firestore.collection('publicaciones').doc().id,
@@ -75,6 +85,24 @@ class PublishingRepository {
       await _discard(pending);
       throw const PublishingFailure(
         'No se pudo registrar la publicación. Inténtalo nuevamente.',
+      );
+    }
+  }
+
+  /// D21: sin veredicto no se encola nada (HU03-19 exige conexión para
+  /// confirmar); el borrador queda en pantalla para reintentar.
+  Future<void> _screenPhotos(List<File> photos) async {
+    try {
+      await _screening.screen(photos);
+    } on PhotoScreeningException catch (error) {
+      if (error.prohibited) {
+        throw PublishingFailure(
+          'Las fotografías muestran ${error.contentDescription}. Retira esas imágenes e inténtalo de nuevo.',
+          photosRejected: true,
+        );
+      }
+      throw const PublishingFailure(
+        'Se requiere conexión a internet para publicar. Tus datos y fotografías se conservan en el borrador.',
       );
     }
   }
@@ -214,9 +242,13 @@ class PublishingRepository {
 }
 
 class PublishingFailure implements Exception {
-  const PublishingFailure(this.message);
+  const PublishingFailure(this.message, {this.photosRejected = false});
 
   final String message;
+
+  /// `true` cuando la revisión encontró contenido prohibido: la pantalla debe
+  /// volver al paso de fotografías en vez de mostrar un aviso pasajero.
+  final bool photosRejected;
 }
 
 String _friendlyFirebaseError(FirebaseException error) {

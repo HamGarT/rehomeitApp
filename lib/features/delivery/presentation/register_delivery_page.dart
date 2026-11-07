@@ -8,6 +8,7 @@ import '../../../app/theme.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/cajamarca_districts.dart';
 import '../../../shared/domain/publication.dart';
+import '../../../shared/widgets/app_dialog.dart';
 import '../../../shared/widgets/app_snack_bar.dart';
 import '../../../shared/widgets/button_spinner.dart';
 import '../../../shared/widgets/image_picking.dart';
@@ -167,6 +168,31 @@ class _RegisterDeliveryPageState extends ConsumerState<RegisterDeliveryPage> {
           draft: draft,
         );
     if (!mounted) return;
+    if (response.photoRejected) {
+      // La foto rechazada nunca salió del teléfono; iniciales y distrito se
+      // conservan para que solo haya que repetir la captura.
+      setState(() => _photo = null);
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogContext) => AppDialog(
+          title: 'No podemos usar esta fotografía',
+          subtitle: response.error,
+          header: const AppDialogIcon(
+            icon: Icons.gpp_bad_outlined,
+            color: AppColors.error,
+          ),
+          actions: [
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Volver a tomar'),
+            ),
+          ],
+        ),
+      );
+      if (mounted) await _pick();
+      return;
+    }
     if (response.error != null) {
       showAppSnackBar(context, response.error!, kind: AppSnackBarKind.error);
       return;

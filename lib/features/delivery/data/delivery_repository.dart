@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/firebase/firebase_errors.dart';
 import '../../../core/firebase/firestore_commit.dart';
 import '../../../shared/data/notification_payload.dart';
+import '../../../shared/data/photo_screening_service.dart';
 import '../../../shared/domain/publication.dart';
 import '../../messaging/data/messaging_repository.dart';
 import '../domain/delivery_draft.dart';
@@ -18,15 +19,22 @@ final deliveryRepositoryProvider = Provider<DeliveryRepository>((ref) {
     FirebaseFirestore.instance,
     FirebaseStorage.instance,
     PendingDeliveryStore(),
+    ref.watch(photoScreeningServiceProvider),
   );
 });
 
 class DeliveryRepository {
-  DeliveryRepository(this._firestore, this._storage, this._pendingStore);
+  DeliveryRepository(
+    this._firestore,
+    this._storage,
+    this._pendingStore,
+    this._screening,
+  );
 
   final FirebaseFirestore _firestore;
   final FirebaseStorage _storage;
   final PendingDeliveryStore _pendingStore;
+  final PhotoScreeningService _screening;
 
   Stream<List<Publication>> watchCommitments(String volunteerId) {
     return _firestore
@@ -265,6 +273,7 @@ class DeliveryRepository {
     }
     final validation = draft.validate();
     if (validation != null) throw DeliveryFailure(validation);
+    await _screenEvidence(draft.photo!);
     final pending = await _pendingStore.save(
       publicationId: publication.id,
       userId: userId,
@@ -285,6 +294,25 @@ class DeliveryRepository {
       return DeliverySubmissionResult.pending;
     } on SocketException {
       return DeliverySubmissionResult.pending;
+    }
+  }
+
+  /// D21: la evidencia pasa por la revisión antes de entrar a la cola. Sin
+  /// veredicto no se registra (HU12-12 exige conexión para confirmar); la
+  /// pantalla conserva los datos y la foto para reintentar.
+  Future<void> _screenEvidence(File photo) async {
+    try {
+      await _screening.screen([photo]);
+    } on PhotoScreeningException catch (error) {
+      if (error.prohibited) {
+        throw DeliveryFailure(
+          'La fotografía muestra ${error.contentDescription}. Toma otra sin esos elementos.',
+          photoRejected: true,
+        );
+      }
+      throw const DeliveryFailure(
+        'Se requiere conexión a internet para registrar la entrega. Los datos y la fotografía se conservan en esta pantalla.',
+      );
     }
   }
 
@@ -396,9 +424,13 @@ class DeliveryRepository {
 }
 
 class DeliveryFailure implements Exception {
-  const DeliveryFailure(this.message);
+  const DeliveryFailure(this.message, {this.photoRejected = false});
 
   final String message;
+
+  /// `true` cuando la revisión encontró contenido prohibido en la evidencia:
+  /// la pantalla descarta la foto y pide otra en vez de un aviso pasajero.
+  final bool photoRejected;
 }
 
 String _friendlyFirebaseMessage(FirebaseException error) {

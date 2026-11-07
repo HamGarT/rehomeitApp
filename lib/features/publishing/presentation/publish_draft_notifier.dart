@@ -30,12 +30,15 @@ class PublishDraftNotifier extends Notifier<PublishDraft> {
 
   void addPhoto(File photo) {
     if (!state.canAddPhoto) return;
-    state = state.copyWith(photos: [...state.photos, photo]);
+    state = state.copyWith(
+      photos: [...state.photos, photo],
+      photosScreened: false,
+    );
   }
 
   void removePhoto(int index) {
     final photos = [...state.photos]..removeAt(index);
-    state = state.copyWith(photos: photos);
+    state = state.copyWith(photos: photos, photosScreened: false);
   }
 
   void updateTitle(String value) {
@@ -102,9 +105,13 @@ class PublishDraftNotifier extends Notifier<PublishDraft> {
           .read(itemAnalysisServiceProvider)
           .analyze(state.photos);
       applyAiSuggestion(suggestion);
+      state = state.copyWith(photosScreened: true);
       return const PhotoAnalysisOutcome.succeeded();
     } on ItemAnalysisException catch (error) {
       discardAiSuggestion();
+      // "No reconocido" también es veredicto: el modelo respondió y revisó el
+      // contenido prohibido antes de decidirlo.
+      if (error.hasVerdict) state = state.copyWith(photosScreened: true);
       return PhotoAnalysisOutcome.failed(
         error.message,
         blocked: error.blocksPublishing,

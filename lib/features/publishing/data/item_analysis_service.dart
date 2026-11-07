@@ -3,12 +3,11 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:firebase_ai/firebase_ai.dart';
-import 'package:flutter/foundation.dart';
-import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/constants/item_categories.dart';
-import '../../../core/utils/image_mime_type.dart';
+import '../../../shared/data/gemini_support.dart';
+import '../../../shared/domain/prohibited_content.dart';
 import '../domain/item_suggestion.dart';
 
 final itemAnalysisServiceProvider = Provider<ItemAnalysisService>((ref) {
@@ -24,7 +23,7 @@ final itemAnalysisServiceProvider = Provider<ItemAnalysisService>((ref) {
 class ItemAnalysisService {
   ItemAnalysisService(FirebaseAI firebaseAI)
     : _model = firebaseAI.generativeModel(
-        model: _modelName,
+        model: geminiModelName,
         systemInstruction: Content.system(_instructions),
         generationConfig: GenerationConfig(
           responseMimeType: 'application/json',
@@ -33,21 +32,11 @@ class ItemAnalysisService {
         ),
       );
 
-  // gemini-2.5-flash dejó de estar disponible para proyectos nuevos el 23 de
-  // setiembre de 2026; el servicio indicó este reemplazo.
-  static const _modelName = 'gemini-3.6-flash';
-
   /// HU04-6 fija 30 segundos (partió de 10): la latencia que reporta Firebase
   /// (4 a 15 s) no incluye la subida de las fotografías ni la conexión en frío
   /// de la primera llamada del día, y el corte anterior descartaba respuestas
   /// que el servicio sí completaba.
   static const timeout = Duration(seconds: 30);
-
-  /// La copia que va al modelo es más liviana que la foto publicada (1600 px):
-  /// el lado corto se reduce a este tamaño y se recomprime. Menos bytes por
-  /// subir y menos tokens por procesar sin afectar la calidad visible en la app.
-  static const _analysisShortSide = 1024;
-  static const _analysisQuality = 70;
 
   final GenerativeModel _model;
 
@@ -58,7 +47,7 @@ class ItemAnalysisService {
       // traduzca a ItemAnalysisException dejaría la pantalla de análisis sin
       // salida (HU04-7).
       final parts = <Part>[
-        for (final photo in photos) await _photoPart(photo),
+        for (final photo in photos) await inlinePhotoPart(photo),
         const TextPart(_prompt),
       ];
       final response = await _model
@@ -84,9 +73,9 @@ class ItemAnalysisService {
       throw const ItemAnalysisException.offline();
     } catch (error) {
       _log(error);
-      // El SDK envuelve la falta de red en sus propias excepciones (HU04-7);
-      // solo el texto permite distinguirla de un fallo del servicio.
-      if (_looksOffline(error)) throw const ItemAnalysisException.offline();
+      if (looksLikeOfflineError(error)) {
+        throw const ItemAnalysisException.offline();
+      }
       throw const ItemAnalysisException.unavailable();
     }
 
@@ -96,51 +85,12 @@ class ItemAnalysisService {
       );
     }
     if (!suggestion.recognized) {
-      throw const ItemAnalysisException.unrecognized();
+      throw const ItemAnalysisException.unrecognized(hasVerdict: true);
     }
     return suggestion;
   }
 
-  static bool _looksOffline(Object error) {
-    final detail = error.toString().toLowerCase();
-    const hints = [
-      'socketexception',
-      'network',
-      'connection',
-      'host lookup',
-      'unreachable',
-      'offline',
-    ];
-    return hints.any(detail.contains);
-  }
-
-  // Si la compresión falla (formato no soportado o plataforma sin plugin) se
-  // envía la foto original: perder el análisis sería peor que subir más bytes.
-  Future<InlineDataPart> _photoPart(File photo) async {
-    try {
-      final compressed = await FlutterImageCompress.compressWithFile(
-        photo.path,
-        minWidth: _analysisShortSide,
-        minHeight: _analysisShortSide,
-        quality: _analysisQuality,
-        format: CompressFormat.jpeg,
-      );
-      if (compressed != null) {
-        return InlineDataPart('image/jpeg', compressed);
-      }
-    } catch (error) {
-      _log(error);
-    }
-    return InlineDataPart(imageMimeType(photo.path), await photo.readAsBytes());
-  }
-
-  // Solo en depuración: el usuario ve un aviso genérico, pero el equipo
-  // necesita el error real del servicio para diagnosticar.
-  void _log(Object error) {
-    if (kDebugMode) {
-      debugPrint('[ItemAnalysis] ${error.runtimeType}: $error');
-    }
-  }
+  void _log(Object error) => logGeminiError('ItemAnalysis', error);
 
   static final _responseSchema = Schema.object(
     properties: {
@@ -184,15 +134,13 @@ class ItemAnalysisService {
     ],
   );
 
-  static const _instructions = '''
+  static const _instructions =
+      '''
 Eres el asistente de una aplicación de donación e intercambio de bienes de segunda mano.
 Analizas fotografías de un mismo bien y completas su ficha de publicación en español.
 Reglas:
 - Antes que nada, revisa si aparece contenido prohibido y complétalo en prohibitedContent:
-  - "documento_identidad" si se ve un DNI, carné, pasaporte, licencia de conducir, partida de nacimiento o cualquier documento con datos personales.
-  - "tarjeta_pago" si se ve una tarjeta de crédito, débito o similar, aunque solo sea una parte.
-  - "arma" si se ve un arma de fuego, munición o un arma blanca diseñada para atacar. No marques utensilios de cocina, herramientas ni juguetes evidentes.
-  - "rostro" si se ve la cara o el rostro de cualquier persona, aunque sea parcial o aparezca de fondo. No lo marques si solo se ven manos o personas de espaldas.
+$prohibitedContentRules
 - Si hay contenido prohibido, devuélvelo en prohibitedContent y deja recognized=false y los demás campos vacíos. No describas ni transcribas los datos sensibles.
 - Si las fotografías no muestran un bien físico identificable, devuelve recognized=false y deja los demás campos vacíos.
 - El título es breve y concreto, sin adjetivos de venta.
@@ -206,33 +154,50 @@ Reglas:
 }
 
 class ItemAnalysisException implements Exception {
-  const ItemAnalysisException(this.message, {this.blocksPublishing = false});
+  const ItemAnalysisException(
+    this.message, {
+    this.blocksPublishing = false,
+    this.hasVerdict = false,
+  });
 
   ItemAnalysisException.prohibitedContent(List<ProhibitedContent> content)
     : message =
-          'No puedes publicar este bien: las fotografías muestran ${content.map((it) => it.label).join(', ')}. '
+          'No puedes publicar este bien: las fotografías muestran ${ProhibitedContent.describe(content)}. '
           'Retira esas imágenes e inténtalo de nuevo.',
-      blocksPublishing = true;
+      blocksPublishing = true,
+      hasVerdict = true;
 
   const ItemAnalysisException.timeout()
     : message =
           'El análisis tardó demasiado. Puedes completar la ficha manualmente.',
-      blocksPublishing = false;
+      blocksPublishing = false,
+      hasVerdict = false;
 
-  const ItemAnalysisException.unrecognized()
-    : message = 'No se reconoció el bien en las fotografías. Puedes completar la ficha manualmente.',
+  /// [hasVerdict] solo cuando el modelo respondió que no hay bien; una
+  /// respuesta vacía o ilegible usa el mismo aviso pero no cuenta como revisión.
+  const ItemAnalysisException.unrecognized({this.hasVerdict = false})
+    : message =
+          'No se reconoció el bien en las fotografías. Puedes completar la ficha manualmente.',
       blocksPublishing = false;
 
   const ItemAnalysisException.offline()
-    : message = 'Sin conexión, no se pudo analizar las fotografías. Puedes completar la ficha manualmente.',
-      blocksPublishing = false;
+    : message =
+          'Sin conexión, no se pudo analizar las fotografías. Puedes completar la ficha manualmente.',
+      blocksPublishing = false,
+      hasVerdict = false;
 
   const ItemAnalysisException.unavailable()
-    : message = 'No se pudo analizar las fotografías. Puedes completar la ficha manualmente.',
-      blocksPublishing = false;
+    : message =
+          'No se pudo analizar las fotografías. Puedes completar la ficha manualmente.',
+      blocksPublishing = false,
+      hasVerdict = false;
 
   final String message;
 
   /// `true` cuando el contenido detectado impide continuar con la publicación.
   final bool blocksPublishing;
+
+  /// `true` cuando el modelo llegó a revisar las fotografías, aunque no haya
+  /// ficha: publicar no necesita revisarlas otra vez (D21).
+  final bool hasVerdict;
 }

@@ -1,26 +1,8 @@
 import '../../../core/constants/item_categories.dart';
+import '../../../shared/domain/prohibited_content.dart';
 import 'publish_draft.dart';
 
-/// Contenido que la IA reconoce en las fotografías y que impide publicar
-/// (documentos de identidad, tarjetas de pago, armas y rostros de personas).
-enum ProhibitedContent {
-  identityDocument('documento_identidad', 'documentos de identidad'),
-  paymentCard('tarjeta_pago', 'tarjetas de crédito o débito'),
-  weapon('arma', 'armas'),
-  face('rostro', 'rostros o personas');
-
-  const ProhibitedContent(this.wireValue, this.label);
-
-  final String wireValue;
-  final String label;
-
-  static ProhibitedContent? fromValue(String? value) {
-    for (final content in values) {
-      if (content.wireValue == value) return content;
-    }
-    return null;
-  }
-}
+export '../../../shared/domain/prohibited_content.dart' show ProhibitedContent;
 
 /// Ficha y detalles propuestos por el servicio de IA a partir de las
 /// fotografías (HU04 y HU05, resueltos en una sola llamada según D05).
@@ -61,15 +43,6 @@ class ItemSuggestion {
           ),
     ];
 
-    final rawProhibited = json['prohibitedContent'];
-    final prohibited = <ProhibitedContent>{};
-    if (rawProhibited is List) {
-      for (final entry in rawProhibited.whereType<String>()) {
-        final content = ProhibitedContent.fromValue(entry);
-        if (content != null) prohibited.add(content);
-      }
-    }
-
     return ItemSuggestion(
       recognized: json['recognized'] == true,
       title: _text(json['title']),
@@ -82,7 +55,7 @@ class ItemSuggestion {
           .where((detail) => detail.name.isNotEmpty && detail.value.isNotEmpty)
           .take(maxDetails)
           .toList(growable: false),
-      prohibitedContent: prohibited.toList(growable: false),
+      prohibitedContent: ProhibitedContent.parseList(json['prohibitedContent']),
     );
   }
 

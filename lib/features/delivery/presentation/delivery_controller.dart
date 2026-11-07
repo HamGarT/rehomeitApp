@@ -21,6 +21,14 @@ final deliveryControllerProvider =
       DeliveryController.new,
     );
 
+/// Resultado de registrar la entrega: el envío logrado o pendiente, o el
+/// mensaje de error. [photoRejected] distingue el rechazo de la evidencia (D21).
+typedef RegisterDeliveryOutcome = ({
+  String? error,
+  DeliverySubmissionResult? result,
+  bool photoRejected,
+});
+
 class DeliveryController extends Notifier<AsyncValue<void>> {
   @override
   AsyncValue<void> build() => const AsyncData(null);
@@ -57,13 +65,17 @@ class DeliveryController extends Notifier<AsyncValue<void>> {
     );
   }
 
-  Future<({String? error, DeliverySubmissionResult? result})> register({
+  Future<RegisterDeliveryOutcome> register({
     required Publication publication,
     required String userId,
     required DeliveryDraft draft,
   }) async {
     if (state.isLoading) {
-      return (error: 'Hay otra operación en curso.', result: null);
+      return (
+        error: 'Hay otra operación en curso.',
+        result: null,
+        photoRejected: false,
+      );
     }
     state = const AsyncLoading();
     try {
@@ -75,13 +87,21 @@ class DeliveryController extends Notifier<AsyncValue<void>> {
             draft: draft,
           );
       state = const AsyncData(null);
-      return (error: null, result: result);
+      return (error: null, result: result, photoRejected: false);
     } on DeliveryFailure catch (error, stackTrace) {
       state = AsyncError(error, stackTrace);
-      return (error: error.message, result: null);
+      return (
+        error: error.message,
+        result: null,
+        photoRejected: error.photoRejected,
+      );
     } catch (error, stackTrace) {
       state = AsyncError(error, stackTrace);
-      return (error: 'No se pudo registrar la entrega.', result: null);
+      return (
+        error: 'No se pudo registrar la entrega.',
+        result: null,
+        photoRejected: false,
+      );
     }
   }
 

@@ -11,7 +11,12 @@ final publishControllerProvider =
     );
 
 /// Resultado de publicar: el envío logrado o pendiente, o el mensaje de error.
-typedef PublishOutcome = ({PublishSubmissionResult? result, String? error});
+/// [photosRejected] distingue el rechazo por contenido prohibido (D21).
+typedef PublishOutcome = ({
+  PublishSubmissionResult? result,
+  String? error,
+  bool photosRejected,
+});
 
 class PublishController extends Notifier<AsyncValue<void>> {
   @override
@@ -21,22 +26,29 @@ class PublishController extends Notifier<AsyncValue<void>> {
     required PublishDraft draft,
     required String authorId,
   }) async {
-    if (state.isLoading) return (result: null, error: null);
+    if (state.isLoading) {
+      return (result: null, error: null, photosRejected: false);
+    }
     state = const AsyncLoading();
     try {
       final result = await ref
           .read(publishingRepositoryProvider)
           .publish(draft: draft, authorId: authorId);
       state = const AsyncData(null);
-      return (result: result, error: null);
+      return (result: result, error: null, photosRejected: false);
     } on PublishingFailure catch (error, stackTrace) {
       state = AsyncError(error, stackTrace);
-      return (result: null, error: error.message);
+      return (
+        result: null,
+        error: error.message,
+        photosRejected: error.photosRejected,
+      );
     } catch (error, stackTrace) {
       state = AsyncError(error, stackTrace);
       return (
         result: null,
         error: 'No se pudo registrar la publicación. Tus datos se conservaron.',
+        photosRejected: false,
       );
     }
   }

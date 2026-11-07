@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/constants/app_colors.dart';
+import '../../../shared/widgets/app_dialog.dart';
 import '../../../shared/widgets/button_spinner.dart';
 import '../../../shared/widgets/missing_fields_dialog.dart';
 import '../../../shared/widgets/step_app_bar.dart';
@@ -121,6 +123,33 @@ class ModeStep extends ConsumerWidget {
         .read(publishControllerProvider.notifier)
         .publish(draft: draft, authorId: user.uid);
     if (!context.mounted) return;
+    if (outcome.photosRejected) {
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogContext) => AppDialog(
+          title: 'No podemos publicar estas fotografías',
+          subtitle: outcome.error,
+          header: const AppDialogIcon(
+            icon: Icons.gpp_bad_outlined,
+            color: AppColors.error,
+          ),
+          actions: [
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Revisar fotografías'),
+            ),
+          ],
+        ),
+      );
+      if (!context.mounted) return;
+      // El flujo es siempre fotografías, formulario y modalidad: dos pasos
+      // atrás es el de fotografías, con el borrador intacto.
+      Navigator.of(context)
+        ..pop()
+        ..pop();
+      return;
+    }
     if (outcome.error case final error?) {
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()

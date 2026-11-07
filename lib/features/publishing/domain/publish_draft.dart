@@ -20,6 +20,7 @@ class PublishDraft {
     this.mode,
     this.deliveryMethod,
     this.aiFields = const {},
+    this.photosScreened = false,
   });
 
   static const maxPhotos = 4;
@@ -35,6 +36,10 @@ class PublishDraft {
   final PublishMode? mode;
   final DeliveryMethod? deliveryMethod;
   final Set<AiField> aiFields;
+
+  /// `true` cuando el análisis de HU04 ya dio veredicto sobre estas fotos:
+  /// publicar no vuelve a revisarlas (D21). Cambiar las fotos lo invalida.
+  final bool photosScreened;
 
   bool get canAddPhoto => photos.length < maxPhotos;
 
@@ -71,6 +76,7 @@ class PublishDraft {
     PublishMode? mode,
     DeliveryMethod? deliveryMethod,
     Set<AiField>? aiFields,
+    bool? photosScreened,
   }) {
     return PublishDraft(
       photos: photos ?? this.photos,
@@ -86,6 +92,7 @@ class PublishDraft {
           ? null
           : deliveryMethod ?? this.deliveryMethod,
       aiFields: aiFields ?? this.aiFields,
+      photosScreened: photosScreened ?? this.photosScreened,
     );
   }
 }

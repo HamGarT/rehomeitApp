@@ -2,7 +2,7 @@
 
 Decisiones que condicionan la implementación y que no se deducen leyendo las historias de usuario. Cada una registra el problema que resuelve y lo que implica asumirla.
 
-Última actualización: 6 de noviembre de 2026.
+Última actualización: 7 de noviembre de 2026.
 
 ---
 
@@ -26,13 +26,13 @@ Decisiones que condicionan la implementación y que no se deducen leyendo las hi
 
 ---
 
-## D03 – Las operaciones con fotografía llevan una cola propia en el dispositivo
+## D03 – Confirmar con fotografía exige conexión; la cola solo termina lo ya aprobado
 
-**Problema.** HU03-19 y HU12-12 piden que la publicación y el registro de entrega se guarden localmente y se envíen solos al recuperar la conexión. Firestore sincroniza sus datos sin conexión de forma automática, pero Cloud Storage no: una subida de archivo sin red falla y no existe cola de reintento.
+**Problema.** HU03-19 y HU12-12 dicen que publicar y registrar la entrega "requieren conexión a internet; si no hay, la aplicación lo informa, conserva los datos y la fotografía, y permite confirmar al restablecerse la conexión". Firestore sincroniza sus datos sin conexión de forma automática, pero Cloud Storage no: una subida de archivo sin red falla y no existe cola de reintento. Además, desde D21 ninguna fotografía puede subir sin el veredicto de la revisión de contenido, que necesita red.
 
-**Decisión.** Cada operación con fotografía tiene su propia cola en el almacenamiento de la app (`PendingDeliveryStore`, `PendingPublicationStore`): al confirmar, los datos y una copia de las fotografías se escriben en disco antes de intentar nada, y la sincronización se reintenta al abrir la app, al volver del segundo plano y cada dos minutos. La sincronización es idempotente: el identificador se fija al encolar, cada fotografía se sube solo si no está en Storage y el documento se escribe solo si no existe, de modo que repetir la pasada no duplica nada. Las dos colas son clases paralelas con la misma forma, no un almacén genérico; se extraerá una base común si aparece una tercera operación.
+**Decisión.** Publicar y registrar la entrega comprueban la conexión en el momento de confirmar a través de la propia revisión de D21: sin veredicto no se encola nada, la aplicación lo informa y los datos y fotografías quedan en pantalla o en el borrador para reintentar. Con el veredicto favorable, cada operación entra a su cola en el almacenamiento de la app (`PendingDeliveryStore`, `PendingPublicationStore`): los datos y una copia de las fotografías se escriben en disco antes de subir, y si la red cae entre el veredicto y el final de la subida, la sincronización la termina al abrir la app, al volver del segundo plano y cada dos minutos. La sincronización es idempotente: el identificador se fija al encolar, cada fotografía se sube solo si no está en Storage y el documento se escribe solo si no existe, de modo que repetir la pasada no duplica nada. Las dos colas son clases paralelas con la misma forma, no un almacén genérico; se extraerá una base común si aparece una tercera operación.
 
-**Consecuencias.** La persona ve la pantalla de éxito con o sin red y no tiene que recordar reintentar. El costo es mantener dos colas pequeñas y sus avisos de sincronización. Hasta el 5 de noviembre de 2026 publicar exigía conexión y solo las entregas tenían cola; desde esa fecha ambas la tienen. La consulta sin conexión se mantiene intacta (HU08-12, HU09-11, HU14-16), igual que las operaciones sin fotografía que delegan en la caché de Firestore (HU11-10, HU16-16).
+**Consecuencias.** Ninguna fotografía llega a Storage sin pasar la revisión, y no hace falta retirar ni notificar rechazos después del hecho. La pantalla "se publicará solo" y el aviso de entrega pendiente solo aparecen cuando la red cae después de la aprobación. Lo que se conserva sin red vive en la sesión: el borrador de publicación y la pantalla de entrega abierta; cerrar la app los pierde, como ya ocurría con el borrador. Historial del alcance: hasta el 5 de noviembre de 2026 publicar exigía conexión y solo las entregas tenían cola; del 5 al 7 de noviembre ambas operaciones se encolaban sin red y se subían solas; desde el 7 de noviembre rige lo descrito, porque una subida sin veredicto obligaría a revisar en diferido, retirar fotos ya subidas y avisar a la persona, con entregas que no se pueden repetir. La consulta sin conexión se mantiene intacta (HU08-12, HU09-11, HU14-16), igual que las operaciones sin fotografía que delegan en la caché de Firestore (HU11-10, HU16-16).
 
 ---
 
@@ -258,3 +258,13 @@ Esta paleta reemplaza desde el 8 de octubre de 2026 a la de marrón y crema del 
 **Decisión.** La aplicación cifra el texto antes de escribirlo y lo descifra al leerlo, con AES-GCM de 256 bits y una única clave de la aplicación que no vive en el repositorio: entra al compilar con `--dart-define-from-file=secrets.json`. El mensaje y la vista previa guardan el mismo texto cifrado, con prefijo `enc1:` y base64, y las reglas exigen ese formato para que un cliente manipulado no pueda guardar texto plano. El límite de 1000 caracteres se valida en la aplicación sobre el texto original; la regla admite hasta 8000 sobre el cifrado. Las notificaciones de mensaje nuevo no copian el texto. Una compilación sin clave no envía mensajes y muestra los existentes como "no disponibles".
 
 **Consecuencias.** Es cifrado en reposo del lado del cliente, no de extremo a extremo: protege frente a quien lea la base de datos, y funciona en cualquier teléfono con la cuenta; quien descompile el paquete puede extraer la clave. Cambiar la clave vuelve ilegibles los mensajes anteriores. Los mensajes se descifran al recibir cada instantánea, uno por uno, antes de llegar a la interfaz.
+
+---
+
+## D21 – Ninguna fotografía sube a Storage sin la revisión de contenido de Gemini
+
+**Problema.** Las fotografías de un bien (HU03) y la evidencia de entrega (HU12) son de consulta pública a través del feed y del recorrido. HU12-13 solo advierte a la persona que no muestre rostros ni datos del destinatario, y nada impedía subir un documento de identidad, una tarjeta, un arma o la cara de alguien. Detectarlo en el servidor exige Cloud Functions (D01, D02) y detectarlo en el teléfono con un modelo local sumaría una dependencia nativa que solo cubre rostros.
+
+**Decisión.** La misma llamada a Gemini que completa la ficha (D05) devuelve una lista `prohibitedContent` con cuatro valores posibles (documento de identidad, tarjeta de pago, arma, rostro); si trae algo, la publicación se bloquea antes del formulario. Para los casos en que esa llamada no dio veredicto (sin red, corte o servicio caído) y para la evidencia de entrega, que no pasa por la ficha, un segundo modelo con esquema mínimo y temperatura cero (`PhotoScreeningService`) revisa las fotografías en el momento de confirmar, antes de guardarlas en la cola de D03. Las reglas del prompt son un único texto compartido por los dos modelos. Un rechazo muestra el motivo y devuelve a la persona a la captura con el resto de los datos intactos; sin veredicto, la operación no se confirma.
+
+**Consecuencias.** Confirmar tarda lo que tarde Gemini (de 4 a 10 s, corte a 20 s) cuando la ficha no lo revisó ya; el caso normal de publicar no paga una segunda llamada porque el borrador recuerda el veredicto y lo invalida al cambiar las fotos. La detección depende del modelo: puede marcar un muñeco o un rostro impreso, y la única salida es reencuadrar. No hay apelación ni moderación de por medio porque la fotografía rechazada nunca sale del teléfono.
