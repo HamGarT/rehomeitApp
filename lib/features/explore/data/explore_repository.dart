@@ -50,6 +50,33 @@ class ExploreRepository {
         );
   }
 
+  static const rehomedLimit = 10;
+
+  /// Los últimos bienes que ya cambiaron de manos, para la franja de Inicio.
+  ///
+  /// Ordena por fecha de publicación y no de entrega: así reutiliza el índice
+  /// `status ASC + publishedAt DESC` del feed, y la franja solo necesita
+  /// mostrar que hay movimiento, no un orden exacto.
+  Stream<List<Publication>> watchRehomed() {
+    return _firestore
+        .collection('publicaciones')
+        .where(
+          'status',
+          whereIn: [
+            PublicationStatus.delivered.wireValue,
+            PublicationStatus.confirmed.wireValue,
+          ],
+        )
+        .orderBy('publishedAt', descending: true)
+        .limit(rehomedLimit)
+        .snapshots()
+        .map(
+          (snapshot) => snapshot.docs
+              .map((doc) => Publication.fromMap(doc.id, doc.data()))
+              .toList(growable: false),
+        );
+  }
+
   Stream<Publication?> watchPublication(String publicationId) {
     return watchPublicationSource(publicationId)
         .map((snapshot) => snapshot.publication);

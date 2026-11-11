@@ -49,7 +49,11 @@ final exploreFeedProvider = Provider<AsyncValue<ExploreFeed>>((ref) {
   );
 });
 
-final publicationDetailProvider = StreamProvider.family<Publication?, String>((
+final rehomedPublicationsProvider = StreamProvider<List<Publication>>((ref) {
+  return ref.watch(exploreRepositoryProvider).watchRehomed();
+});
+
+final publicationDetailProvider =StreamProvider.family<Publication?, String>((
   ref,
   publicationId,
 ) {

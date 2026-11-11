@@ -22,6 +22,7 @@ import '../../publishing/presentation/publish_draft_notifier.dart';
 import 'widgets/feed_filters.dart';
 import 'widgets/feed_states.dart';
 import 'widgets/post_description.dart';
+import 'widgets/rehomed_strip.dart';
 import 'widgets/stacked_cards.dart';
 
 /// Abre el flujo de publicación. El shell también lo hace al pulsar la pestaña
@@ -212,6 +213,9 @@ class _HomePageState extends ConsumerState<HomePage> {
               ),
             ),
           ),
+          // Con el buscador abierto la persona busca algo disponible; lo ya
+          // entregado solo empujaría los resultados hacia abajo.
+          if (!_searchOpen) const SliverToBoxAdapter(child: RehomedStrip()),
           const SliverToBoxAdapter(child: _SectionHeader()),
           ...feed.when(
             data: (data) => [

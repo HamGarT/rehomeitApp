@@ -30,9 +30,14 @@ Publication _post(String id, List<String> images) => Publication(
 /// Monta el feed con datos ya resueltos: el test no debe depender de
 /// Firestore. La sesión queda en el mismo `authorId` que las publicaciones de
 /// prueba, para que el cta de "publica algo" se comporte como en la app.
-Widget _host(List<Publication> posts, {String authorName = 'Ana T.'}) {
+Widget _host(
+  List<Publication> posts, {
+  String authorName = 'Ana T.',
+  List<Publication> rehomed = const [],
+}) {
   return ProviderScope(
     overrides: [
+      rehomedPublicationsProvider.overrideWith((ref) => Stream.value(rehomed)),
       exploreFeedProvider.overrideWithValue(
         AsyncValue.data(ExploreFeed(publications: posts, isFromCache: false)),
       ),
@@ -167,6 +172,62 @@ void main() {
     await tester.tap(find.byKey(const Key('feed-search-toggle')));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('feed-search-field')), findsNothing);
+  });
+
+  testWidgets('la franja de entregados muestra cada bien con su resultado', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _host(
+        [
+          _post('a', ['https://example.test/1.jpg']),
+        ],
+        rehomed: [
+          _post('b', ['https://example.test/2.jpg']),
+          _post('c', [
+            'https://example.test/3.jpg',
+          ]).copyWithHashtags(mode: PublicationMode.exchange),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Ya encontraron hogar'), findsOneWidget);
+    expect(find.text('Hot Wheels b'), findsOneWidget);
+    expect(find.text('Donado'), findsOneWidget);
+    expect(find.text('Intercambiado'), findsOneWidget);
+  });
+
+  testWidgets('sin entregas la franja no aparece', (tester) async {
+    await tester.pumpWidget(
+      _host([
+        _post('a', ['https://example.test/1.jpg']),
+      ]),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('rehomed-strip')), findsNothing);
+  });
+
+  testWidgets('la franja se oculta mientras el buscador está abierto', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _host(
+        [
+          _post('a', ['https://example.test/1.jpg']),
+        ],
+        rehomed: [
+          _post('b', ['https://example.test/2.jpg']),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('rehomed-strip')), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('feed-search-toggle')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('rehomed-strip')), findsNothing);
   });
 
   testWidgets(
