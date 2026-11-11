@@ -80,8 +80,15 @@ El nivel se guarda en el campo `rol` del documento de `usuarios` y no en un cust
 |-----------|----------|--------------------|
 | `usuarios/{uid}` | Nombre completo, correo y rol | Solo el propio usuario |
 | `perfiles/{uid}` | Nombre abreviado, distrito, fecha de ingreso y contadores | Cualquier usuario |
+| `nombresCortos/{clave}` | A quién pertenece cada nombre abreviado | Consulta puntual por nombre; no se lista |
 
 El rol permanece en el documento privado y las reglas pueden consultarlo igual, porque se evalúan del lado del servidor sin estar sujetas a los permisos de lectura del cliente. Al crearse la cuenta, ambos documentos se escriben en una sola operación para que no quede una cuenta sin perfil público.
+
+**El nombre abreviado es único** (10 de noviembre de 2026). Dos personas distintas podían quedar con el mismo "Hamer G." y solo las distinguía la fotografía. La colección `nombresCortos/{clave}` reserva cada nombre: la clave es el nombre en minúsculas y el documento guarda el `uid` de quien lo usa. Quien llega segundo suma letras de su apellido ("Hamer Ga.", "Hamer Gar.", hasta el apellido completo), luego la inicial del segundo apellido y, como último recurso, un número ("Hamer García 2"). El perfil y su reserva se escriben en el mismo lote y las reglas comprueban cada uno contra el otro: el perfil solo se acepta si la reserva de su nombre es de la misma persona, la reserva solo se crea para el nombre que el perfil lleva, y al cambiar de nombre la anterior se libera. La unicidad la garantiza el servidor, no la aplicación.
+
+Se descartó comprobarlo solo desde la aplicación: una cuenta recién registrada aún no verificó el correo y no puede leer `perfiles` (D19), y dos registros simultáneos pasarían la comprobación a la vez. También un alias elegido por la persona, que pedía una pantalla y una validación más para un problema poco frecuente.
+
+El costo es de privacidad: quien llega segundo muestra más letras de su apellido que la sola inicial, y en el peor caso el apellido entero. Sin conexión no se sabe qué nombres están libres, así que el registro encola el preferido; si resulta tomado, las reglas rechazan el lote al sincronizar y la reparación de la siguiente sesión elige otro.
 
 ---
 

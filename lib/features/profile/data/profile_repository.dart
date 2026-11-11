@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -7,6 +8,7 @@ import 'package:flutter_image_compress/flutter_image_compress.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/firebase/firebase_errors.dart';
+import '../../../shared/data/short_name_registry.dart';
 import '../../../shared/domain/person_name.dart';
 import '../../../shared/domain/publication.dart';
 
@@ -39,6 +41,7 @@ class ProfileRepository {
   final FirebaseFirestore _firestore;
   final FirebaseStorage _storage;
   final FirebaseAuth _auth;
+  late final ShortNameRegistry _shortNames = ShortNameRegistry(_firestore);
 
   /// Lado mayor de la foto de perfil. Se ve en círculos de hasta 64 px, así
   /// que más resolución solo costaría subida y descarga.
@@ -145,10 +148,32 @@ class ProfileRepository {
         photoUrl = await _uploadAvatar(userId, newPhoto);
       }
 
+      final profileRef = _firestore.collection('perfiles').doc(userId);
+      final currentShortName =
+          (await profileRef.get()).data()?['nombreCorto'] as String?;
+      final ShortNameChoice shortName;
+      try {
+        shortName = await _shortNames.choose(
+          names,
+          userId,
+          current: currentShortName,
+        );
+      } on TimeoutException {
+        throw const ProfileFailure(
+          'Se requiere conexión a internet para guardar los cambios.',
+        );
+      }
+
       final batch = _firestore.batch();
       batch.update(
         _firestore.collection('usuarios').doc(userId),
         names.toUserFields(),
+      );
+      await _shortNames.stage(
+        batch,
+        userId: userId,
+        choice: shortName,
+        previous: currentShortName,
       );
       // Sin foto nueva ni borrado, `fotoUrl` no se toca.
       final photoChange = photoUrl != null
@@ -156,8 +181,8 @@ class ProfileRepository {
           : removePhoto
           ? {'fotoUrl': null}
           : const <String, Object?>{};
-      batch.update(_firestore.collection('perfiles').doc(userId), {
-        'nombreCorto': names.short,
+      batch.update(profileRef, {
+        'nombreCorto': shortName.shortName,
         'distrito': district,
         ...photoChange,
       });

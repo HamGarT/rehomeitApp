@@ -79,6 +79,23 @@ function unverifiedFirestoreFor(userId) {
     .firestore();
 }
 
+// El id de la reserva de un nombre corto es el nombre en minúsculas (D07).
+function shortNameRef(db, shortName) {
+  return doc(db, 'nombresCortos', shortName.toLowerCase());
+}
+
+async function createProfile(userId, shortName, db = firestoreFor(userId)) {
+  const batch = writeBatch(db);
+  batch.set(doc(db, 'perfiles', userId), {
+    nombreCorto: shortName,
+    distrito: '',
+    fechaIngreso: serverTimestamp(),
+    contadores: { donaciones: 0, intercambios: 0, voluntariados: 0 },
+  });
+  batch.set(shortNameRef(db, shortName), { uid: userId });
+  return batch.commit();
+}
+
 function storageFor(userId) {
   return testEnv
     .authenticatedContext(userId, { email_verified: true })
@@ -281,6 +298,7 @@ test('permite crear un usuario y perfil legítimos con el esquema real', async (
     fechaIngreso: serverTimestamp(),
     contadores: { donaciones: 0, intercambios: 0, voluntariados: 0 },
   });
+  batch.set(shortNameRef(db, 'Ana T.'), { uid: 'legitimate-user' });
   await assertSucceeds(batch.commit());
 });
 
@@ -300,6 +318,7 @@ test('una cuenta sin verificar el correo crea y lee sus documentos y nada más',
     fechaIngreso: serverTimestamp(),
     contadores: { donaciones: 0, intercambios: 0, voluntariados: 0 },
   });
+  batch.set(shortNameRef(db, 'Sin V.'), { uid: 'unverified-user' });
   await assertSucceeds(batch.commit());
   // La app lee su documento al abrir la sesión para saber si la cuenta
   // está bloqueada; el resto espera a la verificación.
@@ -340,6 +359,7 @@ test('conserva la reparación segura si existe perfil pero falta usuario', async
     fechaIngreso: serverTimestamp(),
     contadores: { donaciones: 0, intercambios: 0, voluntariados: 0 },
   });
+  batch.set(shortNameRef(db, 'Cuenta R.'), { uid: 'repaired-user' });
   await assertSucceeds(batch.commit());
 });
 
@@ -395,17 +415,16 @@ test('permite al dueño editar su nombre y bloquea correo, rol y a terceros', as
 test('permite al dueño editar nombre corto, distrito y foto del perfil', async () => {
   const db = firestoreFor('editing-profile');
   const profileRef = doc(db, 'perfiles', 'editing-profile');
-  await assertSucceeds(setDoc(profileRef, {
-    nombreCorto: 'Ana T.',
-    distrito: '',
-    fechaIngreso: serverTimestamp(),
-    contadores: { donaciones: 0, intercambios: 0, voluntariados: 0 },
-  }));
-  await assertSucceeds(updateDoc(profileRef, {
+  await assertSucceeds(createProfile('editing-profile', 'Ana T.'));
+  const rename = writeBatch(db);
+  rename.update(profileRef, {
     nombreCorto: 'Ana Q.',
     distrito: 'Los Baños del Inca',
     fotoUrl: 'https://example.test/avatar.jpg',
-  }));
+  });
+  rename.set(shortNameRef(db, 'Ana Q.'), { uid: 'editing-profile' });
+  rename.delete(shortNameRef(db, 'Ana T.'));
+  await assertSucceeds(rename.commit());
   await assertSucceeds(updateDoc(profileRef, { fotoUrl: null, distrito: '' }));
   await assertFails(updateDoc(profileRef, { distrito: 'Lima' }));
   await assertFails(updateDoc(profileRef, { nombreCorto: '' }));
@@ -421,6 +440,89 @@ test('permite al dueño editar nombre corto, distrito y foto del perfil', async 
     doc(firestoreFor('intruder'), 'perfiles', 'editing-profile'),
     { distrito: 'Cajamarca' },
   ));
+});
+
+test('D07: el perfil y la reserva de su nombre corto solo se crean juntos', async () => {
+  const db = firestoreFor('lonely-user');
+  const profile = {
+    nombreCorto: 'Hamer G.',
+    distrito: '',
+    fechaIngreso: serverTimestamp(),
+    contadores: { donaciones: 0, intercambios: 0, voluntariados: 0 },
+  };
+  await assertFails(setDoc(doc(db, 'perfiles', 'lonely-user'), profile));
+  await assertFails(setDoc(shortNameRef(db, 'Hamer G.'), { uid: 'lonely-user' }));
+  // La reserva no puede quedar a nombre de otra persona ni llevar más datos.
+  const forged = writeBatch(db);
+  forged.set(doc(db, 'perfiles', 'lonely-user'), profile);
+  forged.set(shortNameRef(db, 'Hamer G.'), { uid: 'someone-else' });
+  await assertFails(forged.commit());
+  const padded = writeBatch(db);
+  padded.set(doc(db, 'perfiles', 'lonely-user'), profile);
+  padded.set(shortNameRef(db, 'Hamer G.'), { uid: 'lonely-user', extra: true });
+  await assertFails(padded.commit());
+  // Ni apuntar a un nombre distinto del que lleva el perfil.
+  const mismatched = writeBatch(db);
+  mismatched.set(doc(db, 'perfiles', 'lonely-user'), profile);
+  mismatched.set(shortNameRef(db, 'Hamer Ga.'), { uid: 'lonely-user' });
+  await assertFails(mismatched.commit());
+  await assertSucceeds(createProfile('lonely-user', 'Hamer G.'));
+});
+
+test('D07: un nombre corto reservado no lo toma otra persona', async () => {
+  await assertSucceeds(createProfile('hamer-garcia', 'Hamer G.'));
+  // La cuenta recién registrada aún no verificó el correo.
+  const newcomer = unverifiedFirestoreFor('hamer-gallido');
+  await assertSucceeds(getDoc(shortNameRef(newcomer, 'Hamer G.')));
+  await assertFails(createProfile('hamer-gallido', 'Hamer G.', newcomer));
+  // Las mayúsculas no hacen un nombre distinto.
+  await assertFails(createProfile('hamer-gallido', 'HAMER G.', newcomer));
+  await assertSucceeds(createProfile('hamer-gallido', 'Hamer Ga.', newcomer));
+  await assertFails(getDocs(collection(newcomer, 'nombresCortos')));
+});
+
+test('D07: cambiar de nombre corto libera el anterior y no deja acumular reservas', async () => {
+  const db = firestoreFor('renaming-user');
+  const profileRef = doc(db, 'perfiles', 'renaming-user');
+  await assertSucceeds(createProfile('renaming-user', 'Hamer G.'));
+
+  await assertFails(updateDoc(profileRef, { nombreCorto: 'Hamer Ga.' }));
+  const keepsBoth = writeBatch(db);
+  keepsBoth.update(profileRef, { nombreCorto: 'Hamer Ga.' });
+  keepsBoth.set(shortNameRef(db, 'Hamer Ga.'), { uid: 'renaming-user' });
+  await assertFails(keepsBoth.commit());
+  await assertFails(setDoc(shortNameRef(db, 'Otro N.'), { uid: 'renaming-user' }));
+  await assertFails(deleteDoc(shortNameRef(db, 'Hamer G.')));
+  await assertFails(deleteDoc(
+    shortNameRef(firestoreFor('intruder'), 'Hamer G.'),
+  ));
+  await assertFails(setDoc(shortNameRef(db, 'Hamer G.'), { uid: 'intruder' }));
+
+  const rename = writeBatch(db);
+  rename.update(profileRef, { nombreCorto: 'Hamer Ga.' });
+  rename.set(shortNameRef(db, 'Hamer Ga.'), { uid: 'renaming-user' });
+  rename.delete(shortNameRef(db, 'Hamer G.'));
+  await assertSucceeds(rename.commit());
+  await assertSucceeds(createProfile('next-user', 'Hamer G.'));
+});
+
+test('D07: un perfil anterior a las reservas reserva su nombre al editarse', async () => {
+  await testEnv.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), 'perfiles', 'legacy-user'), {
+      nombreCorto: 'Legado L.',
+      distrito: '',
+      fechaIngreso: new Date('2026-01-01T00:00:00Z'),
+      contadores: { donaciones: 0, intercambios: 0, voluntariados: 0 },
+    });
+  });
+  const db = firestoreFor('legacy-user');
+  const profileRef = doc(db, 'perfiles', 'legacy-user');
+  await assertFails(updateDoc(profileRef, { distrito: 'Cajamarca' }));
+  const batch = writeBatch(db);
+  batch.update(profileRef, { distrito: 'Cajamarca' });
+  batch.set(shortNameRef(db, 'Legado L.'), { uid: 'legacy-user' });
+  await assertSucceeds(batch.commit());
+  await assertSucceeds(updateDoc(profileRef, { distrito: '' }));
 });
 
 test('Storage permite la foto de perfil solo a su dueño y con el nombre fijo', async () => {
@@ -458,12 +560,7 @@ test('deniega leer el documento privado de otro usuario', async () => {
 test('deniega falsificar contadores o fecha de ingreso del perfil', async () => {
   const db = firestoreFor('profile-owner');
   const profileRef = doc(db, 'perfiles', 'profile-owner');
-  await assertSucceeds(setDoc(profileRef, {
-    nombreCorto: 'Perfil P.',
-    distrito: '',
-    fechaIngreso: serverTimestamp(),
-    contadores: { donaciones: 0, intercambios: 0, voluntariados: 0 },
-  }));
+  await assertSucceeds(createProfile('profile-owner', 'Perfil P.'));
   await assertFails(updateDoc(profileRef, {
     'contadores.donaciones': 999,
   }));
@@ -2776,6 +2873,7 @@ async function seedVerifiableUser(userId = 'verifiable-user') {
     fechaIngreso: serverTimestamp(),
     contadores: { donaciones: 0, intercambios: 0, voluntariados: 0 },
   });
+  batch.set(shortNameRef(db, 'Cuenta V.'), { uid: userId });
   await assertSucceeds(batch.commit());
   return userId;
 }

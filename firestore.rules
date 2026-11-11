@@ -189,6 +189,31 @@ service cloud.firestore {
         && after.avisoRetiroAt == request.time;
     }
 
+    // El nombre corto es único (D07): `nombresCortos/{clave}` guarda quién usa
+    // cada uno, con el nombre en minúsculas como clave. El perfil y su reserva
+    // se escriben en el mismo lote y cada regla comprueba a la otra, así nadie
+    // toma un nombre ocupado ni acumula reservas que no usa.
+    function shortNameReservation(shortName) {
+      return /databases/$(database)/documents/nombresCortos/$(shortName.lower());
+    }
+
+    function ownsShortNameAfter() {
+      return getAfter(
+        shortNameReservation(request.resource.data.nombreCorto)
+      ).data.uid == request.auth.uid;
+    }
+
+    // Al cambiar de nombre, la reserva anterior se libera en el mismo lote.
+    // Si pertenece a otra persona no se exige: es un perfil anterior a las
+    // reservas, que no tiene nada que liberar.
+    function releasedPreviousShortName() {
+      let previous = shortNameReservation(resource.data.nombreCorto);
+      return request.resource.data.nombreCorto.lower()
+          == resource.data.nombreCorto.lower()
+        || !existsAfter(previous)
+        || getAfter(previous).data.uid != request.auth.uid;
+    }
+
     // El dueño edita nombre corto, distrito y foto (HU20-9); la fecha de
     // ingreso y los contadores no se tocan.
     function validProfileEdit() {
@@ -223,7 +248,8 @@ service cloud.firestore {
           !('fotoUrl' in after)
           || after.fotoUrl == null
           || (after.fotoUrl is string && after.fotoUrl.size() > 0)
-        );
+        )
+        && ownsShortNameAfter();
     }
 
     function validInitialProfile() {
@@ -256,7 +282,8 @@ service cloud.firestore {
         ])
         && request.resource.data.contadores.donaciones == 0
         && request.resource.data.contadores.intercambios == 0
-        && request.resource.data.contadores.voluntariados == 0;
+        && request.resource.data.contadores.voluntariados == 0
+        && ownsShortNameAfter();
     }
 
     function validPublicationImages() {
@@ -1687,10 +1714,31 @@ service cloud.firestore {
               validProfileEdit()
               || (validInitialUserAfter(userId) && validInitialProfile())
             )
+            && releasedPreviousShortName()
           )
           || validAdminAccountVerification()
         );
       allow delete: if false;
+    }
+
+    match /nombresCortos/{nameKey} {
+      // Solo lectura puntual: la app pregunta por un nombre concreto antes de
+      // tomarlo, también recién registrada y sin verificar el correo.
+      allow get: if authenticated();
+      allow list: if false;
+      allow create: if authenticated()
+        && request.resource.data.keys().hasOnly(['uid'])
+        && request.resource.data.uid == request.auth.uid
+        && getAfter(
+          /databases/$(database)/documents/perfiles/$(request.auth.uid)
+        ).data.nombreCorto.lower() == nameKey;
+      allow update: if false;
+      // Solo se libera la reserva del nombre que el perfil ya no usa.
+      allow delete: if authenticated()
+        && resource.data.uid == request.auth.uid
+        && getAfter(
+          /databases/$(database)/documents/perfiles/$(request.auth.uid)
+        ).data.nombreCorto.lower() != nameKey;
     }
 
     match /publicaciones/{publicationId} {

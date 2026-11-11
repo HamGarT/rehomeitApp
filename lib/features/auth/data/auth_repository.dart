@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
 import '../../../core/firebase/firestore_commit.dart';
+import '../../../shared/data/short_name_registry.dart';
 import '../../../shared/domain/person_name.dart';
 import '../domain/app_user.dart';
 import 'auth_exception.dart';
@@ -21,6 +22,9 @@ class AuthRepository {
   final FirebaseFirestore _firestore;
   final GoogleSignIn _googleSignIn = GoogleSignIn.instance;
   bool _googleInitialized = false;
+  late final ShortNameRegistry _shortNames = ShortNameRegistry(_firestore);
+
+  static const _shortNameAttempts = 3;
 
   /// Emite el usuario autenticado (o `null`) y reacciona a cada cambio de
   /// sesión, incluida la restauración de la sesión al abrir la app.
@@ -194,24 +198,67 @@ class AuthRepository {
   /// Sin red el lote queda en la caché de Firestore y se envía al reconectar,
   /// también tras cerrar la app; esperar al servidor dejaría el registro
   /// girando sin fin (HU01-12).
+  ///
+  /// El nombre corto se reserva en el mismo lote (D07). Si otra persona lo
+  /// toma entre la consulta y la escritura, las reglas rechazan el lote y se
+  /// reintenta con el siguiente candidato. [previousShortName] es el del
+  /// perfil que ya existía cuando solo se repara el documento de usuario.
   Future<void> _createUserDocuments(
     User user, {
     required PersonName names,
+    String? previousShortName,
   }) async {
-    final batch = _firestore.batch();
-    batch.set(_firestore.collection('usuarios').doc(user.uid), {
-      ...names.toUserFields(),
-      'correo': user.email ?? '',
-      'rol': 'usuario',
-      'ultimaActividad': FieldValue.serverTimestamp(),
-    });
-    batch.set(_firestore.collection('perfiles').doc(user.uid), {
-      'nombreCorto': names.short,
-      'distrito': '',
-      'fechaIngreso': FieldValue.serverTimestamp(),
-      'contadores': {'donaciones': 0, 'intercambios': 0, 'voluntariados': 0},
-    });
-    await commitOfflineTolerant(batch);
+    for (var attempt = 1; ; attempt++) {
+      final choice = await _chooseShortName(
+        names,
+        user.uid,
+        current: previousShortName,
+      );
+      final batch = _firestore.batch();
+      batch.set(_firestore.collection('usuarios').doc(user.uid), {
+        ...names.toUserFields(),
+        'correo': user.email ?? '',
+        'rol': 'usuario',
+        'ultimaActividad': FieldValue.serverTimestamp(),
+      });
+      batch.set(_firestore.collection('perfiles').doc(user.uid), {
+        'nombreCorto': choice.shortName,
+        'distrito': '',
+        'fechaIngreso': FieldValue.serverTimestamp(),
+        'contadores': {'donaciones': 0, 'intercambios': 0, 'voluntariados': 0},
+      });
+      try {
+        await _shortNames.stage(
+          batch,
+          userId: user.uid,
+          choice: choice,
+          previous: previousShortName,
+        );
+        await commitOfflineTolerant(batch);
+        return;
+      } on FirebaseException catch (error) {
+        if (error.code != 'permission-denied' ||
+            attempt >= _shortNameAttempts) {
+          rethrow;
+        }
+      }
+    }
+  }
+
+  /// Sin conexión no se puede saber qué nombres están libres: se encola el
+  /// preferido para no dejar el registro girando (HU01-12). Si resulta estar
+  /// tomado, las reglas rechazan el lote al sincronizar y la reparación de la
+  /// próxima sesión elige otro.
+  Future<ShortNameChoice> _chooseShortName(
+    PersonName names,
+    String userId, {
+    String? current,
+  }) async {
+    try {
+      return await _shortNames.choose(names, userId, current: current);
+    } on FirebaseException catch (_) {
+    } on TimeoutException catch (_) {}
+    return (shortName: names.short, needsReservation: true);
   }
 
   /// Devuelve el mensaje con el que se debe impedir la sesión, o `null` si la
@@ -259,10 +306,22 @@ class AuthRepository {
       await _createUserDocuments(
         user,
         names: PersonName.split(user.displayName ?? ''),
+        previousShortName: await _existingShortName(user.uid),
       );
     } catch (_) {
       // La sesión ya quedó iniciada; los documentos se reparan en el próximo
       // inicio de sesión.
+    }
+  }
+
+  /// Nombre corto del perfil si ya existe, o `null`. Una cuenta sin verificar
+  /// no puede leer `perfiles`; ahí tampoco hay perfil previo que conservar.
+  Future<String?> _existingShortName(String userId) async {
+    try {
+      final profile = await _firestore.collection('perfiles').doc(userId).get();
+      return profile.data()?['nombreCorto'] as String?;
+    } on FirebaseException catch (_) {
+      return null;
     }
   }
 }
