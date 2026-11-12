@@ -585,6 +585,25 @@ test('permite crear una donación y un intercambio válidos', async () => {
   ));
 });
 
+// La app consulta el id antes de escribir para no duplicar una pendiente;
+// con una cuenta sin rol de administración esa lectura llegó a denegarse.
+test('una cuenta normal consulta el id de su publicación antes de crearla', async () => {
+  const db = firestoreFor('publisher');
+  const reference = doc(db, 'publicaciones', 'not-created-yet');
+  await assertSucceeds(getDoc(reference));
+  await assertSucceeds(setDoc(
+    reference,
+    initialPublication({
+      authorId: 'publisher',
+      mode: 'donacion',
+      deliveryType: 'voluntario',
+    }),
+  ));
+  await assertFails(getDoc(
+    doc(unverifiedFirestoreFor('unverified'), 'publicaciones', 'missing'),
+  ));
+});
+
 test('protege identidad, modalidad y campos internos de publicaciones', async () => {
   const db = firestoreFor('publisher');
   const publicationRef = doc(db, 'publicaciones', 'protected-publication');

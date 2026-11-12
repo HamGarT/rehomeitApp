@@ -1745,9 +1745,11 @@ service cloud.firestore {
       // Anuladas y retiradas salen de la consulta pública (HU14-13): las ven
       // el autor, quien participó en la operación y la moderación. Las
       // consultas de terceros tienen que filtrar por estado para que la regla
-      // sea demostrable.
+      // sea demostrable. La app consulta el id antes de crear la publicación
+      // para no duplicarla: sin `resource == null` esa lectura se deniega.
       allow read: if signedIn() && (
-        resource.data.status in [
+        resource == null
+        || resource.data.status in [
           'publicada',
           'comprometida',
           'recogida',
