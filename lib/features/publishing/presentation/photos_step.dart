@@ -75,17 +75,28 @@ class _PhotosStepState extends ConsumerState<PhotosStep> {
                         aspectRatio: 1,
                         child: index < draft.photos.length
                             ? _Thumbnail(
+                                index: index,
                                 photo: draft.photos[index],
                                 selected: index == _selectedIndex,
                                 onTap: () =>
                                     setState(() => _selectedIndex = index),
                                 onRemove: () => _remove(index),
+                                onMovedHere: (from) => _move(from, index),
                               )
                             : _EmptySlot(onTap: _chooseSource),
                       ),
                     ),
                 ],
               ),
+              if (draft.photos.length > 1) ...[
+                const SizedBox(height: 8),
+                Text(
+                  'La primera es la portada. Mantén pulsada una fotografía y arrástrala para cambiar el orden.',
+                  style: texts.bodySmall?.copyWith(
+                    color: context.appColors.textSecondary,
+                  ),
+                ),
+              ],
               const SizedBox(height: 18),
               OutlinedButton.icon(
                 onPressed: draft.canAddPhoto ? _takePhoto : null,
@@ -123,6 +134,11 @@ class _PhotosStepState extends ConsumerState<PhotosStep> {
     }
     Navigator.of(context)
         .push(MaterialPageRoute(builder: (_) => const AnalyzingStep()));
+  }
+
+  void _move(int from, int to) {
+    ref.read(publishDraftProvider.notifier).movePhoto(from, to);
+    setState(() => _selectedIndex = to);
   }
 
   void _remove(int index) {
@@ -265,19 +281,54 @@ class _Preview extends StatelessWidget {
 
 class _Thumbnail extends StatelessWidget {
   const _Thumbnail({
+    required this.index,
     required this.photo,
     required this.selected,
     required this.onTap,
     required this.onRemove,
+    required this.onMovedHere,
   });
 
+  static const _radius = 12.0;
+
+  final int index;
   final File photo;
   final bool selected;
   final VoidCallback onTap;
   final VoidCallback onRemove;
 
+  /// Recibe la posición de la fotografía que se soltó sobre esta.
+  final ValueChanged<int> onMovedHere;
+
   @override
   Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) => DragTarget<int>(
+        onWillAcceptWithDetails: (details) => details.data != index,
+        onAcceptWithDetails: (details) => onMovedHere(details.data),
+        builder: (context, candidates, _) => LongPressDraggable<int>(
+          data: index,
+          // El arrastre necesita un tamaño fijo: fuera de la fila ya no hay
+          // un `Expanded` que se lo dé.
+          feedback: SizedBox(
+            width: constraints.maxWidth,
+            height: constraints.maxHeight,
+            child: Material(
+              elevation: 6,
+              borderRadius: BorderRadius.circular(_radius),
+              clipBehavior: Clip.antiAlias,
+              child: Image.file(photo, fit: BoxFit.cover, cacheWidth: 300),
+            ),
+          ),
+          childWhenDragging: Opacity(opacity: 0.35, child: _tile(context)),
+          child: _tile(context, isDropTarget: candidates.isNotEmpty),
+        ),
+      ),
+    );
+  }
+
+  Widget _tile(BuildContext context, {bool isDropTarget = false}) {
+    final highlighted = selected || isDropTarget;
     return GestureDetector(
       onTap: onTap,
       child: Stack(
@@ -285,17 +336,40 @@ class _Thumbnail extends StatelessWidget {
         children: [
           Container(
             decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(_radius),
               border: Border.all(
-                color: selected
+                color: highlighted
                     ? context.appColors.primary
                     : context.appColors.border,
-                width: selected ? 2 : 1,
+                width: isDropTarget ? 3 : (selected ? 2 : 1),
               ),
             ),
             clipBehavior: Clip.antiAlias,
             child: Image.file(photo, fit: BoxFit.cover, cacheWidth: 300),
           ),
+          if (index == 0)
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 0,
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 3),
+                decoration: BoxDecoration(
+                  color: context.appColors.textPrimary.withValues(alpha: 0.7),
+                  borderRadius: const BorderRadius.vertical(
+                    bottom: Radius.circular(_radius),
+                  ),
+                ),
+                child: Text(
+                  'Portada',
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                    color: context.appColors.surface,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ),
           Positioned(
             top: 2,
             right: 2,

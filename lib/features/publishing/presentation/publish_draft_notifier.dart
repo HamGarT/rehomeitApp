@@ -41,6 +41,19 @@ class PublishDraftNotifier extends Notifier<PublishDraft> {
     state = state.copyWith(photos: photos, photosScreened: false);
   }
 
+  /// La primera fotografía es la portada de la publicación. Reordenar no
+  /// cambia qué fotografías hay, así que el veredicto de la revisión sigue
+  /// siendo válido.
+  void movePhoto(int from, int to) {
+    final count = state.photos.length;
+    if (from == to || from < 0 || to < 0 || from >= count || to >= count) {
+      return;
+    }
+    final photos = [...state.photos];
+    photos.insert(to, photos.removeAt(from));
+    state = state.copyWith(photos: photos);
+  }
+
   void updateTitle(String value) {
     state = state.copyWith(title: value, aiFields: _withoutAi(AiField.title));
   }

@@ -8,6 +8,7 @@ import '../../../shared/widgets/publication_image.dart';
 import '../../auth/presentation/auth_controller.dart';
 import '../../publishing/presentation/photos_step.dart';
 import '../../publishing/presentation/publish_draft_notifier.dart';
+import '../domain/exchange_proposal.dart';
 import 'exchange_controller.dart';
 
 Future<bool?> showProposeExchangeSheet(
@@ -50,6 +51,10 @@ class _ProposeExchangeSheetState extends ConsumerState<_ProposeExchangeSheet> {
       eligibleExchangePublicationsProvider(user.uid),
     );
     final isSubmitting = ref.watch(exchangeControllerProvider).isLoading;
+    final alreadyOffered = _alreadyOfferedLabels(
+      ref.watch(userExchangeProposalsProvider(user.uid)).value ?? const [],
+      user.uid,
+    );
 
     return Padding(
       padding: EdgeInsets.fromLTRB(
@@ -103,6 +108,7 @@ class _ProposeExchangeSheetState extends ConsumerState<_ProposeExchangeSheet> {
                         return _OfferedPublicationTile(
                           publication: publication,
                           selected: publication.id == _selectedId,
+                          unavailableLabel: alreadyOffered[publication.id],
                           onTap: () =>
                               setState(() => _selectedId = publication.id),
                         );
@@ -122,6 +128,31 @@ class _ProposeExchangeSheetState extends ConsumerState<_ProposeExchangeSheet> {
         ],
       ),
     );
+  }
+
+  /// Bienes propios que ya se ofrecieron por esta publicación, con el motivo
+  /// por el que no se pueden volver a ofrecer. Una propuesta anulada no
+  /// cuenta: no fue una respuesta de la otra persona.
+  Map<String, String> _alreadyOfferedLabels(
+    List<ExchangeProposal> proposals,
+    String userId,
+  ) {
+    final labels = <String, String>{};
+    for (final proposal in proposals) {
+      if (proposal.requestedPublicationId != widget.requestedPublication.id ||
+          proposal.offeredOwnerId != userId) {
+        continue;
+      }
+      if (proposal.status == ExchangeProposalStatus.pending) {
+        labels[proposal.offeredPublicationId] = 'Ya lo propusiste';
+      } else if (proposal.status == ExchangeProposalStatus.rejected) {
+        labels.putIfAbsent(
+          proposal.offeredPublicationId,
+          () => 'Propuesta rechazada',
+        );
+      }
+    }
+    return labels;
   }
 
   Future<void> _submit(String userId) async {
@@ -148,19 +179,33 @@ class _OfferedPublicationTile extends StatelessWidget {
     required this.publication,
     required this.selected,
     required this.onTap,
+    this.unavailableLabel,
   });
+
+  static const _unavailableOpacity = 0.5;
 
   final Publication publication;
   final bool selected;
   final VoidCallback onTap;
 
+  /// Motivo por el que este bien no se puede ofrecer; `null` si se puede.
+  final String? unavailableLabel;
+
   @override
   Widget build(BuildContext context) {
+    final unavailable = unavailableLabel != null;
+    return Opacity(
+      opacity: unavailable ? _unavailableOpacity : 1,
+      child: _card(context, unavailable),
+    );
+  }
+
+  Widget _card(BuildContext context, bool unavailable) {
     return Material(
       color: context.appColors.surface,
       borderRadius: BorderRadius.circular(14),
       child: InkWell(
-        onTap: onTap,
+        onTap: unavailable ? null : onTap,
         borderRadius: BorderRadius.circular(14),
         child: Container(
           padding: const EdgeInsets.all(10),
@@ -205,12 +250,23 @@ class _OfferedPublicationTile extends StatelessWidget {
                   ],
                 ),
               ),
-              Icon(
-                selected ? Icons.radio_button_checked : Icons.radio_button_off,
-                color: selected
-                    ? context.appColors.primary
-                    : context.appColors.textSecondary,
-              ),
+              if (unavailable)
+                Text(
+                  unavailableLabel!,
+                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                    color: context.appColors.textSecondary,
+                    fontWeight: FontWeight.w600,
+                  ),
+                )
+              else
+                Icon(
+                  selected
+                      ? Icons.radio_button_checked
+                      : Icons.radio_button_off,
+                  color: selected
+                      ? context.appColors.primary
+                      : context.appColors.textSecondary,
+                ),
             ],
           ),
         ),
