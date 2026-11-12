@@ -22,6 +22,10 @@ class ExploreFiltersController extends Notifier<ExploreFilters> {
     state = state.copyWith(district: district, clearDistrict: district == null);
   }
 
+  void selectCategory(String? category) {
+    state = state.copyWith(category: category, clearCategory: category == null);
+  }
+
   void updateSearch(String search) {
     state = state.copyWith(search: search);
   }
@@ -53,7 +57,13 @@ final rehomedPublicationsProvider = StreamProvider<List<Publication>>((ref) {
   return ref.watch(exploreRepositoryProvider).watchRehomed();
 });
 
-final publicationDetailProvider =StreamProvider.family<Publication?, String>((
+final rehomedArchiveProvider = StreamProvider<List<Publication>>((ref) {
+  return ref
+      .watch(exploreRepositoryProvider)
+      .watchRehomed(limit: ExploreRepository.rehomedArchiveLimit);
+});
+
+final publicationDetailProvider = StreamProvider.family<Publication?, String>((
   ref,
   publicationId,
 ) {

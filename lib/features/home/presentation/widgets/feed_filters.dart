@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../../app/theme.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../../../../core/constants/cajamarca_districts.dart';
+import '../../../../core/constants/item_categories.dart';
 import '../../../../shared/domain/publication.dart';
 import '../../../../shared/widgets/app_chip.dart';
 import '../../../../shared/widgets/choice_sheet.dart';
@@ -67,11 +68,13 @@ class FeedFilterChips extends StatelessWidget {
     required this.filters,
     required this.onModeSelected,
     required this.onDistrictSelected,
+    required this.onCategorySelected,
   });
 
   final ExploreFilters filters;
   final ValueChanged<PublicationMode?> onModeSelected;
   final ValueChanged<String?> onDistrictSelected;
+  final ValueChanged<String?> onCategorySelected;
 
   @override
   Widget build(BuildContext context) {
@@ -96,9 +99,21 @@ class FeedFilterChips extends StatelessWidget {
             selected: filters.mode == PublicationMode.exchange,
             onTap: () => onModeSelected(PublicationMode.exchange),
           ),
-          _DistrictChip(
-            district: filters.district,
+          _ChoiceFilterChip(
+            title: 'Distrito',
+            allLabel: 'Todos los distritos',
+            icon: Icons.location_on_outlined,
+            options: CajamarcaDistricts.all,
+            value: filters.district,
             onSelect: onDistrictSelected,
+          ),
+          _ChoiceFilterChip(
+            title: 'Categoría',
+            allLabel: 'Todas las categorías',
+            icon: Icons.category_outlined,
+            options: ItemCategories.all,
+            value: filters.category,
+            onSelect: onCategorySelected,
           ),
         ],
       ),
@@ -106,25 +121,36 @@ class FeedFilterChips extends StatelessWidget {
   }
 }
 
-/// Tocar el chip abre la hoja de distritos; con uno elegido, la X lo limpia
+/// Filtro de una sola opción entre una lista fija (distrito, categoría).
+/// Tocar el chip abre la hoja de opciones; con una elegida, la X la limpia
 /// sin abrirla.
-class _DistrictChip extends StatelessWidget {
-  const _DistrictChip({required this.district, required this.onSelect});
+class _ChoiceFilterChip extends StatelessWidget {
+  const _ChoiceFilterChip({
+    required this.title,
+    required this.allLabel,
+    required this.icon,
+    required this.options,
+    required this.value,
+    required this.onSelect,
+  });
 
   static const _all = '';
 
-  final String? district;
+  final String title;
+  final String allLabel;
+  final IconData icon;
+  final List<String> options;
+  final String? value;
   final ValueChanged<String?> onSelect;
 
   Future<void> _open(BuildContext context) async {
     final chosen = await showChoiceSheet<String>(
       context,
-      title: 'Distrito',
-      selected: district ?? _all,
+      title: title,
+      selected: value ?? _all,
       options: [
-        const ChoiceOption(value: _all, label: 'Todos los distritos'),
-        for (final name in CajamarcaDistricts.all)
-          ChoiceOption(value: name, label: name),
+        ChoiceOption(value: _all, label: allLabel),
+        for (final name in options) ChoiceOption(value: name, label: name),
       ],
     );
     if (chosen == null) return;
@@ -133,10 +159,10 @@ class _DistrictChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final selected = district != null;
+    final selected = value != null;
     return AppChip(
-      label: district ?? 'Distrito',
-      icon: Icons.location_on_outlined,
+      label: value ?? title,
+      icon: icon,
       selected: selected,
       onTap: () => _open(context),
       trailing: selected

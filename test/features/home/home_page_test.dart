@@ -9,6 +9,8 @@ import 'package:rehomeitapp/features/explore/data/explore_repository.dart';
 import 'package:rehomeitapp/features/explore/domain/public_profile.dart';
 import 'package:rehomeitapp/features/explore/presentation/explore_controller.dart';
 import 'package:rehomeitapp/features/home/presentation/home_page.dart';
+import 'package:rehomeitapp/features/home/presentation/rehomed_page.dart';
+import 'package:rehomeitapp/features/home/presentation/widgets/rehomed_strip.dart';
 import 'package:rehomeitapp/shared/domain/publication.dart';
 import 'package:rehomeitapp/shared/widgets/publication_image.dart';
 
@@ -38,6 +40,7 @@ Widget _host(
   return ProviderScope(
     overrides: [
       rehomedPublicationsProvider.overrideWith((ref) => Stream.value(rehomed)),
+      rehomedArchiveProvider.overrideWith((ref) => Stream.value(rehomed)),
       exploreFeedProvider.overrideWithValue(
         AsyncValue.data(ExploreFeed(publications: posts, isFromCache: false)),
       ),
@@ -196,6 +199,51 @@ void main() {
     expect(find.text('Hot Wheels b'), findsOneWidget);
     expect(find.text('Donado'), findsOneWidget);
     expect(find.text('Intercambiado'), findsOneWidget);
+  });
+
+  testWidgets('"Ver todos" abre los entregados en cuadrícula y con filtros', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _host(
+        [
+          _post('a', ['https://example.test/1.jpg']),
+        ],
+        rehomed: [
+          _post('b', ['https://example.test/2.jpg']),
+          _post('c', [
+            'https://example.test/3.jpg',
+          ]).copyWithHashtags(mode: PublicationMode.exchange),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('rehomed-see-all')));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(RehomedPage), findsOneWidget);
+    final grid = find.descendant(
+      of: find.byType(RehomedPage),
+      matching: find.byType(RehomedCard),
+    );
+    expect(grid, findsNWidgets(2));
+
+    await tester.tap(
+      find.descendant(
+        of: find.byType(RehomedPage),
+        matching: find.text('Intercambio'),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(grid, findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byType(RehomedPage),
+        matching: find.text('Hot Wheels c'),
+      ),
+      findsOneWidget,
+    );
   });
 
   testWidgets('sin entregas la franja no aparece', (tester) async {

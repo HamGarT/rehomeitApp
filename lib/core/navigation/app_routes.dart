@@ -12,6 +12,7 @@ abstract final class AppRoutes {
   static String journey(String publicationId) => 'journey/$publicationId';
   static String campaign(String id) => 'campaign/$id';
   static const exchanges = 'exchanges';
+  static const rehomed = 'rehomed';
   static const moderation = 'moderation';
   static const admin = 'admin';
 }

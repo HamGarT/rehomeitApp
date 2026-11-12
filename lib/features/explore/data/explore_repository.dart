@@ -51,13 +51,17 @@ class ExploreRepository {
   }
 
   static const rehomedLimit = 10;
+  static const rehomedArchiveLimit = 100;
 
   /// Los últimos bienes que ya cambiaron de manos, para la franja de Inicio.
   ///
   /// Ordena por fecha de publicación y no de entrega: así reutiliza el índice
   /// `status ASC + publishedAt DESC` del feed, y la franja solo necesita
   /// mostrar que hay movimiento, no un orden exacto.
-  Stream<List<Publication>> watchRehomed() {
+  ///
+  /// La pantalla "Ya encontraron hogar" usa la misma consulta con
+  /// [rehomedArchiveLimit] y filtra en el teléfono, como el feed.
+  Stream<List<Publication>> watchRehomed({int limit = rehomedLimit}) {
     return _firestore
         .collection('publicaciones')
         .where(
@@ -68,7 +72,7 @@ class ExploreRepository {
           ],
         )
         .orderBy('publishedAt', descending: true)
-        .limit(rehomedLimit)
+        .limit(limit)
         .snapshots()
         .map(
           (snapshot) => snapshot.docs

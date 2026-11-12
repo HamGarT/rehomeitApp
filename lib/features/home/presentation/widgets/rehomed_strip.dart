@@ -9,6 +9,7 @@ import '../../../../shared/widgets/app_badge.dart';
 import '../../../../shared/widgets/publication_image.dart';
 import '../../../explore/presentation/explore_controller.dart';
 import '../../../journey/presentation/publication_journey_page.dart';
+import '../rehomed_page.dart';
 
 /// Franja horizontal con los últimos bienes ya entregados. El feed solo lista
 /// lo disponible, así que sin ella quien llega no ve que la app se usa.
@@ -31,13 +32,28 @@ class RehomedStrip extends ConsumerWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(20, 20, 20, 10),
-          child: Text(
-            'Ya encontraron hogar',
-            style: Theme.of(context).textTheme.labelLarge?.copyWith(
-              color: context.appColors.textSecondary,
-              fontWeight: FontWeight.w600,
-            ),
+          padding: const EdgeInsets.fromLTRB(20, 20, 8, 2),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Ya encontraron hogar',
+                  style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                    color: context.appColors.textSecondary,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              TextButton(
+                key: const Key('rehomed-see-all'),
+                onPressed: () => pushUnique(
+                  context,
+                  name: AppRoutes.rehomed,
+                  builder: (_) => const RehomedPage(),
+                ),
+                child: const Text('Ver todos'),
+              ),
+            ],
           ),
         ),
         SizedBox(
@@ -49,7 +65,7 @@ class RehomedStrip extends ConsumerWidget {
             separatorBuilder: (_, _) => const SizedBox(width: 12),
             itemBuilder: (context, index) => SizedBox(
               width: _cardWidth,
-              child: _RehomedCard(publication: rehomed[index]),
+              child: RehomedCard(publication: rehomed[index]),
             ),
           ),
         ),
@@ -58,8 +74,10 @@ class RehomedStrip extends ConsumerWidget {
   }
 }
 
-class _RehomedCard extends StatelessWidget {
-  const _RehomedCard({required this.publication});
+/// Tarjeta de un bien entregado; tocarla abre su recorrido. La comparten la
+/// franja de Inicio y la pantalla con todos los entregados.
+class RehomedCard extends StatelessWidget {
+  const RehomedCard({super.key, required this.publication});
 
   final Publication publication;
 

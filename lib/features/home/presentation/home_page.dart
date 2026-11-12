@@ -130,6 +130,7 @@ class _HomePageState extends ConsumerState<HomePage> {
     _filters.updateSearch('');
     _filters.selectMode(null);
     _filters.selectDistrict(null);
+    _filters.selectCategory(null);
   }
 
   Future<void> _refresh(ExploreFilters filters) async {
@@ -185,9 +186,7 @@ class _HomePageState extends ConsumerState<HomePage> {
             data: (data) {
               // El CTA dice "todavía no has publicado nada", así que solo tiene
               // sentido mientras la persona no tenga ninguna publicación propia.
-              final hasOwn = data.publications.any(
-                (p) => p.authorId == userId,
-              );
+              final hasOwn = data.publications.any((p) => p.authorId == userId);
               if (!hasOwn) {
                 return SliverToBoxAdapter(
                   child: _PublishCta(onPublish: startPublishing),
@@ -200,8 +199,7 @@ class _HomePageState extends ConsumerState<HomePage> {
             loading: () => SliverToBoxAdapter(
               child: _PublishCta(onPublish: startPublishing),
             ),
-            error: (_, _) =>
-                const SliverToBoxAdapter(child: SizedBox.shrink()),
+            error: (_, _) => const SliverToBoxAdapter(child: SizedBox.shrink()),
           ),
           SliverToBoxAdapter(
             child: Padding(
@@ -210,6 +208,7 @@ class _HomePageState extends ConsumerState<HomePage> {
                 filters: filters,
                 onModeSelected: _filters.selectMode,
                 onDistrictSelected: _filters.selectDistrict,
+                onCategorySelected: _filters.selectCategory,
               ),
             ),
           ),
