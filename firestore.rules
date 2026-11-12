@@ -1987,5 +1987,20 @@ service cloud.firestore {
         && request.resource.data.readAt == request.time;
       allow delete: if false;
     }
+
+    // Tokens de avisos (D22). El id es el token: al iniciar sesión otra
+    // cuenta en el mismo teléfono lo reasigna en vez de duplicarlo. Solo los
+    // lee el servidor.
+    match /dispositivos/{token} {
+      allow read: if false;
+      allow create, update: if signedIn()
+        && request.resource.data.keys().hasAll(['uid', 'platform', 'updatedAt'])
+        && request.resource.data.keys().hasOnly(['uid', 'platform', 'updatedAt'])
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.platform == 'android'
+        && request.resource.data.updatedAt == request.time;
+      allow delete: if signedIn()
+        && resource.data.uid == request.auth.uid;
+    }
   }
 }

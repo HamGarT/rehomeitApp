@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../shared/data/push_notifications.dart';
 import '../data/auth_exception.dart';
 import '../data/auth_repository.dart';
 import '../domain/app_user.dart';
@@ -55,7 +56,14 @@ class AuthController extends Notifier<AsyncValue<AppUser?>> {
   /// No toca [state]: la pantalla de acceso lo lee para sus botones y
   /// aparece antes de que termine el cierre. El perfil lleva su propio
   /// indicador de progreso.
-  Future<void> signOut() => _repository.signOut();
+  Future<void> signOut() async {
+    try {
+      await ref.read(pushNotificationsProvider).unregister();
+    } catch (_) {
+      // La baja del token es de mejor esfuerzo; nunca impide cerrar sesión.
+    }
+    await _repository.signOut();
+  }
 
   /// `true` si Auth ya tiene el correo verificado. Lanza [AuthFailure] si no
   /// se pudo consultar.

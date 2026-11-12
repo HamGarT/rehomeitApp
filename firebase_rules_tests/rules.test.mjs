@@ -604,6 +604,39 @@ test('una cuenta normal consulta el id de su publicación antes de crearla', asy
   ));
 });
 
+test('D22: cada cuenta registra y borra solo su token de avisos', async () => {
+  const device = (userId) => ({
+    uid: userId,
+    platform: 'android',
+    updatedAt: serverTimestamp(),
+  });
+  const ownerDb = firestoreFor('device-owner');
+  const otherDb = firestoreFor('device-other');
+  const ownerToken = doc(ownerDb, 'dispositivos', 'token:abc_123');
+
+  await assertSucceeds(setDoc(ownerToken, device('device-owner')));
+  await assertFails(getDoc(ownerToken));
+  await assertFails(setDoc(
+    doc(ownerDb, 'dispositivos', 'token-forged'),
+    device('device-other'),
+  ));
+  await assertFails(setDoc(
+    doc(ownerDb, 'dispositivos', 'token-extra'),
+    { ...device('device-owner'), admin: true },
+  ));
+  await assertFails(setDoc(
+    doc(unverifiedFirestoreFor('unverified'), 'dispositivos', 'token-unverified'),
+    device('unverified'),
+  ));
+
+  const sameTokenForOther = doc(otherDb, 'dispositivos', 'token:abc_123');
+  await assertFails(deleteDoc(sameTokenForOther));
+  // Otra cuenta inicia sesión en el mismo teléfono y se queda con el token.
+  await assertSucceeds(setDoc(sameTokenForOther, device('device-other')));
+  await assertFails(deleteDoc(ownerToken));
+  await assertSucceeds(deleteDoc(sameTokenForOther));
+});
+
 test('protege identidad, modalidad y campos internos de publicaciones', async () => {
   const db = firestoreFor('publisher');
   const publicationRef = doc(db, 'publicaciones', 'protected-publication');

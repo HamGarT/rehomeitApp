@@ -12,7 +12,7 @@ Decisiones que condicionan la implementación y que no se deducen leyendo las hi
 
 **Decisión.** Las notificaciones se implementan dentro de la aplicación. Quien ejecuta la acción escribe un documento en la colección `notificaciones` dirigido al destinatario, y este lo recibe en tiempo real mientras usa la aplicación.
 
-**Consecuencias.** No se requiere plan de pago ni componentes de servidor. El usuario se entera al abrir la aplicación, no con el teléfono bloqueado. Si más adelante se incorporan notificaciones push, se apoyan sobre la misma colección sin rehacer lo existente.
+**Consecuencias.** No se requiere plan de pago ni componentes de servidor. El usuario se entera al abrir la aplicación, no con el teléfono bloqueado. Si más adelante se incorporan notificaciones push, se apoyan sobre la misma colección sin rehacer lo existente. Eso ocurrió el 11 de noviembre: ver D22.
 
 ---
 
@@ -275,3 +275,13 @@ Esta paleta reemplaza desde el 8 de octubre de 2026 a la de marrón y crema del 
 **Decisión.** La misma llamada a Gemini que completa la ficha (D05) devuelve una lista `prohibitedContent` con cuatro valores posibles (documento de identidad, tarjeta de pago, arma, rostro); si trae algo, la publicación se bloquea antes del formulario. Para los casos en que esa llamada no dio veredicto (sin red, corte o servicio caído) y para la evidencia de entrega, que no pasa por la ficha, un segundo modelo con esquema mínimo y temperatura cero (`PhotoScreeningService`) revisa las fotografías en el momento de confirmar, antes de guardarlas en la cola de D03. Las reglas del prompt son un único texto compartido por los dos modelos. Un rechazo muestra el motivo y devuelve a la persona a la captura con el resto de los datos intactos; sin veredicto, la operación no se confirma.
 
 **Consecuencias.** Confirmar tarda lo que tarde Gemini (de 4 a 10 s, corte a 20 s) cuando la ficha no lo revisó ya; el caso normal de publicar no paga una segunda llamada porque el borrador recuerda el veredicto y lo invalida al cambiar las fotos. La detección depende del modelo: puede marcar un muñeco o un rostro impreso, y la única salida es reencuadrar. No hay apelación ni moderación de por medio porque la fotografía rechazada nunca sale del teléfono.
+
+---
+
+## D22 – Los avisos con la aplicación cerrada los envía el servidor sobre la colección de notificaciones
+
+**Problema.** Con D01 la persona solo se enteraba de una propuesta, un mensaje o un recojo al abrir la aplicación. Para el piloto con personas ajenas al equipo eso significa conversaciones que nadie responde. D01 ya explicaba por qué el envío no puede salir del teléfono: exige una credencial de servidor.
+
+**Decisión.** Dos Cloud Functions de segunda generación en `southamerica-east1` (carpeta `functions/`) envían el aviso por Firebase Cloud Messaging: una al crearse un documento de `notificaciones`, hacia los dispositivos del destinatario, y otra al crearse una publicación, hacia todos los dispositivos salvo los del autor. La aplicación pide el permiso de notificaciones al entrar y guarda el token en `dispositivos/{token}` con el `uid` de la cuenta; al cerrar sesión lo borra. El id del documento es el propio token, de modo que otra cuenta que inicie sesión en el mismo teléfono lo reasigna en lugar de duplicarlo. Las reglas solo permiten escribir un token a nombre propio y nadie puede leer la colección desde la aplicación.
+
+**Consecuencias.** Lo descrito en D01 sigue vigente y es la fuente de los avisos: quien ejecuta la acción escribe el documento y el servidor solo lo reenvía, así que un tipo de notificación nuevo llega como aviso sin tocar las funciones. Con la aplicación abierta el aviso del sistema no aparece y se muestra el de D01. Los mensajes viajan cifrados (D20) y el servidor no tiene la clave: el aviso dice de qué publicación es el mensaje, no su texto. El proyecto pasa a tener un componente de servidor que se despliega aparte (`firebase deploy --only functions`). El aviso de bien nuevo llega a todas las cuentas; si el volumen crece habrá que acotarlo por distrito o dejar que cada persona lo desactive. iOS y web quedan fuera hasta configurar APNs y el service worker.

@@ -15,6 +15,7 @@ import '../features/publishing/presentation/form_step.dart';
 import '../features/publishing/presentation/mode_step.dart';
 import '../features/publishing/presentation/photos_step.dart';
 import '../features/publishing/presentation/publish_draft_notifier.dart';
+import '../shared/data/push_notifications.dart';
 import '../shared/widgets/app_dialog.dart';
 
 class HomeShell extends ConsumerStatefulWidget {
@@ -35,6 +36,7 @@ class _HomeShellState extends ConsumerState<HomeShell>
   int _selectedIndex = 0;
   final Set<String> _displayedNotifications = {};
   Timer? _pendingSyncTimer;
+  StreamSubscription<String>? _pushOpenedSubscription;
   bool _syncingPendingOperations = false;
   bool _pendingDeliveryNoticeShown = false;
   bool _pendingPublicationNoticeShown = false;
@@ -51,9 +53,10 @@ class _HomeShellState extends ConsumerState<HomeShell>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    WidgetsBinding.instance.addPostFrameCallback(
-      (_) => _syncPendingOperations(),
-    );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _syncPendingOperations();
+      _registerPush();
+    });
     _pendingSyncTimer = Timer.periodic(
       const Duration(minutes: 2),
       (_) => _syncPendingOperations(),
@@ -64,7 +67,29 @@ class _HomeShellState extends ConsumerState<HomeShell>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _pendingSyncTimer?.cancel();
+    _pushOpenedSubscription?.cancel();
     super.dispose();
+  }
+
+  /// Pide el permiso de notificaciones al entrar y registra el dispositivo.
+  Future<void> _registerPush() async {
+    final userId = ref.read(authStateProvider).value?.uid;
+    if (userId == null) return;
+    try {
+      final push = ref.read(pushNotificationsProvider);
+      _pushOpenedSubscription = push.openedTypes.listen(_onPushOpened);
+      final initialType = await push.initialType();
+      if (initialType != null) _onPushOpened(initialType);
+      await push.register(userId);
+    } catch (_) {
+      // Sin registro, los avisos siguen llegando con la app abierta (D01).
+    }
+  }
+
+  void _onPushOpened(String type) {
+    if (!mounted || type != PushNotifications.messageType) return;
+    Navigator.of(context).popUntil((route) => route.isFirst);
+    setState(() => _selectedIndex = _messagesIndex);
   }
 
   @override
