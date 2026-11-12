@@ -108,27 +108,19 @@ service cloud.firestore {
     }
 
     // El dueño edita solo su nombre (HU20-9); correo y rol quedan fijos
-    // (HU20-10, D06).
+    // (HU20-10, D06). Se valida por diferencia y no por lista de claves: el
+    // documento también lleva los campos que escribe la administración
+    // (verificación, estado de la cuenta, aviso de retiro), que el dueño no
+    // puede tocar pero tampoco deben impedirle editar su nombre.
     function validUserEdit() {
       let after = request.resource.data;
-      return after.keys().hasAll([
+      return after.diff(resource.data).affectedKeys().hasOnly([
           'nombreCompleto',
-          'correo',
-          'rol',
-          'nombres',
-          'apellidos'
-        ])
-        && after.keys().hasOnly([
-          'nombreCompleto',
-          'correo',
-          'rol',
           'nombres',
           'apellidos',
           'ultimaActividad'
         ])
         && validUserNames(after)
-        && after.correo == resource.data.correo
-        && after.rol == resource.data.rol
         && (
           !('ultimaActividad' in after)
           || after.ultimaActividad == request.time

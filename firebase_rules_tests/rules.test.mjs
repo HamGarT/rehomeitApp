@@ -2992,6 +2992,29 @@ test('administración quita la verificación de una cuenta y nadie más puede', 
   await assertSucceeds(verifyAccountBatch(adminId, userId));
 });
 
+test('una cuenta verificada edita su nombre sin tocar los campos de administración', async () => {
+  await seedAdmin();
+  const userId = await seedVerifiableUser();
+  await assertSucceeds(verifyAccountBatch(adminId, userId));
+  const db = firestoreFor(userId);
+  const batch = writeBatch(db);
+  batch.update(doc(db, 'usuarios', userId), {
+    nombreCompleto: 'Cuenta Verificable Editada',
+    nombres: 'Cuenta',
+    apellidos: 'Verificable Editada',
+  });
+  batch.update(doc(db, 'perfiles', userId), {
+    nombreCorto: 'Cuenta V.',
+    distrito: 'Cajamarca',
+  });
+  await assertSucceeds(batch.commit());
+  const userRef = doc(db, 'usuarios', userId);
+  await assertFails(updateDoc(userRef, { cuentaVerificadaPor: userId }));
+  await assertFails(updateDoc(userRef, { estadoCuenta: 'activa' }));
+  await assertFails(updateDoc(userRef, { rol: 'administrador' }));
+  await assertFails(updateDoc(userRef, { correo: 'otro@example.test' }));
+});
+
 function campaignVerification(verifiedBy = adminId) {
   return { verifiedAt: serverTimestamp(), verifiedBy };
 }
@@ -3044,6 +3067,36 @@ test('la verificación de campaña la firma solo administración y no toca otros
   await assertFails(updateDoc(orgRef, campaignVerificationRemoval));
   // Quitar solo la firma dejaría una fecha sin administrador detrás.
   await assertFails(updateDoc(adminRef, { verifiedBy: deleteField() }));
+});
+
+test('la organización edita y cierra una campaña ya verificada', async () => {
+  await seedAdmin();
+  await seedCampaignActor(
+    'campaign-org',
+    'organizacion',
+    'Organización Solidaria',
+  );
+  await seedCampaign('verified-campaign', initialCampaign());
+  await assertSucceeds(updateDoc(
+    doc(firestoreFor(adminId), 'campanias', 'verified-campaign'),
+    campaignVerification(),
+  ));
+  const orgRef = doc(
+    firestoreFor('campaign-org'),
+    'campanias',
+    'verified-campaign',
+  );
+  await assertSucceeds(updateDoc(orgRef, {
+    title: 'Abrigo y alimentos para Cajamarca',
+    updatedAt: serverTimestamp(),
+  }));
+  await assertSucceeds(updateDoc(orgRef, {
+    status: 'closed',
+    updatedAt: serverTimestamp(),
+    closedAt: serverTimestamp(),
+    closedBy: 'campaign-org',
+    closureReason: 'Cierre anticipado por la organización',
+  }));
 });
 
 function tenNeeds(prefix = 'Necesidad') {
